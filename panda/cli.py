@@ -144,6 +144,8 @@ def main():
 
     # ── setup ──────────────────────────────────────────────────────
     setup_p = sub.add_parser("setup", help="Interactive setup wizard (交互式配置向导)")
+    setup_p.add_argument("section", nargs="?", default="", choices=["", "model", "providers", "gateway", "doctor"],
+                         help="Section: model, providers, gateway, doctor")
     setup_p.add_argument("--feishu", action="store_true", help="Feishu-only setup")
     setup_p.add_argument("--providers", action="store_true", help="Provider keys only")
     setup_p.add_argument("--quick", action="store_true", help="Non-interactive (from env vars)")
@@ -1258,6 +1260,7 @@ def cmd_setup(args):
     """Interactive setup wizard."""
     from panda.setup import run_setup
     run_setup(
+        section=getattr(args, "section", ""),
         feishu_only=args.feishu,
         providers_only=args.providers,
         quick=args.quick,
