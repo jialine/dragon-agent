@@ -1,0 +1,69 @@
+# Panda Agent Configuration
+# Copy to config.yaml and edit for your setup.
+
+router:
+  model_path: "models/qwen3-0.6b-q4_k_m.gguf"
+  n_threads: 4
+  n_ctx: 512
+  temperature: 0.1
+  max_tokens: 128
+  fallback_on_failure: true
+
+dispatch:
+  industries:
+    finance:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      api_key_env: "FINANCE_API_KEY"
+      base_url: "https://api.deepseek.com/v1"
+      system_prompt: "你是金融行业专家，擅长风控分析、投资建议和合规审查。"
+      timeout_secs: 60
+      max_retries: 2
+    medical:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      api_key_env: "MEDICAL_API_KEY"
+      system_prompt: "你是医疗行业专家，擅长诊断辅助、病历分析和药学咨询。"
+    legal:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      api_key_env: "LEGAL_API_KEY"
+      system_prompt: "你是法律行业专家，擅长合同审查、诉讼分析和法规解读。"
+    education:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      api_key_env: "EDUCATION_API_KEY"
+      system_prompt: "你是教育行业专家，擅长教案设计、答疑辅导和学情评估。"
+    general:
+      provider: "openrouter"
+      model: "openai/gpt-4o-mini"
+      api_key_env: "PANDA_GENERAL_API_KEY"
+      system_prompt: "You are a helpful assistant."
+
+memory:
+  persist_dir: "panda_data/vectordb"
+  embedding_model: "BAAI/bge-small-zh-v1.5"
+  search_top_k: 5
+  search_threshold: 0.5
+  recency_weight: 0.1
+
+backup:
+  endpoint: "https://oss-cn-shanghai.aliyuncs.com"
+  access_key_env: "PANDA_BACKUP_ACCESS_KEY"
+  secret_key_env: "PANDA_BACKUP_SECRET_KEY"
+  bucket: "panda-backups"
+  prefix: "panda/backups/"
+  interval_hours: 6
+  keep_last: 7
+
+guard:
+  max_consecutive_repeats: 3
+  max_loop_rounds: 2
+  max_ineffective_retries: 3
+  window_size: 50
+  task_timeout_secs: 300
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  log_level: "info"

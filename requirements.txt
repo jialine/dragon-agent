@@ -1,0 +1,20 @@
+# Panda Agent — Core Dependencies
+# Install: pip install -r requirements.txt
+#
+# Knowledge base extras (optional, ~500MB):
+#   chromadb>=0.5.0
+#   sentence-transformers>=3.3.0
+#
+# Dev extras:
+#   pip install -r requirements-dev.txt
+
+fastapi>=0.115.12
+uvicorn[standard]>=0.34.2
+pydantic>=2.12.5
+pyyaml>=6.0.2
+python-dotenv>=1.2.1
+httpx>=0.28.1
+openai>=2.21.0
+tenacity>=9.1.4
+networkx>=3.2
+llama-cpp-python>=0.3.8
