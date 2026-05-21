@@ -142,11 +142,15 @@ info "$SKILL_COUNT skills available"
 step "Launching setup wizard..."
 source "$VENV_DIR/bin/activate"
 
-# Auto-accept defaults with Enter for fully non-interactive setup
-echo -e "\n${CYAN}▶ Starting interactive setup — press Enter for defaults${NC}\n"
-python -m panda setup --quick 2>/dev/null || {
-    warn "Setup wizard not available, skipping"
-}
+if [ -t 0 ]; then
+    # Running in a real terminal — full interactive setup
+    echo -e "\n${CYAN}▶ Interactive setup — follow the prompts${NC}\n"
+    python -m panda setup
+else
+    # Piped (curl | bash) — non-interactive, prompt user to run later
+    python -m panda setup --quick 2>/dev/null || true
+    echo -e "\n${YELLOW}▶ For interactive setup, run: panda setup${NC}"
+fi
 
 # ── Done ─────────────────────────────────────────────────────────
 echo -e "\n${GREEN}══════════════════════════════════════════════${NC}"
