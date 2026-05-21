@@ -404,3 +404,140 @@ def run_setup(section="", feishu_only=False, providers_only=False, quick=False):
             "  panda doctor        Re-run diagnostics",
             style="bold green"
         )
+
+
+# ── Model Picker (panda model) ──────────────────────────────────────
+
+def pick_model(name: Optional[str] = None):
+    """Interactive model picker — like Hermes 'hermes model'.
+
+    Shows all configured providers with available models, lets you
+    switch the default provider and model interactively.
+    """
+    _panel(
+        "🤖 Model Picker",
+        "Choose your default AI model and provider.",
+        style="bold magenta"
+    )
+
+    env = _load_env()
+    cfg = _load_config()
+
+    # Show current
+    default_provider = cfg.get("provider", {}).get("default", "openai")
+    current_model = cfg.get("provider", {}).get(default_provider, {}).get("model", "")
+
+    _print(f"\n  Current: {default_provider} / {current_model or 'not set'}", style="bold green")
+
+    # Show all configured providers with status
+    rows = []
+    configured_providers = []
+    for p in PROVIDERS:
+        has_key = bool(env.get(p["env"]) or os.getenv(p["env"]))
+        status = "✓" if has_key else "○"
+        active = " ◀ active" if p["id"] == default_provider else ""
+        rows.append((status, p["id"], p["label"] + active))
+
+    _table("Configured Providers", ["Key", "Provider", "Status"], rows)
+
+    # If name specified, switch directly
+    if name:
+        # Try as "provider/model" or just "model"
+        if "/" in name:
+            prov_id, model_name = name.split("/", 1)
+        else:
+            prov_id = default_provider
+            model_name = name
+
+        # Find provider
+        provider = next((p for p in PROVIDERS if p["id"] == prov_id), None)
+        if provider:
+            has_key = bool(env.get(provider["env"]) or os.getenv(provider["env"]))
+            if not has_key:
+                _print(f"\n  ⚠ {provider['label']} has no API key configured", style="yellow")
+                if _confirm("Configure API key now?"):
+                    key = _prompt(provider["env"], password=True)
+                    if key:
+                        env[provider["env"]] = key
+                        _save_env(env)
+                        _print(f"  ✓ Key saved", style="green")
+
+            cfg["provider"] = cfg.get("provider", {})
+            cfg["provider"]["default"] = prov_id
+            cfg["provider"][prov_id] = cfg["provider"].get(prov_id, {})
+            cfg["provider"][prov_id]["model"] = model_name
+            _save_config(cfg)
+
+            _panel(
+                "✓ Model Updated",
+                f"Default: {prov_id} / {model_name}\n"
+                f"Start chatting: panda chat",
+                style="bold green"
+            )
+            return
+        else:
+            _print(f"  ✗ Unknown provider: {prov_id}", style="red")
+            return
+
+    # Interactive: pick provider
+    _print("\n  Select provider:", style="bold")
+    available = []
+    for i, p in enumerate(PROVIDERS, 1):
+        has_key = bool(env.get(p["env"]) or os.getenv(p["env"]))
+        mark = "✓" if has_key else " "
+        active = " ◀" if p["id"] == default_provider else ""
+        _print(f"  [{mark}] {i}. {p['label']}{active}")
+        if has_key:
+            available.append(p)
+
+    try:
+        choice = input("\n  Number (Enter to keep current): ").strip()
+        if not choice:
+            _print("  No change", style="dim")
+            return
+
+        idx = int(choice) - 1
+        if 0 <= idx < len(PROVIDERS):
+            provider = PROVIDERS[idx]
+
+            # Check key
+            has_key = bool(env.get(provider["env"]) or os.getenv(provider["env"]))
+            if not has_key:
+                _print(f"\n  ⚠ {provider['label']} needs an API key", style="yellow")
+                _print(f"  Get one at: {provider['url']}")
+                if _confirm("Enter API key now?"):
+                    key = _prompt(provider["env"], password=True)
+                    if key:
+                        env[provider["env"]] = key
+                        _save_env(env)
+                        _print(f"  ✓ Key saved", style="green")
+                    else:
+                        _print("  Cancelled", style="dim")
+                        return
+
+            # Pick model
+            models = provider["models"]
+            _print(f"\n  {provider['label']} — available models:", style="bold")
+            for i, m in enumerate(models, 1):
+                current_mark = " ◀" if provider["id"] == default_provider and m == current_model else ""
+                _print(f"    {i}. {m}{current_mark}")
+
+            m_choice = input(f"\n  Model number [1]: ").strip()
+            m_idx = int(m_choice) - 1 if m_choice.isdigit() and 1 <= int(m_choice) <= len(models) else 0
+            model_name = models[m_idx]
+
+            # Save
+            cfg["provider"] = cfg.get("provider", {})
+            cfg["provider"]["default"] = provider["id"]
+            cfg["provider"][provider["id"]] = cfg["provider"].get(provider["id"], {})
+            cfg["provider"][provider["id"]]["model"] = model_name
+            _save_config(cfg)
+
+            _panel(
+                "✓ Model Updated",
+                f"Default: {provider['id']} / {model_name}\n"
+                f"Start: panda chat -p {provider['id']} -m {model_name}",
+                style="bold green"
+            )
+    except (ValueError, EOFError, KeyboardInterrupt):
+        _print("  Cancelled", style="dim")

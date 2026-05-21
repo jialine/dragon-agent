@@ -142,6 +142,10 @@ def main():
     # ── tui ────────────────────────────────────────────────────────
     tui_p = sub.add_parser("tui", help="Start TUI backend server (for Ink/React terminal UI)")
 
+    # ── model ───────────────────────────────────────────────────────
+    model_p = sub.add_parser("model", help="Interactive model and provider picker")
+    model_p.add_argument("name", nargs="?", help="Model name to switch to")
+
     # ── setup ──────────────────────────────────────────────────────
     setup_p = sub.add_parser("setup", help="Interactive setup wizard (交互式配置向导)")
     setup_p.add_argument("section", nargs="?", default="", choices=["", "model", "providers", "gateway", "doctor"],
@@ -174,6 +178,7 @@ def main():
         "doctor": cmd_doctor,
         "tui": cmd_tui,
         "setup": cmd_setup,
+        "model": cmd_model,
     }
 
     handler = handlers.get(args.command)
@@ -1254,6 +1259,12 @@ def cmd_tui(args):
     """Start the TUI backend server over stdin/stdout."""
     from panda.tui.server import main as tui_main
     tui_main()
+
+
+def cmd_model(args):
+    """Interactive model and provider picker — aligned with Hermes 'hermes model'."""
+    from panda.setup import pick_model
+    pick_model(args.name if hasattr(args, 'name') else None)
 
 
 def cmd_setup(args):
