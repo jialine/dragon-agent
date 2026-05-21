@@ -131,6 +131,9 @@ def main():
     doc_p = sub.add_parser("doctor", help="运行诊断检查 (run diagnostic checks)")
     doc_p.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # ── tui ────────────────────────────────────────────────────────
+    tui_p = sub.add_parser("tui", help="Start TUI backend server (for Ink/React terminal UI)")
+
     # ── setup ──────────────────────────────────────────────────────
     setup_p = sub.add_parser("setup", help="Interactive setup wizard (交互式配置向导)")
     setup_p.add_argument("--feishu", action="store_true", help="Feishu-only setup")
@@ -159,6 +162,7 @@ def main():
         "profile": cmd_profile,
         "test": cmd_test,
         "doctor": cmd_doctor,
+        "tui": cmd_tui,
         "setup": cmd_setup,
     }
 
@@ -1051,6 +1055,12 @@ def cmd_doctor(args):
             print("✓ 所有关键检查通过！")
         else:
             print("⚠ 发现问题，请检查上述标记为 ✗ 的项目。")
+
+
+def cmd_tui(args):
+    """Start the TUI backend server over stdin/stdout."""
+    from panda.tui.server import main as tui_main
+    tui_main()
 
 
 def cmd_setup(args):
