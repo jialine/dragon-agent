@@ -107,7 +107,7 @@ fi
 # ── Verify ───────────────────────────────────────────────────────
 step "Verifying installation..."
 source "$VENV_DIR/bin/activate"
-PANDA_VERSION=$(python -m panda version 2>/dev/null || echo "1.2.0")
+PANDA_VERSION=$(python -m panda --version 2>&1 || echo "1.2.0")
 info "Panda Agent v$PANDA_VERSION installed"
 
 SKILL_COUNT=$(python -m panda skills list 2>/dev/null | grep -c "⚠\|✓" || echo "0")

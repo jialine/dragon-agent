@@ -7,7 +7,8 @@ name = "panda-agent"
 version = "1.2.0"
 description = "🐼 Panda Agent — Self-Evolving AI Agent Framework"
 readme = "README.md"
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [
     {name = "jialine"}
@@ -15,7 +16,6 @@ authors = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -60,7 +60,25 @@ Homepage = "https://gitee.com/jialine/panda-agent"
 Repository = "https://gitee.com/jialine/panda-agent"
 
 [tool.setuptools]
-packages = ["panda", "panda.session", "panda.skill", "panda.tool", "panda.tui", "panda.memory", "panda.config", "panda.provider", "panda.cron", "panda.gateway"]
+packages = [
+    "panda",
+    "panda.backup",
+    "panda.debate",
+    "panda.dispatch",
+    "panda.explorer",
+    "panda.gateway",
+    "panda.guard",
+    "panda.jury",
+    "panda.mcp",
+    "panda.memory",
+    "panda.provider",
+    "panda.router",
+    "panda.skill",
+    "panda.tool",
+    "panda.tool.builtins",
+    "panda.tui",
+    "panda.utils",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
