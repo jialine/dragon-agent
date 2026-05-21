@@ -138,6 +138,16 @@ info "Panda Agent v$PANDA_VERSION installed"
 SKILL_COUNT=$(python -m panda skills list 2>/dev/null | grep -c "⚠\|✓" || echo "0")
 info "$SKILL_COUNT skills available"
 
+# ── Auto Setup ────────────────────────────────────────────────────
+step "Launching setup wizard..."
+source "$VENV_DIR/bin/activate"
+
+# Auto-accept defaults with Enter for fully non-interactive setup
+echo -e "\n${CYAN}▶ Starting interactive setup — press Enter for defaults${NC}\n"
+python -m panda setup --quick 2>/dev/null || {
+    warn "Setup wizard not available, skipping"
+}
+
 # ── Done ─────────────────────────────────────────────────────────
 echo -e "\n${GREEN}══════════════════════════════════════════════${NC}"
 echo -e "${GREEN}  🐼 Panda Agent installed!${NC}"
@@ -150,7 +160,7 @@ echo ""
 echo "  Or use the alias (restart shell first):"
 echo "    panda chat"
 echo ""
-echo "  Setup wizard:"
+echo "  Re-run setup wizard:"
 echo "    panda setup"
 echo ""
 echo "  Import Hermes skills:"
