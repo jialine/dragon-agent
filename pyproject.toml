@@ -1,40 +1,67 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "panda-agent"
-version = "1.0.0"
-description = "Panda Agent — 多行业智能调度 Agent，超越 Hermes"
-requires-python = ">=3.11"
+version = "1.2.0"
+description = "🐼 Panda Agent — Self-Evolving AI Agent Framework"
 readme = "README.md"
 license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "jialine"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
 dependencies = [
-    "llama-cpp-python>=0.3.8",
-    "chromadb>=0.6.0",
-    "sentence-transformers>=3.4.0",
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.34.0",
-    "openai>=1.68.0",
-    "boto3>=1.36.0",
-    "schedule>=1.2.0",
+    "pydantic>=2.0",
     "pyyaml>=6.0",
-    "pydantic>=2.10.0",
-    "python-dotenv>=1.0.0",
-    "httpx>=0.28.0",
-    "tenacity>=9.0.0",
-    "structlog>=24.0.0",
-    "networkx>=3.4",
+    "click>=8.0",
 ]
 
 [project.optional-dependencies]
+feishu = [
+    "lark-oapi>=1.5.3",
+    "qrcode>=7.0",
+]
+telegram = [
+    "python-telegram-bot>=20.0",
+]
+discord = [
+    "discord.py>=2.0",
+]
+wechat = [
+    "wechatpy>=1.8",
+]
+tui = [
+    # TUI frontend is Node.js; no Python deps needed
+]
 dev = [
-    "pytest>=8.3.0",
-    "pytest-asyncio>=0.25.0",
-    "pytest-httpx>=0.31.0",
-    "httpx>=0.28.0",
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "pytest-cov>=4.0",
 ]
 
-[build-system]
-requires = ["setuptools>=75.0"]
-build-backend = "setuptools.build_meta"
+[project.scripts]
+panda = "panda.cli:main"
+
+[project.urls]
+Homepage = "https://gitee.com/jialine/panda-agent"
+Repository = "https://gitee.com/jialine/panda-agent"
 
 [tool.setuptools]
-packages = ["panda"]
+packages = ["panda", "panda.session", "panda.skill", "panda.tool", "panda.tui", "panda.memory", "panda.config", "panda.provider", "panda.cron", "panda.gateway"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
