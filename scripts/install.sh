@@ -149,7 +149,9 @@ if [ -t 0 ]; then
 else
     # Piped (curl | bash) — non-interactive, prompt user to run later
     python -m panda setup --quick 2>/dev/null || true
-    echo -e "\n${YELLOW}▶ For interactive setup, run: panda setup${NC}"
+    echo -e "\n${YELLOW}▶ For interactive setup, run:${NC}"
+    echo -e "${YELLOW}   source ~/panda-agent/.venv/bin/activate${NC}"
+    echo -e "${YELLOW}   panda setup${NC}"
 fi
 
 # ── Done ─────────────────────────────────────────────────────────
