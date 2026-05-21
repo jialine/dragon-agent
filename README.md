@@ -8,36 +8,41 @@ Panda Agent is a self-evolving AI agent with persistent memory, skill system, sc
 
 ## Quick Start
 
-### Prerequisites
-
-- **Python** ≥ 3.11
-- **Node.js** ≥ 20 (for TUI only)
-- **npm** ≥ 9 (for TUI only)
-
-### Install
+### One-Click Install
 
 ```bash
-git clone git@gitee.com:jialine/panda-agent.git
-cd panda-agent
+curl -fsSL https://gitee.com/jialine/panda-agent/raw/main/scripts/install.sh | bash
+```
 
-# Python dependencies
+This script will:
+1. Clone / update the repo to `~/panda-agent`
+2. Create Python virtual environment and install dependencies
+3. Install TUI frontend (Node.js, if available)
+4. Create data directories (`~/.panda/`)
+5. Add `panda` alias to your shell rc file
+
+### Manual Install
+
+```bash
+git clone https://gitee.com/jialine/panda-agent.git ~/panda-agent
+cd ~/panda-agent
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 
 # (Optional) TUI frontend
 cd tui && npm install && cd ..
 ```
 
+**Prerequisites:** Python ≥ 3.11, git, (optional) Node.js ≥ 20 for TUI
+
 ### First Run
 
 ```bash
-# Interactive setup wizard
-panda setup
+source ~/panda-agent/.venv/bin/activate  # or restart shell for alias
 
-# Start chatting
-panda chat
-
-# See all commands
-panda --help
+panda setup     # Interactive setup wizard
+panda chat      # Start chatting
+panda --help    # See all commands
 ```
 
 ---
@@ -109,6 +114,12 @@ This spawns `python -m panda.tui.server` automatically via stdin/stdout JSON-RPC
 ---
 
 ## Deployment
+
+### One-Click (Recommended)
+
+```bash
+curl -fsSL https://gitee.com/jialine/panda-agent/raw/main/scripts/install.sh | bash
+```
 
 ### Linux / WSL
 
