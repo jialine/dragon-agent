@@ -79,10 +79,35 @@ info "Data dir: $DATA_DIR"
 
 # ── Config ───────────────────────────────────────────────────────
 if [ ! -f "$DATA_DIR/config.yaml" ]; then
-    step "Initializing config..."
-    python -m panda config init --output "$DATA_DIR/config.yaml" 2>/dev/null || {
-        warn "Config init skipped (run: panda setup)"
-    }
+    step "Creating default config..."
+    cat > "$DATA_DIR/config.yaml" << 'YAML'
+# Panda Agent Configuration
+# Run 'panda setup' for interactive configuration
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+router:
+  model_path: "models/qwen3-0.6b-q4_k_m.gguf"
+
+dispatch:
+  timeout_secs: 60
+  max_retries: 2
+  fallback_to_general: true
+
+provider:
+  default: "openai"
+  openai:
+    model: "gpt-4o"
+
+skills:
+  dir: "~/.panda/skills"
+
+data:
+  dir: "~/.panda"
+YAML
+    info "Config created at $DATA_DIR/config.yaml"
 fi
 
 # ── Shell integration ────────────────────────────────────────────
