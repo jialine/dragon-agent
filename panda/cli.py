@@ -82,14 +82,17 @@ def main():
     # ── skills ────────────────────────────────────────────────────
     sk_p = sub.add_parser("skills", help="Manage skills")
     sk_p.add_argument("action", nargs="?", default="list",
-                       choices=["list", "search", "create", "delete", "evolve", "rollback", "import", "discover"])
-    sk_p.add_argument("name", nargs="?", help="Skill name or source (for import)")
+                       choices=["list", "search", "create", "delete", "evolve", "rollback", "import", "discover", "scan"])
+    sk_p.add_argument("name", nargs="?", help="Skill name or source (for import/scan)")
     sk_p.add_argument("--query", "-q", help="Search query")
     sk_p.add_argument("--description", "-d", help="Skill description")
     sk_p.add_argument("--content", "-c", help="Skill content")
     sk_p.add_argument("--tags", "-t", help="Comma-separated tags")
     sk_p.add_argument("--filter", "-f", help="Filter by tags (comma-separated)")
     sk_p.add_argument("--source", "-s", help="Source name (hermes, openclaw, all)")
+    sk_p.add_argument("--search", help="Keyword search across name/desc/tags")
+    sk_p.add_argument("--show", help="Preview full content of a skill by name")
+    sk_p.add_argument("--json", action="store_true", help="Output as JSON")
     sk_p.add_argument("--overwrite", action="store_true", help="Overwrite existing skills")
     sk_p.add_argument("--dry-run", action="store_true", help="Preview without importing")
 
@@ -634,6 +637,61 @@ def cmd_skills(args):
                 icon = "✓" if d.get("status") == "imported" else "○" if d.get("status") == "dry_run" else "✗"
                 name = d.get("name", d.get("file", "?"))
                 print(f"  {icon} {name}")
+
+    elif args.action == "scan":
+        from panda.skill.importer import SkillImporter
+
+        source = args.source or args.name or "hermes"
+        filter_tags = args.filter.split(",") if getattr(args, "filter", None) else None
+        search_kw = getattr(args, "search", "") or ""
+        show_name = getattr(args, "show", None)
+        as_json = getattr(args, "json", False)
+
+        importer = SkillImporter(engine)
+        report = importer.scan(
+            source=source,
+            filter_tags=filter_tags,
+            search=search_kw,
+            show_content=show_name,
+        )
+
+        if as_json:
+            import json as _json
+            print(_json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+            return
+
+        # Content preview mode
+        if report.content_preview:
+            cp = report.content_preview
+            print(f"\n{'='*60}")
+            print(f" Skill: {cp['name']}")
+            print(f" File:  {cp['file']}")
+            print(f"{'='*60}\n")
+            print(cp["body"])
+            return
+
+        print(f"\nScan [{report.source}]: {report.total} skills matched")
+
+        imported_count = sum(1 for s in report.skills if s.get("imported"))
+        print(f"  Imported: {imported_count}  |  Available: {report.total - imported_count}")
+        if report.errors:
+            print(f"  Errors: {report.errors}")
+        print()
+
+        for skill in report.skills:
+            icon = "✓" if skill.get("imported") else "○"
+            name = skill.get("name", "?")
+            ver = skill.get("version", "")
+            tags = ", ".join(skill.get("tags", [])[:5])
+            desc = (skill.get("description", "") or "")[:80]
+            extra = ""
+            if skill.get("imported"):
+                extra = f" [local v{skill.get('local_version','')} sr={skill.get('local_success_rate',0):.0%}]"
+
+            print(f"  {icon} {name} v{ver}{extra}")
+            print(f"     {desc}")
+            print(f"     tags: {tags}")
+            print()
 
     elif args.action == "discover":
         from panda.skill.importer import SkillImporter

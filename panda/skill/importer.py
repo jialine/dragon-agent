@@ -109,6 +109,28 @@ class ImportReport:
         }
 
 
+@dataclass
+class ScanReport:
+    """Result of scanning external skills."""
+    source: str
+    total: int = 0
+    errors: int = 0
+    skills: List[Dict[str, Any]] = field(default_factory=list)
+    content_preview: Optional[Dict[str, Any]] = None
+    details: List[Dict[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        result = {
+            "source": self.source,
+            "total": self.total,
+            "errors": self.errors,
+            "skills": self.skills,
+        }
+        if self.content_preview:
+            result["content_preview"] = self.content_preview
+        return result
+
+
 class SkillImporter:
     """Import skills from external agent frameworks into Panda.
 
@@ -144,6 +166,154 @@ class SkillImporter:
                     break  # found it, don't check other paths
 
         return sources
+
+    # ── Skill Scanning ───────────────────────────────────────────────
+
+    def scan(
+        self,
+        source: str = "hermes",
+        filter_tags: Optional[List[str]] = None,
+        search: str = "",
+        show_content: Optional[str] = None,
+    ) -> ScanReport:
+        """Scan external skills with detailed metadata.
+
+        Unlike discover (which just counts), scan returns full metadata
+        for every skill including whether it's already imported.
+
+        Parameters
+        ----------
+        source : str
+            "hermes", "openclaw", or "all"
+        filter_tags : list or None
+            Only include skills matching these tags.
+        search : str
+            Free-text search across name, description, and tags.
+        show_content : str or None
+            If set to a skill name, returns full content for preview.
+        """
+        report = ScanReport(source=source)
+
+        if source == "all":
+            sources = self.discover_sources()
+        else:
+            sources = [s for s in self.discover_sources() if s.name == source]
+
+        if not sources:
+            report.errors = 1
+            report.details.append({
+                "error": f"Source '{source}' not found."
+            })
+            return report
+
+        for src in sources:
+            report.source = src.name
+            skill_files = sorted(src.path.rglob("SKILL.md"))
+
+            for filepath in skill_files:
+                try:
+                    info = self._scan_skill_file(filepath, src.format)
+                    if info is None:
+                        continue
+
+                    # Apply filters
+                    if filter_tags:
+                        tag_lower = [t.lower() for t in info.get("tags", [])]
+                        filter_lower = [t.lower() for t in filter_tags]
+                        if not any(ft in tag_lower for ft in filter_lower):
+                            continue
+
+                    if search:
+                        search_lower = search.lower()
+                        text = f"{info.get('name','')} {info.get('description','')} {' '.join(info.get('tags',[]))}".lower()
+                        if search_lower not in text:
+                            continue
+
+                    # Check import status
+                    existing = self.engine.get(info.get("name", ""))
+                    info["imported"] = existing is not None
+                    if existing:
+                        info["local_version"] = existing.meta.version
+                        info["local_success_rate"] = round(existing.success_rate, 3)
+
+                    report.skills.append(info)
+                    report.total += 1
+
+                except Exception as e:
+                    logger.warning("Scan error for %s: %s", filepath, e)
+                    report.errors += 1
+
+        # If show_content requested, extract full content for that skill
+        if show_content:
+            for src in sources:
+                for filepath in src.path.rglob("SKILL.md"):
+                    info = self._scan_skill_file(filepath, src.format)
+                    if info and info.get("name") == show_content:
+                        report.content_preview = {
+                            "name": info["name"],
+                            "file": str(filepath),
+                            "body": filepath.read_text(encoding="utf-8"),
+                        }
+                        break
+
+        return report
+
+    def _scan_skill_file(self, filepath: Path, fmt: str) -> Optional[Dict[str, Any]]:
+        """Parse a SKILL.md file and return metadata dict (no import)."""
+        try:
+            raw = filepath.read_text(encoding="utf-8")
+        except Exception:
+            return None
+
+        frontmatter, body = _parse_yaml_frontmatter(raw)
+        if frontmatter is None:
+            return None
+
+        name = frontmatter.get("name", filepath.parent.name)
+        if not name:
+            return None
+
+        description = frontmatter.get("description", "")
+        version = str(frontmatter.get("version", "1.0.0"))
+        author = frontmatter.get("author", "")
+
+        # Extract tags (handle both Hermes and OpenClaw metadata structures)
+        tags = []
+        meta = frontmatter.get("metadata", {})
+        if isinstance(meta, dict):
+            for key in ("hermes", "openclaw"):
+                inner = meta.get(key, {})
+                if isinstance(inner, dict) and inner.get("tags"):
+                    tags = inner["tags"]
+                    break
+            if not tags:
+                tags = meta.get("tags", [])
+
+        if not tags:
+            tags = [frontmatter.get("category", "")] if frontmatter.get("category") else [filepath.parent.name]
+
+        # Related skills
+        related = frontmatter.get("related_skills", [])
+        if isinstance(meta, dict):
+            for key in ("hermes", "openclaw"):
+                inner = meta.get(key, {})
+                if isinstance(inner, dict) and inner.get("related_skills"):
+                    related = inner["related_skills"]
+                    break
+
+        return {
+            "name": name,
+            "description": description,
+            "tags": tags,
+            "version": version,
+            "author": author,
+            "related_skills": related,
+            "body_length": len(body),
+            "body_preview": body[:200].strip(),
+            "file": str(filepath),
+            "category": filepath.parent.name,
+            "source": fmt.split("-")[0],  # "hermes" or "openclaw"
+        }
 
     # ── Main Import Entry ────────────────────────────────────────────
 
