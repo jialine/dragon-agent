@@ -81,12 +81,17 @@ def main():
 
     # ── skills ────────────────────────────────────────────────────
     sk_p = sub.add_parser("skills", help="Manage skills")
-    sk_p.add_argument("action", nargs="?", default="list", choices=["list", "search", "create", "delete", "evolve", "rollback"])
-    sk_p.add_argument("name", nargs="?", help="Skill name")
+    sk_p.add_argument("action", nargs="?", default="list",
+                       choices=["list", "search", "create", "delete", "evolve", "rollback", "import", "discover"])
+    sk_p.add_argument("name", nargs="?", help="Skill name or source (for import)")
     sk_p.add_argument("--query", "-q", help="Search query")
     sk_p.add_argument("--description", "-d", help="Skill description")
     sk_p.add_argument("--content", "-c", help="Skill content")
     sk_p.add_argument("--tags", "-t", help="Comma-separated tags")
+    sk_p.add_argument("--filter", "-f", help="Filter by tags (comma-separated)")
+    sk_p.add_argument("--source", "-s", help="Source name (hermes, openclaw, all)")
+    sk_p.add_argument("--overwrite", action="store_true", help="Overwrite existing skills")
+    sk_p.add_argument("--dry-run", action="store_true", help="Preview without importing")
 
     # ── tools ─────────────────────────────────────────────────────
     tl_p = sub.add_parser("tools", help="Manage tools")
@@ -604,6 +609,49 @@ def cmd_skills(args):
             print(f"Deleted skill: {args.name}")
         else:
             print(f"Skill not found: {args.name}")
+
+    elif args.action == "import":
+        from panda.skill.importer import SkillImporter
+
+        source = args.source or args.name or "hermes"
+        filter_tags = args.filter.split(",") if getattr(args, "filter", None) else None
+
+        importer = SkillImporter(engine)
+        report = importer.import_from(
+            source=source,
+            filter_tags=filter_tags,
+            dry_run=getattr(args, "dry_run", False),
+            overwrite=getattr(args, "overwrite", False),
+        )
+
+        print(f"\nImport Report [{report.source}]:")
+        print(f"  Imported:  {report.imported}")
+        print(f"  Dry-run:   {report.dry_run}")
+        print(f"  Skipped:   {report.skipped}")
+        print(f"  Errors:    {report.errors}")
+        if report.details:
+            for d in report.details[:20]:
+                icon = "✓" if d.get("status") == "imported" else "○" if d.get("status") == "dry_run" else "✗"
+                name = d.get("name", d.get("file", "?"))
+                print(f"  {icon} {name}")
+
+    elif args.action == "discover":
+        from panda.skill.importer import SkillImporter
+
+        importer = SkillImporter(engine)
+        sources = importer.discover_sources()
+
+        if not sources:
+            print("No external skill sources found.")
+            print("Supported sources: hermes (~/.hermes/skills/), openclaw (~/.openclaw/skills/)")
+            return
+
+        print(f"Discovered {len(sources)} skill source(s):\n")
+        for src in sources:
+            print(f"  {src.name}: {src.description}")
+            print(f"    Path: {src.path}")
+            print(f"    Skills: {src.skill_count}")
+            print()
 
 
 def cmd_tools(args):

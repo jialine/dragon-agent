@@ -17,10 +17,14 @@ from panda.skill.skill import (
 from panda.skill.engine import (
     SkillEngine, SkillPipeline, PipelineStep, PipelineResult,
 )
+from panda.skill.importer import (
+    SkillImporter, SkillSource, ImportReport, KNOWN_SOURCES,
+)
 
 __all__ = [
     "PandaSkill", "SkillMeta", "SkillVersion", "SkillMatch",
     "SkillExecutionReport", "SkillOutcome", "SkillStatus",
     "EvolutionProposal", "ExecutionMode",
     "SkillEngine", "SkillPipeline", "PipelineStep", "PipelineResult",
+    "SkillImporter", "SkillSource", "ImportReport", "KNOWN_SOURCES",
 ]
