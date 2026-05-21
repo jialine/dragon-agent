@@ -57,8 +57,8 @@ def main():
 
     # ── gateway ───────────────────────────────────────────────────
     gw_p = sub.add_parser("gateway", help="Start or check multi-platform gateway")
-    gw_p.add_argument("action", nargs="?", default="start", choices=["start", "status"],
-                      help="start=启动网关, status=查看状态")
+    gw_p.add_argument("action", nargs="?", default="start", choices=["start", "status", "install"],
+                      help="start=启动网关, status=查看状态, install=安装配置")
     gw_p.add_argument("--host", default="0.0.0.0")
     gw_p.add_argument("--port", type=int, default=8000)
     gw_p.add_argument("--feishu", action="store_true", help="Enable Feishu")
@@ -265,6 +265,10 @@ def cmd_gateway(args):
         _cmd_gateway_status()
         return
 
+    if args.action == "install":
+        _cmd_gateway_install()
+        return
+
     # ── start ──
     print(f"Starting Panda Gateway on {args.host}:{args.port}...")
 
@@ -374,6 +378,87 @@ def _cmd_gateway_status():
 
     print(f"\n端点 (Endpoint): http://0.0.0.0:8000")
     print(f"健康检查: GET /health")
+
+
+def _cmd_gateway_install():
+    """Interactive gateway setup — configure platform adapters."""
+    print("\n🐼 Panda Gateway — 安装配置向导")
+    print("=" * 50)
+
+    platforms = {
+        "feishu": {
+            "name": "Feishu (飞书)",
+            "env_vars": ["FEISHU_APP_ID", "FEISHU_APP_SECRET"],
+            "docs": "https://open.feishu.cn/app",
+        },
+        "telegram": {
+            "name": "Telegram",
+            "env_vars": ["TELEGRAM_BOT_TOKEN"],
+            "docs": "https://t.me/BotFather",
+        },
+        "discord": {
+            "name": "Discord",
+            "env_vars": ["DISCORD_BOT_TOKEN"],
+            "docs": "https://discord.com/developers/applications",
+        },
+        "wechat": {
+            "name": "WeChat (微信)",
+            "env_vars": ["WECHAT_APP_ID", "WECHAT_APP_SECRET"],
+            "docs": "https://mp.weixin.qq.com/",
+        },
+    }
+
+    env_file = Path.home() / ".panda" / ".env"
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+
+    configured = {}
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            line = line.strip()
+            if "=" in line and not line.startswith("#"):
+                key, val = line.split("=", 1)
+                configured[key] = val.strip().strip('"')
+
+    for key, plat in platforms.items():
+        env_vars = plat["env_vars"]
+        already = all(configured.get(v) or os.getenv(v) for v in env_vars)
+        status = "✓ 已配置" if already else "○ 未配置"
+        print(f"\n{status} {plat['name']}")
+        print(f"  文档: {plat['docs']}")
+        print(f"  需要: {', '.join(env_vars)}")
+
+        if already:
+            continue
+
+        try:
+            choice = input(f"  是否现在配置? [y/N]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            choice = "n"
+
+        if choice == "y":
+            for var in env_vars:
+                try:
+                    val = input(f"  {var}: ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    break
+                if val:
+                    configured[var] = val
+                    print(f"    → {var} 已设置")
+
+    # Save to .env
+    lines = []
+    for key, val in configured.items():
+        lines.append(f"{key}={val}")
+    env_file.write_text("\n".join(lines) + "\n")
+    print(f"\n✓ 配置已保存到 {env_file}")
+
+    # Quick check
+    print(f"\n配置概览:")
+    for key, plat in platforms.items():
+        env_vars = plat["env_vars"]
+        ready = all(configured.get(v) or os.getenv(v) for v in env_vars)
+        print(f"  {'✓' if ready else '○'} {plat['name']}")
+    print(f"\n启动网关: panda gateway start --feishu")
 
 
 def cmd_mcp(args):
