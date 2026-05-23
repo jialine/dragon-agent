@@ -41,16 +41,46 @@ CONFIG_FILE = Path.home() / ".panda" / "config.yaml"
 # ── Provider Registry ────────────────────────────────────────────────
 
 PROVIDERS = [
-    {"id": "openai",       "env": "OPENAI_API_KEY",     "label": "OpenAI",           "models": ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "o4-mini"], "url": "https://platform.openai.com/api-keys"},
-    {"id": "deepseek",     "env": "DEEPSEEK_API_KEY",   "label": "DeepSeek",         "models": ["deepseek-chat", "deepseek-reasoner"],            "url": "https://platform.deepseek.com/api_keys"},
-    {"id": "anthropic",    "env": "ANTHROPIC_API_KEY",  "label": "Anthropic",        "models": ["claude-sonnet-4-20250514", "claude-haiku-3.5"], "url": "https://console.anthropic.com/keys"},
-    {"id": "google",       "env": "GOOGLE_API_KEY",     "label": "Google Gemini",    "models": ["gemini-2.5-flash", "gemini-2.5-pro"],           "url": "https://aistudio.google.com/apikey"},
-    {"id": "xai",          "env": "XAI_API_KEY",        "label": "xAI Grok",         "models": ["grok-3"],                                       "url": "https://console.x.ai"},
-    {"id": "openrouter",   "env": "OPENROUTER_API_KEY", "label": "OpenRouter",       "models": ["openai/gpt-4o", "anthropic/claude-sonnet-4"],  "url": "https://openrouter.ai/keys"},
-    {"id": "moonshot",     "env": "MOONSHOT_API_KEY",   "label": "Moonshot/Kimi",    "models": ["moonshot-v1-8k"],                               "url": "https://platform.moonshot.cn/console/api-keys"},
-    {"id": "together",     "env": "TOGETHER_API_KEY",   "label": "Together AI",      "models": ["meta-llama/Llama-4"],                           "url": "https://api.together.xyz/settings/api-keys"},
-    {"id": "groq",         "env": "GROQ_API_KEY",       "label": "Groq",             "models": ["llama-3.3-70b"],                                "url": "https://console.groq.com/keys"},
-    {"id": "mistral",      "env": "MISTRAL_API_KEY",    "label": "Mistral AI",       "models": ["mistral-large"],                                "url": "https://console.mistral.ai/api-keys"},
+    {"id": "openai",    "env": "OPENAI_API_KEY",    "label": "OpenAI",          "models": [
+        {"name": "gpt-4o",           "desc": "Best overall, 128K context, multimodal",          "ctx": "128K", "tier": "premium"},
+        {"name": "gpt-4o-mini",      "desc": "Fast and affordable, 128K context",                "ctx": "128K", "tier": "budget"},
+        {"name": "gpt-4.1",          "desc": "Latest, improved coding and reasoning",            "ctx": "1M",   "tier": "premium"},
+        {"name": "o4-mini",          "desc": "Fast reasoning model, cost-effective",              "ctx": "200K", "tier": "budget"},
+    ], "url": "https://platform.openai.com/api-keys"},
+    {"id": "deepseek",  "env": "DEEPSEEK_API_KEY",  "label": "DeepSeek",        "models": [
+        {"name": "deepseek-chat",     "desc": "General purpose, best value",                    "ctx": "128K", "tier": "budget"},
+        {"name": "deepseek-reasoner", "desc": "Advanced reasoning (R1), math and code",          "ctx": "128K", "tier": "premium"},
+    ], "url": "https://platform.deepseek.com/api_keys"},
+    {"id": "anthropic", "env": "ANTHROPIC_API_KEY", "label": "Anthropic",       "models": [
+        {"name": "claude-sonnet-4-20250514", "desc": "Best coding agent, 200K context",          "ctx": "200K", "tier": "premium"},
+        {"name": "claude-haiku-3.5",         "desc": "Fast, affordable, good for simple tasks",   "ctx": "200K", "tier": "budget"},
+        {"name": "claude-opus-4-20250514",   "desc": "Most capable, complex analysis",           "ctx": "200K", "tier": "premium"},
+    ], "url": "https://console.anthropic.com/keys"},
+    {"id": "google",    "env": "GOOGLE_API_KEY",    "label": "Google Gemini",   "models": [
+        {"name": "gemini-2.5-flash", "desc": "Fast, 1M context, great for large docs",          "ctx": "1M",   "tier": "budget"},
+        {"name": "gemini-2.5-pro",   "desc": "Most capable, 1M context, deep reasoning",         "ctx": "1M",   "tier": "premium"},
+    ], "url": "https://aistudio.google.com/apikey"},
+    {"id": "xai",       "env": "XAI_API_KEY",       "label": "xAI Grok",        "models": [
+        {"name": "grok-3", "desc": "DeepSearch reasoning, real-time knowledge",                "ctx": "128K", "tier": "premium"},
+    ], "url": "https://console.x.ai"},
+    {"id": "openrouter","env": "OPENROUTER_API_KEY","label": "OpenRouter",      "models": [
+        {"name": "openai/gpt-4o",            "desc": "OpenAI via OpenRouter",                    "ctx": "128K", "tier": "premium"},
+        {"name": "anthropic/claude-sonnet-4","desc": "Claude Sonnet via OpenRouter",              "ctx": "200K", "tier": "premium"},
+        {"name": "google/gemini-2.5-flash",  "desc": "Gemini Flash via OpenRouter",              "ctx": "1M",   "tier": "budget"},
+    ], "url": "https://openrouter.ai/keys"},
+    {"id": "moonshot",  "env": "MOONSHOT_API_KEY",  "label": "Moonshot/Kimi",   "models": [
+        {"name": "moonshot-v1-8k",  "desc": "Chinese-optimized, 8K context",                    "ctx": "8K",   "tier": "budget"},
+        {"name": "kimi-k2",         "desc": "Latest Kimi, strong Chinese reasoning",             "ctx": "128K", "tier": "premium"},
+    ], "url": "https://platform.moonshot.cn/console/api-keys"},
+    {"id": "together",  "env": "TOGETHER_API_KEY",  "label": "Together AI",     "models": [
+        {"name": "meta-llama/Llama-4-Maverick", "desc": "Open-source, strong general purpose",   "ctx": "128K", "tier": "budget"},
+    ], "url": "https://api.together.xyz/settings/api-keys"},
+    {"id": "groq",      "env": "GROQ_API_KEY",      "label": "Groq",            "models": [
+        {"name": "llama-3.3-70b", "desc": "Ultra-fast inference, great latency",                 "ctx": "128K", "tier": "budget"},
+    ], "url": "https://console.groq.com/keys"},
+    {"id": "mistral",   "env": "MISTRAL_API_KEY",   "label": "Mistral AI",      "models": [
+        {"name": "mistral-large", "desc": "Strong multilingual, 128K context",                  "ctx": "128K", "tier": "premium"},
+    ], "url": "https://console.mistral.ai/api-keys"},
 ]
 
 GATEWAY_PLATFORMS = [
@@ -188,7 +218,8 @@ def setup_model():
     _print("\n  Select default provider:", style="bold")
     for i, p in enumerate(PROVIDERS, 1):
         status = "✓" if env.get(p["env"]) else " "
-        _print(f"  [{status}] {i}. {p['label']}  ({', '.join(p['models'][:2])})")
+        model_names = [m["name"] for m in p["models"][:2]]
+        _print(f"  [{status}] {i}. {p['label']}  ({', '.join(model_names)})")
 
     try:
         choice = input("\n  Number (or Enter to skip): ").strip()
@@ -200,14 +231,21 @@ def setup_model():
             # Pick model for this provider
             models = provider["models"]
             _print(f"\n  Models for {provider['label']}:", style="bold")
-            for i, m in enumerate(models, 1):
-                _print(f"    {i}. {m}")
+            _table(
+                f"Models for {provider['label']}",
+                ["#", "Model", "Context", "Tier", "Description"],
+                [
+                    (str(i), m["name"], m["ctx"], m["tier"].upper(), m["desc"])
+                    for i, m in enumerate(models, 1)
+                ]
+            )
 
             m_choice = input(f"\n  Model number [1]: ").strip()
             idx = int(m_choice) - 1 if m_choice.isdigit() and 1 <= int(m_choice) <= len(models) else 0
-            cfg["provider"][provider["id"]] = {"model": models[idx]}
+            model = models[idx]
+            cfg["provider"][provider["id"]] = {"model": model["name"]}
 
-            _print(f"  ✓ Default: {provider['label']} / {models[idx]}", style="green")
+            _print(f"  ✓ Default: {provider['label']} / {model['name']} ({model['ctx']})", style="green")
     except (EOFError, KeyboardInterrupt):
         pass
 
@@ -442,14 +480,12 @@ def pick_model(name: Optional[str] = None):
 
     # If name specified, switch directly
     if name:
-        # Try as "provider/model" or just "model"
         if "/" in name:
             prov_id, model_name = name.split("/", 1)
         else:
             prov_id = default_provider
             model_name = name
 
-        # Find provider
         provider = next((p for p in PROVIDERS if p["id"] == prov_id), None)
         if provider:
             has_key = bool(env.get(provider["env"]) or os.getenv(provider["env"]))
@@ -462,15 +498,20 @@ def pick_model(name: Optional[str] = None):
                         _save_env(env)
                         _print(f"  ✓ Key saved", style="green")
 
+            # Find model info for display
+            model_info = next((m for m in provider["models"] if m["name"] == model_name), None)
             cfg["provider"] = cfg.get("provider", {})
             cfg["provider"]["default"] = prov_id
             cfg["provider"][prov_id] = cfg["provider"].get(prov_id, {})
             cfg["provider"][prov_id]["model"] = model_name
             _save_config(cfg)
 
+            ctx = model_info["ctx"] if model_info else "?"
+            desc = model_info["desc"] if model_info else ""
             _panel(
                 "✓ Model Updated",
-                f"Default: {prov_id} / {model_name}\n"
+                f"Default: {prov_id} / {model_name}  ({ctx})\n"
+                f"{desc}\n\n"
                 f"Start chatting: panda chat",
                 style="bold green"
             )
@@ -480,15 +521,20 @@ def pick_model(name: Optional[str] = None):
             return
 
     # Interactive: pick provider
-    _print("\n  Select provider:", style="bold")
-    available = []
+    _print("\n  ── Configured Providers ──", style="bold cyan")
     for i, p in enumerate(PROVIDERS, 1):
         has_key = bool(env.get(p["env"]) or os.getenv(p["env"]))
-        mark = "✓" if has_key else " "
-        active = " ◀" if p["id"] == default_provider else ""
-        _print(f"  [{mark}] {i}. {p['label']}{active}")
         if has_key:
-            available.append(p)
+            mark = "✓"
+            active = " ◀ active" if p["id"] == default_provider else ""
+            model_count = len(p["models"])
+            _print(f"  {mark} {i:>2}. {p['label']}{active}  ({model_count} models)", style="green")
+
+    _print("\n  ── Available Providers ──", style="bold yellow")
+    for i, p in enumerate(PROVIDERS, 1):
+        has_key = bool(env.get(p["env"]) or os.getenv(p["env"]))
+        if not has_key:
+            _print(f"  ○ {i:>2}. {p['label']}  — {p['url']}", style="dim")
 
     try:
         choice = input("\n  Number (Enter to keep current): ").strip()
@@ -515,28 +561,37 @@ def pick_model(name: Optional[str] = None):
                         _print("  Cancelled", style="dim")
                         return
 
-            # Pick model
+            # Pick model — show rich table
             models = provider["models"]
             _print(f"\n  {provider['label']} — available models:", style="bold")
-            for i, m in enumerate(models, 1):
-                current_mark = " ◀" if provider["id"] == default_provider and m == current_model else ""
-                _print(f"    {i}. {m}{current_mark}")
 
-            m_choice = input(f"\n  Model number [1]: ").strip()
+            _table(
+                f"Models for {provider['label']}",
+                ["#", "Model", "Context", "Tier", "Description"],
+                [
+                    (str(i), m["name"], m["ctx"], m["tier"].upper(), m["desc"])
+                    for i, m in enumerate(models, 1)
+                ]
+            )
+
+            m_choice = input(f"  Model number [1]: ").strip()
             m_idx = int(m_choice) - 1 if m_choice.isdigit() and 1 <= int(m_choice) <= len(models) else 0
-            model_name = models[m_idx]
+            model = models[m_idx]
 
             # Save
             cfg["provider"] = cfg.get("provider", {})
             cfg["provider"]["default"] = provider["id"]
             cfg["provider"][provider["id"]] = cfg["provider"].get(provider["id"], {})
-            cfg["provider"][provider["id"]]["model"] = model_name
+            cfg["provider"][provider["id"]]["model"] = model["name"]
             _save_config(cfg)
 
             _panel(
-                "✓ Model Updated",
-                f"Default: {provider['id']} / {model_name}\n"
-                f"Start: panda chat -p {provider['id']} -m {model_name}",
+                f"✓ Model Updated — {model['name']}",
+                f"Provider: {provider['label']}\n"
+                f"Model:    {model['name']}\n"
+                f"Context:  {model['ctx']}\n"
+                f"Description: {model['desc']}\n\n"
+                f"Start: panda chat -p {provider['id']} -m {model['name']}",
                 style="bold green"
             )
     except (ValueError, EOFError, KeyboardInterrupt):
