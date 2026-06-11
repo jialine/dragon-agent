@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from panda.config import PandaConfig
 from panda.router import PandaRouter, RouteResult, RouterStatus as _ignore_RouterStatus
-from panda.dispatch import PandaDispatcher, DispatchResult as _ignore_DispatchResult
+from panda.dispatch import PandaDispatcher, ProviderProfile, DispatchResult as _ignore_DispatchResult
 from panda.guard import AntiLoopGuard, LoopAction as _ignore_LoopAction
 from panda.interrupt import get_interrupt_manager, TaskInterrupted, InterruptManager
 from panda.backup import PandaBackup, BackupLockError, BackupUploadError, BackupRestoreError, BackupNotFoundError
@@ -58,19 +58,20 @@ async def lifespan(app: FastAPI):
     router.initialize()
     logger.info("Router status: %s", router.status)
 
-    # Dispatcher
+    # Dispatcher — all industries share global_api endpoint
     dispatcher = PandaDispatcher()
-    for industry, pc in config.dispatch.industries.items():
-        dispatcher.register(
-            industry,
-            provider=pc.provider,
-            model=pc.model,
-            api_key_env=pc.api_key_env,
-            base_url=pc.base_url,
-            system_prompt=pc.system_prompt,
-            timeout=pc.timeout_secs,
-            max_retries=pc.max_retries,
-        )
+    ga = config.dispatch.global_api
+    for industry, ic in config.dispatch.industries.items():
+        dispatcher.register(industry, profile=ProviderProfile(
+            name=industry,
+            provider="sangyuye",
+            model=ga.model,
+            api_key_env=ga.api_key_env,
+            base_url=ga.base_url,
+            system_prompt=ic.system_prompt,
+            timeout=ga.timeout_secs,
+            max_retries=ga.max_retries,
+        ))
 
     # Guard
     guard = AntiLoopGuard(

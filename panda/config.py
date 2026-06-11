@@ -25,18 +25,23 @@ class RouterConfig(BaseModel):
     fallback_on_failure: bool = True
 
 
-class ProviderConfig(BaseModel):
-    provider: str = "openrouter"
-    model: str = "openai/gpt-4o-mini"
-    api_key_env: str = "PANDA_GENERAL_API_KEY"
-    base_url: Optional[str] = None
-    system_prompt: str = "You are a helpful assistant."
+class GlobalApiConfig(BaseModel):
+    """Single API endpoint shared by all industries."""
+    base_url: str = "https://api.sangyuye.com/v1"
+    api_key_env: str = "PANDA_API_KEY"
+    model: str = ""
     timeout_secs: int = 60
     max_retries: int = 2
 
 
+class IndustryConfig(BaseModel):
+    """Per-industry config — only system_prompt; API comes from GlobalApiConfig."""
+    system_prompt: str = "You are a helpful assistant."
+
+
 class DispatchConfig(BaseModel):
-    industries: Dict[str, ProviderConfig] = Field(default_factory=dict)
+    global_api: GlobalApiConfig = Field(default_factory=GlobalApiConfig)
+    industries: Dict[str, IndustryConfig] = Field(default_factory=dict)
 
 
 class MemoryConfig(BaseModel):

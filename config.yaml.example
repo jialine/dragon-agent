@@ -1,6 +1,15 @@
 # Panda Agent Configuration
 # Copy to config.yaml and edit for your setup.
 
+# ── Global API (所有行业共用) ──────────────────────────────
+global_api:
+  base_url: "https://api.sangyuye.com/v1"
+  api_key_env: "PANDA_API_KEY"
+  model: ""                                    # 留空由 sangyuye 自动选择
+  timeout_secs: 60
+  max_retries: 2
+
+# ── 路由小模型 ────────────────────────────────────────────
 router:
   model_path: "models/qwen3-0.6b-q4_k_m.gguf"
   n_threads: 4
@@ -9,37 +18,21 @@ router:
   max_tokens: 128
   fallback_on_failure: true
 
+# ── 行业 Dispatch（仅 system_prompt，API 统一走 global_api）────
 dispatch:
   industries:
     finance:
-      provider: "deepseek"
-      model: "deepseek-chat"
-      api_key_env: "FINANCE_API_KEY"
-      base_url: "https://api.deepseek.com/v1"
-      system_prompt: "你是金融行业专家，擅长风控分析、投资建议和合规审查。"
-      timeout_secs: 60
-      max_retries: 2
+      system_prompt: "你是金融行业专家，擅长风控分析、投资建议和合规审查。请用中文回答。"
     medical:
-      provider: "deepseek"
-      model: "deepseek-chat"
-      api_key_env: "MEDICAL_API_KEY"
-      system_prompt: "你是医疗行业专家，擅长诊断辅助、病历分析和药学咨询。"
+      system_prompt: "你是医疗行业专家，擅长诊断辅助、病历分析和药学咨询。请用中文回答。"
     legal:
-      provider: "deepseek"
-      model: "deepseek-chat"
-      api_key_env: "LEGAL_API_KEY"
-      system_prompt: "你是法律行业专家，擅长合同审查、诉讼分析和法规解读。"
+      system_prompt: "你是法律行业专家，擅长合同审查、诉讼分析和法规解读。请用中文回答。"
     education:
-      provider: "deepseek"
-      model: "deepseek-chat"
-      api_key_env: "EDUCATION_API_KEY"
-      system_prompt: "你是教育行业专家，擅长教案设计、答疑辅导和学情评估。"
+      system_prompt: "你是教育行业专家，擅长教案设计、答疑辅导和学情评估。请用中文回答。"
     general:
-      provider: "openrouter"
-      model: "openai/gpt-4o-mini"
-      api_key_env: "PANDA_GENERAL_API_KEY"
-      system_prompt: "You are a helpful assistant."
+      system_prompt: "你是一个乐于助人的 AI 助手。请用中文回答。"
 
+# ── 向量知识库 ──────────────────────────────────────────
 memory:
   persist_dir: "panda_data/vectordb"
   embedding_model: "BAAI/bge-small-zh-v1.5"
@@ -47,6 +40,7 @@ memory:
   search_threshold: 0.5
   recency_weight: 0.1
 
+# ── 云端备份 ────────────────────────────────────────────
 backup:
   endpoint: "https://oss-cn-shanghai.aliyuncs.com"
   access_key_env: "PANDA_BACKUP_ACCESS_KEY"
@@ -56,6 +50,7 @@ backup:
   interval_hours: 6
   keep_last: 7
 
+# ── 反Loop保护 ──────────────────────────────────────────
 guard:
   max_consecutive_repeats: 3
   max_loop_rounds: 2
@@ -63,6 +58,7 @@ guard:
   window_size: 50
   task_timeout_secs: 300
 
+# ── 服务配置 ────────────────────────────────────────────
 server:
   host: "0.0.0.0"
   port: 8000
