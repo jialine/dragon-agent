@@ -1,6 +1,6 @@
 """
-Unit tests for panda.dispatch — data classes, enums, exceptions,
-CircuitBreaker constructor, and PandaDispatcher constructor/registration.
+Unit tests for dragon.dispatch — data classes, enums, exceptions,
+CircuitBreaker constructor, and DragonDispatcher constructor/registration.
 
 Tests are focused on constructors and pure (non-async) methods.
 No async dispatch calls are exercised.
@@ -9,7 +9,7 @@ import os
 
 import pytest
 
-from panda.dispatch import (
+from dragon.dispatch import (
     # Enums
     CircuitBreakerState,
     # Data classes
@@ -25,7 +25,7 @@ from panda.dispatch import (
     ProviderNotFoundError,
     AllProvidersFailedError,
     # Dispatcher
-    PandaDispatcher,
+    DragonDispatcher,
 )
 
 
@@ -458,16 +458,16 @@ class TestCircuitBreaker:
 
 
 # ════════════════════════════════════════════════════════════════════════
-# PandaDispatcher (constructor + registration, NO async dispatch)
+# DragonDispatcher (constructor + registration, NO async dispatch)
 # ════════════════════════════════════════════════════════════════════════
 
 
-class TestPandaDispatcherConstructor:
-    """Tests for PandaDispatcher constructor and configuration."""
+class TestDragonDispatcherConstructor:
+    """Tests for DragonDispatcher constructor and configuration."""
 
     def test_constructor_defaults(self):
         """Default constructor should set expected fields."""
-        d = PandaDispatcher()
+        d = DragonDispatcher()
         assert d._registry == {}
         assert d._clients == {}
         assert d._fallback_profile is None
@@ -479,7 +479,7 @@ class TestPandaDispatcherConstructor:
 
     def test_constructor_custom_circuit_params(self):
         """Custom circuit breaker params should flow through."""
-        d = PandaDispatcher(
+        d = DragonDispatcher(
             circuit_failure_threshold=5,
             circuit_recovery_timeout=30.0,
         )
@@ -488,29 +488,29 @@ class TestPandaDispatcherConstructor:
 
     def test_constructor_custom_default_timeout(self):
         """Custom default_timeout should be stored."""
-        d = PandaDispatcher(default_timeout=120.0)
+        d = DragonDispatcher(default_timeout=120.0)
         assert d._default_timeout == 120.0
 
     def test_constructor_creates_lock(self):
-        """PandaDispatcher should create an asyncio.Lock."""
+        """DragonDispatcher should create an asyncio.Lock."""
         import asyncio
-        d = PandaDispatcher()
+        d = DragonDispatcher()
         assert isinstance(d._lock, asyncio.Lock)
 
 
-class TestPandaDispatcherRegistry:
-    """Tests for PandaDispatcher register, unregister, and related methods."""
+class TestDragonDispatcherRegistry:
+    """Tests for DragonDispatcher register, unregister, and related methods."""
 
     def test_register_provider(self, sample_profile):
         """Registering a provider should store it in _registry."""
-        d = PandaDispatcher()
+        d = DragonDispatcher()
         d.register("legal", sample_profile)
         assert "legal" in d._registry
         assert d._registry["legal"] is sample_profile
 
     def test_register_provider_clears_client_cache(self, sample_profile):
         """Registering should pop any cached client for that profile name."""
-        d = PandaDispatcher()
+        d = DragonDispatcher()
         # Simulate a cached client
         d._clients["legal-gpt4"] = object()
         d.register("legal", sample_profile)
@@ -518,7 +518,7 @@ class TestPandaDispatcherRegistry:
 
     def test_register_overwrites_existing(self):
         """Registering the same industry twice should replace the profile."""
-        d = PandaDispatcher()
+        d = DragonDispatcher()
         p1 = ProviderProfile(name="a", provider="o", model="m1", api_key_env="K")
         p2 = ProviderProfile(name="b", provider="o", model="m2", api_key_env="K")
         d.register("legal", p1)
@@ -527,14 +527,14 @@ class TestPandaDispatcherRegistry:
 
     def test_unregister_provider(self, sample_profile):
         """Unregistering should remove a registered provider."""
-        d = PandaDispatcher()
+        d = DragonDispatcher()
         d.register("legal", sample_profile)
         d.unregister("legal")
         assert "legal" not in d._registry
 
     def test_unregister_clears_client_cache(self, sample_profile):
         """Unregistering should also pop the cached client."""
-        d = PandaDispatcher()
+        d = DragonDispatcher()
         d.register("legal", sample_profile)
         d._clients["legal-gpt4"] = object()
         d.unregister("legal")
@@ -542,12 +542,12 @@ class TestPandaDispatcherRegistry:
 
     def test_unregister_nonexistent_no_error(self):
         """Unregistering a non-existent industry should not raise."""
-        d = PandaDispatcher()
+        d = DragonDispatcher()
         d.unregister("nonexistent")  # should not raise
 
     def test_set_fallback(self, sample_profile):
         """set_fallback should store the profile and reset the fallback client."""
-        d = PandaDispatcher()
+        d = DragonDispatcher()
         d._fallback_client = object()  # simulate cached client
         d.set_fallback(sample_profile)
         assert d._fallback_profile is sample_profile
@@ -555,12 +555,12 @@ class TestPandaDispatcherRegistry:
 
     def test_registered_industries_empty(self):
         """registered_industries should return empty list initially."""
-        d = PandaDispatcher()
+        d = DragonDispatcher()
         assert d.registered_industries == []
 
     def test_registered_industries_with_providers(self, sample_profile):
         """registered_industries should return all registered keys."""
-        d = PandaDispatcher()
+        d = DragonDispatcher()
         p2 = ProviderProfile(name="med", provider="o", model="m", api_key_env="K")
         d.register("legal", sample_profile)
         d.register("medical", p2)
@@ -568,31 +568,31 @@ class TestPandaDispatcherRegistry:
 
     def test_get_profile_returns_profile(self, sample_profile):
         """get_profile should return the registered profile for an industry."""
-        d = PandaDispatcher()
+        d = DragonDispatcher()
         d.register("legal", sample_profile)
         assert d.get_profile("legal") is sample_profile
 
     def test_get_profile_returns_none_for_unknown(self):
         """get_profile should return None for unknown industries."""
-        d = PandaDispatcher()
+        d = DragonDispatcher()
         assert d.get_profile("nonexistent") is None
 
     def test_get_profile_returns_none_after_unregister(self, sample_profile):
         """get_profile should return None after unregistering."""
-        d = PandaDispatcher()
+        d = DragonDispatcher()
         d.register("legal", sample_profile)
         d.unregister("legal")
         assert d.get_profile("legal") is None
 
 
-class TestPandaDispatcherGetApiKey:
+class TestDragonDispatcherGetApiKey:
     """Tests for the _get_api_key static method."""
 
     def test_raises_dispatch_error_when_env_not_set(self, monkeypatch, sample_profile):
         """_get_api_key should raise DispatchError when env var is not set."""
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         with pytest.raises(DispatchError) as exc_info:
-            PandaDispatcher._get_api_key(sample_profile)
+            DragonDispatcher._get_api_key(sample_profile)
         assert "OPENAI_API_KEY" in str(exc_info.value)
         assert "legal-gpt4" in str(exc_info.value)
 
@@ -606,28 +606,28 @@ class TestPandaDispatcherGetApiKey:
         )
         monkeypatch.delenv("MY_CUSTOM_KEY", raising=False)
         with pytest.raises(DispatchError) as exc_info:
-            PandaDispatcher._get_api_key(profile)
+            DragonDispatcher._get_api_key(profile)
         assert "MY_CUSTOM_KEY" in str(exc_info.value)
 
     def test_returns_value_when_env_set(self, monkeypatch, sample_profile):
         """_get_api_key should return the env var value when set."""
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test-12345")
-        key = PandaDispatcher._get_api_key(sample_profile)
+        key = DragonDispatcher._get_api_key(sample_profile)
         assert key == "sk-test-12345"
 
     def test_returns_empty_string_when_env_is_empty(self, monkeypatch, sample_profile):
         """_get_api_key with empty string env var should raise DispatchError."""
         monkeypatch.setenv("OPENAI_API_KEY", "")
         with pytest.raises(DispatchError):
-            PandaDispatcher._get_api_key(sample_profile)
+            DragonDispatcher._get_api_key(sample_profile)
 
 
-class TestPandaDispatcherBuildMessages:
+class TestDragonDispatcherBuildMessages:
     """Tests for the _build_messages static method."""
 
     def test_no_system_prompt(self, sample_messages):
         """With empty system_prompt and no knowledge, no system message added."""
-        result = PandaDispatcher._build_messages(
+        result = DragonDispatcher._build_messages(
             messages=sample_messages,
             system_prompt="",
             knowledge=None,
@@ -638,7 +638,7 @@ class TestPandaDispatcherBuildMessages:
 
     def test_with_system_prompt(self, sample_messages):
         """System prompt should be added as a system message."""
-        result = PandaDispatcher._build_messages(
+        result = DragonDispatcher._build_messages(
             messages=sample_messages,
             system_prompt="You are a legal expert.",
             knowledge=None,
@@ -650,7 +650,7 @@ class TestPandaDispatcherBuildMessages:
 
     def test_with_system_and_knowledge(self, sample_messages):
         """Knowledge should be appended to the system prompt."""
-        result = PandaDispatcher._build_messages(
+        result = DragonDispatcher._build_messages(
             messages=sample_messages,
             system_prompt="You are a legal expert.",
             knowledge="Contract law is governed by common law principles.",
@@ -664,7 +664,7 @@ class TestPandaDispatcherBuildMessages:
 
     def test_with_knowledge_no_system_prompt(self, sample_messages):
         """Knowledge should still be added even without a system prompt."""
-        result = PandaDispatcher._build_messages(
+        result = DragonDispatcher._build_messages(
             messages=sample_messages,
             system_prompt="",
             knowledge="Important context.",
@@ -675,7 +675,7 @@ class TestPandaDispatcherBuildMessages:
 
     def test_empty_messages(self):
         """Should work with empty messages list."""
-        result = PandaDispatcher._build_messages(
+        result = DragonDispatcher._build_messages(
             messages=[],
             system_prompt="You are helpful.",
             knowledge=None,
@@ -685,7 +685,7 @@ class TestPandaDispatcherBuildMessages:
 
     def test_empty_messages_and_empty_system_and_no_knowledge(self):
         """With everything empty, result should be an empty list."""
-        result = PandaDispatcher._build_messages(
+        result = DragonDispatcher._build_messages(
             messages=[],
             system_prompt="",
             knowledge=None,
@@ -695,7 +695,7 @@ class TestPandaDispatcherBuildMessages:
     def test_does_not_mutate_input_messages(self, sample_messages):
         """_build_messages should not modify the input messages list."""
         original = [dict(sample_messages[0])]
-        PandaDispatcher._build_messages(
+        DragonDispatcher._build_messages(
             messages=original,
             system_prompt="You are helpful.",
             knowledge="Some context.",
@@ -710,7 +710,7 @@ class TestPandaDispatcherBuildMessages:
             {"role": "assistant", "content": "A1"},
             {"role": "user", "content": "Q2"},
         ]
-        result = PandaDispatcher._build_messages(
+        result = DragonDispatcher._build_messages(
             messages=messages,
             system_prompt="System",
             knowledge=None,
@@ -722,29 +722,29 @@ class TestPandaDispatcherBuildMessages:
         assert result[3]["role"] == "user"
 
 
-class TestPandaDispatcherRetryConstants:
-    """Tests for PandaDispatcher retry-related class constants."""
+class TestDragonDispatcherRetryConstants:
+    """Tests for DragonDispatcher retry-related class constants."""
 
     def test_retry_max_attempts(self):
         """RETRY_MAX_ATTEMPTS should have the expected value."""
-        assert PandaDispatcher.RETRY_MAX_ATTEMPTS == 3
+        assert DragonDispatcher.RETRY_MAX_ATTEMPTS == 3
 
     def test_retry_min_wait(self):
         """RETRY_MIN_WAIT should be 1.0."""
-        assert PandaDispatcher.RETRY_MIN_WAIT == 1.0
+        assert DragonDispatcher.RETRY_MIN_WAIT == 1.0
 
     def test_retry_max_wait(self):
         """RETRY_MAX_WAIT should be 10.0."""
-        assert PandaDispatcher.RETRY_MAX_WAIT == 10.0
+        assert DragonDispatcher.RETRY_MAX_WAIT == 10.0
 
 
-class TestPandaDispatcherModuleExports:
-    """Verify that all expected symbols are exported from panda.dispatch."""
+class TestDragonDispatcherModuleExports:
+    """Verify that all expected symbols are exported from dragon.dispatch."""
 
     def test_main_classes_are_importable(self):
-        """All core classes should be importable from panda.dispatch."""
-        from panda.dispatch import (
-            PandaDispatcher,
+        """All core classes should be importable from dragon.dispatch."""
+        from dragon.dispatch import (
+            DragonDispatcher,
             ProviderProfile,
             DispatchResult,
             StreamChunk,

@@ -97,7 +97,7 @@
 | systemd 服务文件 | ❌ (需用户手动创建) |
 | CI/CD (Gitee Actions) | ❌ |
 | 版本号/Changelog | ❌ |
-| Gitee 仓库改名 (panda→dragon) | ❌ 需手动操作 |
+| Gitee 仓库改名 (panda→dragon) | ✅ 已完成 |
 
 ## 📊 总结
 

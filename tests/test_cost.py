@@ -7,7 +7,7 @@ import tempfile
 from unittest.mock import patch
 
 import pytest
-from panda.utils.cost import (
+from dragon.utils.cost import (
     CostOptimizer, is_trivial_query, MODEL_TIERS,
     _find_tier_for_model, _calculate_cost, _calculate_cost_for_model,
 )

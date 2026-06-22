@@ -1,31 +1,48 @@
-# 🐼 Panda Agent
+# 🐉 Dragon Agent
 
 **Self-Evolving AI Agent Framework** — CLI + TUI + multi-platform gateway.
 
-Panda Agent is a self-evolving AI agent with persistent memory, skill system, scheduled jobs, and multi-platform messaging (Feishu, Telegram, Discord, WeChat). Ships with a terminal UI built on Ink/React.
+Dragon Agent is the To-C Editor for **AgileMind Engine** (灵思引擎), a high-performance token API platform powered by a 122B MoE model running on consumer-grade GPU clusters. Features persistent memory, skill system, scheduled jobs, and multi-platform messaging (Feishu, Telegram, Discord, WeChat).
+
+> **Business Model**: Dragon Agent (Editor) → AgileMind API (SaaS) → Sell Tokens  
+> **Architecture**: 0.8B Router (local) + AgileMind 122B (default) + Cloud API fallback
 
 ---
 
 ## Quick Start
 
-### One-Click Install
+### One-Click Install (网络版)
 
 ```bash
-curl -fsSL https://gitee.com/jialine/panda-agent/raw/main/scripts/install.sh | bash
+curl -fsSL https://gitee.com/jialine/dragon-agent/raw/main/scripts/install.sh | bash
 ```
 
 This script will:
-1. Clone / update the repo to `~/panda-agent`
+1. Clone / update the repo to `~/dragon-agent`
 2. Create Python virtual environment and install dependencies
 3. Install TUI frontend (Node.js, if available)
-4. Create data directories (`~/.panda/`)
-5. Add `panda` alias to your shell rc file
+4. Create data directories (`~/.dragon/`)
+5. Add `dragon` alias to your shell rc file
+6. **Auto-detect AgileMind API Key** — set as default if configured
+
+### USB Edition (U盘版)
+
+```bash
+# For distributors: build USB package
+bash scripts/make-usb.sh --with-model
+
+# For end users: plug in and run
+bash run.sh        # Linux/Mac
+run.bat            # Windows (double-click)
+```
+
+First run auto-creates venv and launches setup wizard. See `scripts/make-usb.sh --help` for options.
 
 ### Manual Install
 
 ```bash
-git clone https://gitee.com/jialine/panda-agent.git ~/panda-agent
-cd ~/panda-agent
+git clone https://gitee.com/jialine/dragon-agent.git ~/dragon-agent
+cd ~/dragon-agent
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 
@@ -38,11 +55,11 @@ cd tui && npm install && cd ..
 ### First Run
 
 ```bash
-source ~/panda-agent/.venv/bin/activate  # or restart shell for alias
+source ~/dragon-agent/.venv/bin/activate  # or restart shell for alias
 
-panda setup     # Interactive setup wizard
-panda chat      # Start chatting
-panda --help    # See all commands
+dragon setup     # Interactive setup wizard
+dragon chat      # Start chatting
+dragon --help    # See all commands
 ```
 
 ---
@@ -51,20 +68,20 @@ panda --help    # See all commands
 
 | Command | Description |
 |---|---|
-| `panda chat` | Interactive or single-query chat |
-| `panda serve` | Start API server (REST) |
-| `panda gateway` | Multi-platform gateway (Feishu/Telegram/Discord/WeChat) |
-| `panda mcp` | MCP server for tool integration |
-| `panda config` | Manage configuration (show/edit/init/validate) |
-| `panda skills` | Manage self-evolving skills (list/search/create/delete/evolve) |
-| `panda tools` | Manage tools (list/search/call) |
-| `panda sessions` | Manage sessions (list/search/get/delete/export/stats) |
-| `panda cron` | Scheduled jobs (list/add/pause/resume/remove/run) |
-| `panda profile` | Profile management (list/create/edit/clone/export/import) |
-| `panda test` | Run tests |
-| `panda doctor` | Diagnostic checks |
-| `panda tui` | Start TUI backend server |
-| `panda setup` | Interactive setup wizard |
+| `dragon chat` | Interactive or single-query chat |
+| `dragon serve` | Start API server (REST) |
+| `dragon gateway` | Multi-platform gateway (Feishu/Telegram/Discord/WeChat) |
+| `dragon mcp` | MCP server for tool integration |
+| `dragon config` | Manage configuration (show/edit/init/validate) |
+| `dragon skills` | Manage self-evolving skills (list/search/create/delete/evolve) |
+| `dragon tools` | Manage tools (list/search/call) |
+| `dragon sessions` | Manage sessions (list/search/get/delete/export/stats) |
+| `dragon cron` | Scheduled jobs (list/add/pause/resume/remove/run) |
+| `dragon profile` | Profile management (list/create/edit/clone/export/import) |
+| `dragon test` | Run tests |
+| `dragon doctor` | Diagnostic checks |
+| `dragon tui` | Start TUI backend server |
+| `dragon setup` | Interactive setup wizard |
 
 ---
 
@@ -77,7 +94,7 @@ panda --help    # See all commands
 └──────────────┬───────────────────────────┘
                │ JSON-RPC (newline-delimited)
 ┌──────────────▼───────────────────────────┐
-│  panda tui (Python)                      │
+│  dragon tui (Python)                      │
 │  server.py: 12 RPC methods              │
 └──────────────────────────────────────────┘
 ```
@@ -92,7 +109,7 @@ cd tui && npm install && cd ..
 npm --prefix tui start
 ```
 
-This spawns `python -m panda.tui.server` automatically via stdin/stdout JSON-RPC.
+This spawns `python -m dragon.tui.server` automatically via stdin/stdout JSON-RPC.
 
 ### RPC Methods
 
@@ -118,15 +135,15 @@ This spawns `python -m panda.tui.server` automatically via stdin/stdout JSON-RPC
 ### One-Click (Recommended)
 
 ```bash
-curl -fsSL https://gitee.com/jialine/panda-agent/raw/main/scripts/install.sh | bash
+curl -fsSL https://gitee.com/jialine/dragon-agent/raw/main/scripts/install.sh | bash
 ```
 
 ### Linux / WSL
 
 ```bash
 # 1. Clone
-git clone git@gitee.com:jialine/panda-agent.git ~/panda-agent
-cd ~/panda-agent
+git clone git@gitee.com:jialine/dragon-agent.git ~/dragon-agent
+cd ~/dragon-agent
 
 # 2. Create venv
 python3 -m venv .venv
@@ -136,27 +153,27 @@ source .venv/bin/activate
 pip install -e .
 
 # 4. Configure
-panda setup --quick
+dragon setup --quick
 
 # 5. Run
-panda chat
+dragon chat
 ```
 
 ### Docker (coming soon)
 
 ```bash
-docker build -t panda-agent .
-docker run -it panda-agent
+docker build -t dragon-agent .
+docker run -it dragon-agent
 ```
 
 ### Headless (server mode)
 
 ```bash
 # REST API on port 8000
-panda serve --host 0.0.0.0 --port 8000
+dragon serve --host 0.0.0.0 --port 8000
 
 # Multi-platform gateway
-panda gateway start --feishu --telegram
+dragon gateway start --feishu --telegram
 ```
 
 ---
@@ -164,8 +181,8 @@ panda gateway start --feishu --telegram
 ## Project Structure
 
 ```
-panda-agent/
-├── panda/                  # Python package
+dragon-agent/
+├── dragon/                  # Python package
 │   ├── cli.py              # CLI entry (14 commands)
 │   ├── session/            # Session management
 │   ├── skill/              # Self-evolving skills engine
@@ -184,6 +201,10 @@ panda-agent/
 │           ├── Chat.tsx    # Chat panel (206 lines)
 │           ├── Sidebar.tsx # Sidebar (188 lines)
 │           └── ToolCall.tsx # Tool call card (123 lines)
+├── scripts/                # Deployment & packaging
+│   ├── install.sh          # One-click network installer
+│   ├── deploy.sh           # Local deployment script
+│   └── make-usb.sh         # USB edition packager
 ├── docs/                   # Documentation
 │   ├── REQUIREMENTS.md     # Requirements & feature spec
 │   └── DESIGN.md           # Architecture design doc

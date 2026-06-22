@@ -10,9 +10,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from panda.cron import CronScheduler, CronJob, JobStatus
-from panda.credential import CredentialPool, CredentialManager
-from panda.profile import ProfileManager, Profile
+from dragon.cron import CronScheduler, CronJob, JobStatus
+from dragon.credential import CredentialPool, CredentialManager
+from dragon.profile import ProfileManager, Profile
 
 
 # ── CronScheduler ──────────────────────────────────────────────────

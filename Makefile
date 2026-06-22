@@ -1,4 +1,4 @@
-# Panda Agent Makefile
+# Dragon Agent Makefile
 # =====================
 # Common operations for development, testing, and deployment.
 #
@@ -25,7 +25,7 @@ RUFF := $(VENV)/bin/ruff
 # ── Default target ──────────────────────────────────────────────────
 
 help:
-	@echo "Panda Agent — available targets:"
+	@echo "Dragon Agent — available targets:"
 	@echo ""
 	@echo "  make test        Run unit tests"
 	@echo "  make test-cov    Run tests with HTML coverage report"
@@ -46,7 +46,7 @@ test:
 test-cov:
 	@echo "=== Running tests with coverage ==="
 	PYTHONPATH=. $(PYTHON) -m pytest tests/ -v --tb=short \
-		--cov=panda --cov-report=html --cov-report=term
+		--cov=dragon --cov-report=html --cov-report=term
 
 # ── Deployment ──────────────────────────────────────────────────────
 
@@ -59,24 +59,24 @@ deploy-q:
 # ── Server ──────────────────────────────────────────────────────────
 
 serve:
-	PYTHONPATH=. $(PYTHON) -m uvicorn panda.main:app \
+	PYTHONPATH=. $(PYTHON) -m uvicorn dragon.main:app \
 		--host 0.0.0.0 --port 8000 --reload --log-level info
 
 # ── Code Quality ────────────────────────────────────────────────────
 
 lint:
 	@echo "=== Linting ==="
-	$(PYTHON) -m ruff check panda/ tests/
+	$(PYTHON) -m ruff check dragon/ tests/
 
 format:
 	@echo "=== Formatting ==="
-	$(PYTHON) -m ruff check --fix panda/ tests/
-	$(PYTHON) -m ruff format panda/ tests/
+	$(PYTHON) -m ruff check --fix dragon/ tests/
+	$(PYTHON) -m ruff format dragon/ tests/
 
 # ── Install ─────────────────────────────────────────────────────────
 
 install:
-	@echo "=== Installing Panda Agent ==="
+	@echo "=== Installing Dragon Agent ==="
 	$(PIP) install --upgrade pip
 	$(PIP) install \
 		fastapi uvicorn pydantic pyyaml python-dotenv \

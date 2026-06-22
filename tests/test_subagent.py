@@ -1,11 +1,11 @@
 """
-Unit tests for panda.subagent — SubagentStatus, dataclasses, Subagent (pure methods),
+Unit tests for dragon.subagent — SubagentStatus, dataclasses, Subagent (pure methods),
 and SubagentOrchestrator (constructor only). No async execute or actual LLM calls.
 """
 from __future__ import annotations
 
 import pytest
-from panda.subagent import (
+from dragon.subagent import (
     SubagentStatus,
     SubagentConfig,
     SubagentResult,

@@ -1,4 +1,4 @@
-# Panda Agent — Development Dependencies
+# Dragon Agent — Development Dependencies
 # Install: pip install -r requirements-dev.txt
 
 pytest>=9.0.2

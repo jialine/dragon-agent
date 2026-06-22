@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "panda-agent"
+name = "dragon-agent"
 version = "1.2.0"
-description = "🐼 Panda Agent — Self-Evolving AI Agent Framework"
+description = "🐉 Dragon Agent — Self-Evolving AI Agent Framework"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
@@ -38,6 +38,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+compressor = [
+    "tiktoken>=0.5",
+]
 feishu = [
     "lark-oapi>=1.5.3",
     "qrcode>=7.0",
@@ -61,31 +64,33 @@ dev = [
 ]
 
 [project.scripts]
-panda = "panda.cli:main"
+dragon = "dragon.cli:main"
 
 [project.urls]
-Homepage = "https://gitee.com/jialine/panda-agent"
-Repository = "https://gitee.com/jialine/panda-agent"
+Homepage = "https://gitee.com/jialine/dragon-agent"
+Repository = "https://gitee.com/jialine/dragon-agent"
 
 [tool.setuptools]
 packages = [
-    "panda",
-    "panda.backup",
-    "panda.debate",
-    "panda.dispatch",
-    "panda.explorer",
-    "panda.gateway",
-    "panda.guard",
-    "panda.jury",
-    "panda.mcp",
-    "panda.memory",
-    "panda.provider",
-    "panda.router",
-    "panda.skill",
-    "panda.tool",
-    "panda.tool.builtins",
-    "panda.tui",
-    "panda.utils",
+    "dragon",
+    "dragon.backup",
+    "dragon.compressor",
+    "dragon.debate",
+    "dragon.dispatch",
+    "dragon.explorer",
+    "dragon.gateway",
+    "dragon.guard",
+    "dragon.jury",
+    "dragon.mcp",
+    "dragon.memory",
+    "dragon.plugin",
+    "dragon.provider",
+    "dragon.router",
+    "dragon.skill",
+    "dragon.tool",
+    "dragon.tool.builtins",
+    "dragon.tui",
+    "dragon.utils",
 ]
 
 [tool.pytest.ini_options]

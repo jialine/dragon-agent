@@ -5,7 +5,7 @@ Based on actual API: record + check → LoopDetection(pattern, action, ...)
 import time
 
 import pytest
-from panda.guard import (
+from dragon.guard import (
     AntiLoopGuard, LoopAction, LoopPattern, LoopDetection,
     ActionType,
 )

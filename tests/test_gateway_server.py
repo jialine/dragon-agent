@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from panda.gateway.base import PlatformAdapter, PlatformMessage, PlatformReply
-from panda.gateway.server import GatewayServer, create_feishu_gateway, create_telegram_gateway
+from dragon.gateway.base import PlatformAdapter, PlatformMessage, PlatformReply
+from dragon.gateway.server import GatewayServer, create_feishu_gateway, create_telegram_gateway
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -70,12 +70,12 @@ class TestServerCreation:
         server = GatewayServer()
         from fastapi import FastAPI
         assert isinstance(server.app, FastAPI)
-        assert server.app.title == "Panda Gateway"
+        assert server.app.title == "Dragon Gateway"
 
     def test_default_system_prompt_set(self):
         """Server has a default system prompt when none provided."""
         server = GatewayServer()
-        assert "Panda Agent" in server.system_prompt
+        assert "Dragon Agent" in server.system_prompt
         assert len(server.system_prompt) > 0
 
     def test_custom_system_prompt_accepted(self):
@@ -182,7 +182,7 @@ class TestIndexEndpoint:
         response = client.get("/")
         assert response.status_code == 200
         data = response.json()
-        assert data["service"] == "Panda Gateway"
+        assert data["service"] == "Dragon Gateway"
         assert "version" in data
         assert "platforms" in data
         assert "endpoints" in data
@@ -313,7 +313,7 @@ class TestAdapterDiscovery:
             """Helper that discovers adapters from env vars."""
             if os.environ.get("FEISHU_APP_ID"):
                 try:
-                    from panda.gateway.feishu import FeishuAdapter
+                    from dragon.gateway.feishu import FeishuAdapter
                     srv.register_adapter(FeishuAdapter(
                         app_id=os.environ["FEISHU_APP_ID"],
                         app_secret=os.environ.get("FEISHU_APP_SECRET", ""),
@@ -322,7 +322,7 @@ class TestAdapterDiscovery:
                     pass
             if os.environ.get("TELEGRAM_BOT_TOKEN"):
                 try:
-                    from panda.gateway.telegram import TelegramAdapter
+                    from dragon.gateway.telegram import TelegramAdapter
                     srv.register_adapter(TelegramAdapter(
                         bot_token=os.environ["TELEGRAM_BOT_TOKEN"],
                     ))
@@ -343,7 +343,7 @@ class TestAdapterDiscovery:
         def discover_and_register(srv):
             if os.environ.get("TELEGRAM_BOT_TOKEN"):
                 try:
-                    from panda.gateway.telegram import TelegramAdapter
+                    from dragon.gateway.telegram import TelegramAdapter
                     srv.register_adapter(TelegramAdapter(
                         bot_token=os.environ["TELEGRAM_BOT_TOKEN"],
                     ))
@@ -366,7 +366,7 @@ class TestAdapterDiscovery:
         def discover_and_register(srv):
             if os.environ.get("FEISHU_APP_ID"):
                 try:
-                    from panda.gateway.feishu import FeishuAdapter
+                    from dragon.gateway.feishu import FeishuAdapter
                     srv.register_adapter(FeishuAdapter(
                         app_id=os.environ["FEISHU_APP_ID"],
                         app_secret=os.environ["FEISHU_APP_SECRET"],
@@ -375,7 +375,7 @@ class TestAdapterDiscovery:
                     pass
             if os.environ.get("TELEGRAM_BOT_TOKEN"):
                 try:
-                    from panda.gateway.telegram import TelegramAdapter
+                    from dragon.gateway.telegram import TelegramAdapter
                     srv.register_adapter(TelegramAdapter(
                         bot_token=os.environ["TELEGRAM_BOT_TOKEN"],
                     ))

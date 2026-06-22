@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch, PropertyMock
 import pytest
 import networkx as nx
 
-from panda.memory import (
+from dragon.memory import (
     MemoryGraph, Entity, Relation,
     _make_entity_id, _make_relation_id, _extract_json,
     _VALID_ENTITY_TYPES, _VALID_RELATION_TYPES,

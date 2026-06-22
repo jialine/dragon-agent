@@ -1,5 +1,5 @@
 """
-Unit tests for panda.jury — Jury Debate Engine.
+Unit tests for dragon.jury — Jury Debate Engine.
 
 Covers:
   - VoteDecision enum
@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from panda.jury import (
+from dragon.jury import (
     VoteDecision,
     Ballot,
     DebateRound,
@@ -30,7 +30,7 @@ from panda.jury import (
 # ────────────────────────────────────────────────────────────────────
 
 def _make_mock_dispatcher():
-    """Create a mock PandaDispatcher suitable for JuryDebate construction."""
+    """Create a mock DragonDispatcher suitable for JuryDebate construction."""
     return MagicMock()
 
 

@@ -1,7 +1,7 @@
 {
-  "name": "panda-tui",
+  "name": "dragon-tui",
   "version": "1.0.0",
-  "description": "🐼 Panda Agent — Ink React TUI Frontend",
+  "description": "🐉 Dragon Agent — Ink React TUI Frontend",
   "type": "module",
   "main": "src/app.tsx",
   "scripts": {

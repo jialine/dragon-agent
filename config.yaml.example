@@ -1,15 +1,22 @@
-# Panda Agent Configuration
-# Copy to config.yaml and edit for your setup.
+# Dragon Agent Configuration
+# Copy to ~/.dragon/config.yaml and edit for your setup.
 
-# ── Global API (所有行业共用) ──────────────────────────────
-global_api:
-  base_url: "https://api.sangyuye.com/v1"
-  api_key_env: "PANDA_API_KEY"
-  model: ""                                    # 留空由 sangyuye 自动选择
-  timeout_secs: 60
-  max_retries: 2
+# ── Provider (Default model) ──────────────────────────────────
+provider:
+  default: "agilemind"            # agilemind / deepseek / openai / ...
+  agilemind:
+    model: "qwen3.5-122b-a10b"    # qwen3.5-122b-a10b / qwen3.6-35b-a3b
+  # deepseek:
+  #   model: "deepseek-chat"
+  # openai:
+  #   model: "gpt-4o"
+#
+# Environment variables:
+#   AGILEMIND_API_KEY  — Your AgileMind API key (required)
+#   AGILEMIND_API_URL  — API endpoint (default: https://api.agilemind.ai/v1)
+#   Register at: https://console.agilemind.ai
 
-# ── 路由小模型 ────────────────────────────────────────────
+# ── Router (本地小模型，行业分类) ────────────────────────────────
 router:
   model_path: "models/qwen3-0.6b-q4_k_m.gguf"
   n_threads: 4
@@ -18,7 +25,7 @@ router:
   max_tokens: 128
   fallback_on_failure: true
 
-# ── 行业 Dispatch（仅 system_prompt，API 统一走 global_api）────
+# ── Dispatch（行业 system_prompt，统一走 provider 的 API）─────────
 dispatch:
   industries:
     finance:
@@ -32,25 +39,25 @@ dispatch:
     general:
       system_prompt: "你是一个乐于助人的 AI 助手。请用中文回答。"
 
-# ── 向量知识库 ──────────────────────────────────────────
+# ── Memory（向量知识库）───────────────────────────────────────
 memory:
-  persist_dir: "panda_data/vectordb"
+  persist_dir: "dragon_data/vectordb"
   embedding_model: "BAAI/bge-small-zh-v1.5"
   search_top_k: 5
   search_threshold: 0.5
   recency_weight: 0.1
 
-# ── 云端备份 ────────────────────────────────────────────
+# ── Backup（云端备份）─────────────────────────────────────────
 backup:
   endpoint: "https://oss-cn-shanghai.aliyuncs.com"
-  access_key_env: "PANDA_BACKUP_ACCESS_KEY"
-  secret_key_env: "PANDA_BACKUP_SECRET_KEY"
-  bucket: "panda-backups"
-  prefix: "panda/backups/"
+  access_key_env: "DRAGON_BACKUP_ACCESS_KEY"
+  secret_key_env: "DRAGON_BACKUP_SECRET_KEY"
+  bucket: "dragon-backups"
+  prefix: "dragon/backups/"
   interval_hours: 6
   keep_last: 7
 
-# ── 反Loop保护 ──────────────────────────────────────────
+# ── Guard（反Loop保护）─────────────────────────────────────────
 guard:
   max_consecutive_repeats: 3
   max_loop_rounds: 2
@@ -58,7 +65,7 @@ guard:
   window_size: 50
   task_timeout_secs: 300
 
-# ── 服务配置 ────────────────────────────────────────────
+# ── Server ───────────────────────────────────────────────────
 server:
   host: "0.0.0.0"
   port: 8000

@@ -1,5 +1,5 @@
 """
-Unit tests for Panda MCP Server — JSON-RPC protocol and tool exposure.
+Unit tests for Dragon MCP Server — JSON-RPC protocol and tool exposure.
 """
 import json
 import sys
@@ -9,7 +9,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from panda.mcp.protocol import (
+from dragon.mcp.protocol import (
     StdioTransport, JSONRPCRequest, JSONRPCResponse,
     ServerCapabilities, Implementation, InitializeResult,
     MCPTool, MCPResource, MCPPrompt,
@@ -96,17 +96,17 @@ class TestMCPProtocolTypes:
         assert tool.name == "test"
 
     def test_mcp_resource_defaults(self):
-        res = MCPResource(uri="panda://skills/test", name="test-skill")
-        assert res.uri == "panda://skills/test"
+        res = MCPResource(uri="dragon://skills/test", name="test-skill")
+        assert res.uri == "dragon://skills/test"
 
     def test_initialize_result(self):
         result = InitializeResult(
             protocolVersion=MCP_VERSION,
             capabilities=ServerCapabilities(tools={}),
-            serverInfo=Implementation(name="panda", version="1.0.0"),
+            serverInfo=Implementation(name="dragon", version="1.0.0"),
         )
         assert result.protocolVersion == MCP_VERSION
-        assert result.serverInfo.name == "panda"
+        assert result.serverInfo.name == "dragon"
 
 
 # ── JSON-RPC Types ─────────────────────────────────────────────────
@@ -122,7 +122,7 @@ class TestJSONRPCTypes:
         assert resp.result == {"ok": True}
 
     def test_response_with_error(self):
-        from panda.mcp.protocol import JSONRPCError
+        from dragon.mcp.protocol import JSONRPCError
         err = JSONRPCError(code=-32600, message="Invalid Request")
         resp = JSONRPCResponse(id=1, error=err)
         assert resp.error.code == -32600
@@ -132,14 +132,14 @@ class TestJSONRPCTypes:
 
 class TestMCPServer:
     def test_server_creation(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer(name="test-panda", version="0.1.0")
-        assert server.name == "test-panda"
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer(name="test-dragon", version="0.1.0")
+        assert server.name == "test-dragon"
         assert server._initialized is False
 
     def test_server_has_all_handlers(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         assert "initialize" in server._handlers
         assert "ping" in server._handlers
         assert "tools/list" in server._handlers
@@ -150,8 +150,8 @@ class TestMCPServer:
         assert "prompts/get" in server._handlers
 
     def test_initialize_returns_capabilities(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         result = _run(server._handle_initialize({
             "protocolVersion": MCP_VERSION,
             "clientInfo": {"name": "test", "version": "1.0"},
@@ -163,26 +163,26 @@ class TestMCPServer:
         assert "prompts" in result["capabilities"]
 
     def test_ping_returns_empty(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         result = _run(server._handle_ping({}))
         assert result == {}
 
-    def test_tools_list_returns_panda_unique_tools(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+    def test_tools_list_returns_dragon_unique_tools(self):
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         result = _run(server._handle_tools_list({}))
         tool_names = [t["name"] for t in result["tools"]]
-        assert "panda.skills.search" in tool_names
-        assert "panda.skills.evolve" in tool_names
-        assert "panda.consult.assess" in tool_names
-        assert "panda.consult.debate" in tool_names
-        assert "panda.memory.search" in tool_names
-        assert "panda.memory.graph" in tool_names
+        assert "dragon.skills.search" in tool_names
+        assert "dragon.skills.evolve" in tool_names
+        assert "dragon.consult.assess" in tool_names
+        assert "dragon.consult.debate" in tool_names
+        assert "dragon.memory.search" in tool_names
+        assert "dragon.memory.graph" in tool_names
 
     def test_tools_have_required_schema(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         result = _run(server._handle_tools_list({}))
         for tool in result["tools"]:
             assert "name" in tool
@@ -190,40 +190,40 @@ class TestMCPServer:
             assert "inputSchema" in tool
 
     def test_skill_search_without_engine(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         result = _run(server._call_skill_search({"query": "test"}))
         assert "content" in result
         text = result["content"][0]["text"].lower()
         assert "not available" in text or "no skills found" in text
 
     def test_assess_returns_difficulty(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         result = _run(server._call_consult_assess({"query": "What is 2+2?"}))
         text = result["content"][0]["text"]
         assert "Difficulty" in text
         assert "Recommendation" in text
 
     def test_prompts_list_has_consultation(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         result = _run(server._handle_prompts_list({}))
         names = [p["name"] for p in result["prompts"]]
         assert "expert-consultation" in names
         assert "skill-evolution" in names
 
     def test_resources_list_empty_when_no_skills(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         result = _run(server._handle_resources_list({}))
         assert "resources" in result
         assert isinstance(result["resources"], list)
 
     def test_tool_call_unknown_raises(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
-        # Unknown tools that don't start with "panda." raise ValueError
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
+        # Unknown tools that don't start with "dragon." raise ValueError
         with pytest.raises(ValueError, match="Unknown tool"):
             _run(server._handle_tools_call({"name": "nonexistent.tool", "arguments": {}}))
 
@@ -257,11 +257,11 @@ class TestMCPMessageValidation:
 class TestMCPToolCallValidation:
     @pytest.mark.skip(reason="MemoryGraph initialization fails without sentence_transformers; raises RuntimeError")
     def test_tool_call_missing_required_params(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
-        # Call panda.memory.graph without required "query"
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
+        # Call dragon.memory.graph without required "query"
         result = _run(server._handle_tools_call({
-            "name": "panda.memory.graph",
+            "name": "dragon.memory.graph",
             "arguments": {},
         }))
         # Should return error content, not raise
@@ -270,14 +270,14 @@ class TestMCPToolCallValidation:
         assert "error" in text or "query" in text or "not available" in text
 
     def test_tool_call_with_empty_name(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         with pytest.raises(ValueError, match="Unknown tool"):
             _run(server._handle_tools_call({"name": "", "arguments": {}}))
 
     def test_builtin_tool_call_without_registry(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         result = _run(server._call_builtin_tool("echo", {"msg": "hello"}))
         assert "content" in result
         text = result["content"][0]["text"].lower()
@@ -288,8 +288,8 @@ class TestMCPToolCallValidation:
 
 class TestMCPServerCapabilities:
     def test_initialize_returns_all_capability_types(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         result = _run(server._handle_initialize({
             "protocolVersion": MCP_VERSION,
             "clientInfo": {"name": "test-client", "version": "2.0"},
@@ -301,8 +301,8 @@ class TestMCPServerCapabilities:
         assert "prompts" in caps
 
     def test_initialize_stores_client_info(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         _run(server._handle_initialize({
             "protocolVersion": MCP_VERSION,
             "clientInfo": {"name": "my-client", "version": "3.0"},
@@ -311,14 +311,14 @@ class TestMCPServerCapabilities:
         assert server._client_capabilities == {}
 
     def test_server_info_in_initialize(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer(name="custom-panda", version="2.5.0")
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer(name="custom-dragon", version="2.5.0")
         result = _run(server._handle_initialize({
             "protocolVersion": MCP_VERSION,
             "clientInfo": {"name": "test", "version": "1.0"},
             "capabilities": {},
         }))
-        assert result["serverInfo"]["name"] == "custom-panda"
+        assert result["serverInfo"]["name"] == "custom-dragon"
         assert result["serverInfo"]["version"] == "2.5.0"
 
 
@@ -326,30 +326,30 @@ class TestMCPServerCapabilities:
 
 class TestMCPResourceRead:
     def test_resources_read_invalid_uri_raises(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         with pytest.raises(ValueError, match="Unknown resource URI"):
             _run(server._handle_resources_read({"uri": "http://example.com/skill"}))
 
     def test_resources_read_empty_uri_raises(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         with pytest.raises(ValueError, match="Unknown resource URI"):
             _run(server._handle_resources_read({"uri": ""}))
 
     def test_resources_read_nonexistent_skill(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         with pytest.raises(ValueError, match="Skill not found"):
-            _run(server._handle_resources_read({"uri": "panda://skills/nonexistent-skill-xyz"}))
+            _run(server._handle_resources_read({"uri": "dragon://skills/nonexistent-skill-xyz"}))
 
 
 # ── Extended Tests: Prompt Template Rendering ────────────────────────
 
 class TestMCPPromptGet:
     def test_prompt_get_expert_consultation(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         result = _run(server._handle_prompts_get({
             "name": "expert-consultation",
             "arguments": {"query": "What is AI?", "industry": "education"},
@@ -361,14 +361,14 @@ class TestMCPPromptGet:
         assert "education" in content
 
     def test_prompt_get_unknown_prompt_raises(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         with pytest.raises(ValueError, match="Unknown prompt"):
             _run(server._handle_prompts_get({"name": "nonexistent-prompt"}))
 
     def test_prompt_get_skill_evolution_not_found_raises(self):
-        from panda.mcp.server import PandaMCPServer
-        server = PandaMCPServer()
+        from dragon.mcp.server import DragonMCPServer
+        server = DragonMCPServer()
         with pytest.raises(ValueError, match="Skill not found"):
             _run(server._handle_prompts_get({
                 "name": "skill-evolution",
@@ -422,7 +422,7 @@ class TestMCPConstants:
         assert len(MCP_VERSION) > 0
 
     def test_jsonrpc_error_codes(self):
-        from panda.mcp.protocol import (
+        from dragon.mcp.protocol import (
             PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND,
             INVALID_PARAMS, INTERNAL_ERROR,
         )
@@ -437,7 +437,7 @@ class TestMCPConstants:
         assert tool.inputSchema == {}
 
     def test_mcp_resource_defaults(self):
-        res = MCPResource(uri="panda://test", name="test-res")
+        res = MCPResource(uri="dragon://test", name="test-res")
         assert res.mimeType == "text/markdown"
         assert res.description == ""
 
@@ -447,8 +447,8 @@ class TestMCPConstants:
         assert prompt.description == "A test prompt"
 
     def test_implementation_type(self):
-        impl = Implementation(name="panda", version="1.0")
-        assert impl.name == "panda"
+        impl = Implementation(name="dragon", version="1.0")
+        assert impl.name == "dragon"
         assert impl.version == "1.0"
 
     def test_server_capabilities_defaults(self):

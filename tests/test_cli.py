@@ -1,5 +1,5 @@
 """
-CLI integration tests for Panda Agent commands.
+CLI integration tests for Dragon Agent commands.
 
 Tests the NEW subcommands: config init/validate, profile clone/export/import/rename,
 sessions export/stats, gateway status, doctor, and top-level help.
@@ -17,33 +17,33 @@ from pathlib import Path
 import pytest
 import yaml
 
-from panda.cli import (
+from dragon.cli import (
     _cmd_sessions_export,
     _cmd_sessions_stats,
 )
-from panda.profile import ProfileManager
-from panda.session import SessionStore
+from dragon.profile import ProfileManager
+from dragon.session import SessionStore
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
 
-# Project root so subprocess can find the panda module
+# Project root so subprocess can find the dragon module
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 
 
-def _run_panda(*args, **kwargs):
-    """Run panda as a subprocess. Returns CompletedProcess."""
+def _run_dragon(*args, **kwargs):
+    """Run dragon as a subprocess. Returns CompletedProcess."""
     env = os.environ.copy()
     # Prevent accidental config/env pollution
-    env.pop("PANDA_SERVER_PORT", None)
-    env.pop("PANDA_ROUTER_MODEL_PATH", None)
-    env.pop("PANDA_GENERAL_API_KEY", None)
-    # Ensure panda module is discoverable
+    env.pop("DRAGON_SERVER_PORT", None)
+    env.pop("DRAGON_ROUTER_MODEL_PATH", None)
+    env.pop("DRAGON_GENERAL_API_KEY", None)
+    # Ensure dragon module is discoverable
     env["PYTHONPATH"] = _PROJECT_ROOT + os.pathsep + env.get("PYTHONPATH", "")
     if "env" in kwargs:
         env.update(kwargs.pop("env"))
     return subprocess.run(
-        [sys.executable, "-m", "panda", *args],
+        [sys.executable, "-m", "dragon", *args],
         capture_output=True,
         text=True,
         env=env,
@@ -59,21 +59,21 @@ class TestHelpOutput:
     """Verify --help works on subcommands."""
 
     def test_config_init_help(self):
-        """panda config init --help shows usage."""
-        result = _run_panda("config", "init", "--help")
+        """dragon config init --help shows usage."""
+        result = _run_dragon("config", "init", "--help")
         # argparse returns 0 for --help
         assert result.returncode == 0
         assert "usage" in result.stdout.lower() or "config" in result.stdout.lower()
 
     def test_config_validate_help(self):
-        """panda config validate --help shows usage."""
-        result = _run_panda("config", "validate", "--help")
+        """dragon config validate --help shows usage."""
+        result = _run_dragon("config", "validate", "--help")
         assert result.returncode == 0
         assert "usage" in result.stdout.lower() or "config" in result.stdout.lower()
 
     def test_help_shows_all_commands(self):
-        """panda --help shows all 12+ commands."""
-        result = _run_panda("--help")
+        """dragon --help shows all 12+ commands."""
+        result = _run_dragon("--help")
         assert result.returncode == 0
         stdout = result.stdout
         # All 12 top-level commands should appear
@@ -90,7 +90,7 @@ class TestHelpOutput:
 # ───────────────────────────────────────────────────────────────────────
 
 class TestConfigValidate:
-    """Test panda config validate with valid and invalid configs."""
+    """Test dragon config validate with valid and invalid configs."""
 
     def test_validate_valid_config(self):
         """Validate a well-formed config.yaml — should exit 0."""
@@ -112,7 +112,7 @@ class TestConfigValidate:
                     "log_level": "info",
                 },
                 "memory": {
-                    "persist_dir": "panda_data/vectordb",
+                    "persist_dir": "dragon_data/vectordb",
                     "embedding_model": "BAAI/bge-small-zh-v1.5",
                     "search_top_k": 5,
                     "search_threshold": 0.5,
@@ -127,7 +127,7 @@ class TestConfigValidate:
             with open(config_path, "w") as f:
                 yaml.dump(valid_config, f)
 
-            result = _run_panda("config", "validate", cwd=tmpdir)
+            result = _run_dragon("config", "validate", cwd=tmpdir)
             assert result.returncode == 0, f"validate failed: {result.stderr}"
             assert "✓" in result.stdout or "correct" in result.stdout.lower()
         finally:
@@ -142,7 +142,7 @@ class TestConfigValidate:
             with open(config_path, "w") as f:
                 f.write(": : : invalid yaml structure\n")
 
-            result = _run_panda("config", "validate", cwd=tmpdir)
+            result = _run_dragon("config", "validate", cwd=tmpdir)
             # CLI catches exceptions and prints error; check for error in output
             assert "配置验证失败" in result.stdout or "✗" in result.stdout, \
                 f"Expected validation error in output, got: {result.stdout}"
@@ -165,7 +165,7 @@ class TestConfigValidate:
                 yaml.dump(partial_config, f)
 
             # Should still be valid YAML but may warn about missing fields
-            result = _run_panda("config", "validate", cwd=tmpdir)
+            result = _run_dragon("config", "validate", cwd=tmpdir)
             # Pydantic with defaults should still load successfully
             # Exit 0 because it uses defaults for missing fields
             assert result.returncode == 0, f"validate should use defaults: {result.stderr}"
@@ -188,7 +188,7 @@ class TestConfigValidate:
             with open(config_path, "w") as f:
                 yaml.dump(invalid_config, f)
 
-            result = _run_panda("config", "validate", cwd=tmpdir)
+            result = _run_dragon("config", "validate", cwd=tmpdir)
             # Pydantic validation error should appear in output
             assert "配置验证失败" in result.stdout or "validation error" in result.stdout, \
                 f"Expected type validation error in output, got: {result.stdout}"
@@ -380,10 +380,10 @@ class TestGatewayCLI:
     """Test gateway status command."""
 
     def test_gateway_status(self):
-        """panda gateway status runs without error."""
-        result = _run_panda("gateway", "status")
+        """dragon gateway status runs without error."""
+        result = _run_dragon("gateway", "status")
         assert result.returncode == 0, f"gateway status failed: {result.stderr}"
-        assert "Panda Gateway Status" in result.stdout
+        assert "Dragon Gateway Status" in result.stdout
         # Should mention adapters
         assert "Feishu" in result.stdout or "feishu" in result.stdout.lower()
 
@@ -396,8 +396,8 @@ class TestDoctorCLI:
     """Test doctor command."""
 
     def test_doctor_runs_and_reports_python_version(self):
-        """panda doctor runs and reports Python version."""
-        result = _run_panda("doctor")
+        """dragon doctor runs and reports Python version."""
+        result = _run_dragon("doctor")
         assert result.returncode == 0, f"doctor failed: {result.stderr}"
         # Should contain "Python" or "诊断报告"
         assert "Python" in result.stdout or "诊断" in result.stdout
@@ -407,8 +407,8 @@ class TestDoctorCLI:
         assert py_ver in result.stdout, f"Expected Python version {py_ver} in output"
 
     def test_doctor_json_outputs_valid_json(self):
-        """panda doctor --json outputs valid JSON."""
-        result = _run_panda("doctor", "--json")
+        """dragon doctor --json outputs valid JSON."""
+        result = _run_dragon("doctor", "--json")
         assert result.returncode == 0, f"doctor --json failed: {result.stderr}"
 
         data = json.loads(result.stdout)
@@ -426,8 +426,8 @@ class TestDoctorCLI:
         assert "Python" in data[0]["name"], f"First check should be Python, got: {data[0]['name']}"
 
     def test_doctor_json_contains_all_checks(self):
-        """panda doctor --json includes all diagnostic categories."""
-        result = _run_panda("doctor", "--json")
+        """dragon doctor --json includes all diagnostic categories."""
+        result = _run_dragon("doctor", "--json")
         data = json.loads(result.stdout)
 
         names = [item["name"] for item in data]
@@ -449,29 +449,29 @@ class TestAllHelpOutput:
     """Verify --help works on every subcommand."""
 
     def test_chat_help(self):
-        """panda chat --help shows usage."""
-        result = _run_panda("chat", "--help")
+        """dragon chat --help shows usage."""
+        result = _run_dragon("chat", "--help")
         assert result.returncode == 0
         stdout_lower = result.stdout.lower()
         assert "usage" in stdout_lower or "chat" in stdout_lower, f"Missing usage in: {result.stdout}"
 
     def test_serve_help(self):
-        """panda serve --help shows usage."""
-        result = _run_panda("serve", "--help")
+        """dragon serve --help shows usage."""
+        result = _run_dragon("serve", "--help")
         assert result.returncode == 0
         stdout_lower = result.stdout.lower()
         assert "usage" in stdout_lower or "serve" in stdout_lower, f"Missing usage in: {result.stdout}"
 
     def test_mcp_help(self):
-        """panda mcp --help shows usage."""
-        result = _run_panda("mcp", "--help")
+        """dragon mcp --help shows usage."""
+        result = _run_dragon("mcp", "--help")
         assert result.returncode == 0
         stdout_lower = result.stdout.lower()
         assert "usage" in stdout_lower or "mcp" in stdout_lower, f"Missing usage in: {result.stdout}"
 
     def test_skills_help(self):
-        """panda skills --help shows usage with list, search, create, delete."""
-        result = _run_panda("skills", "--help")
+        """dragon skills --help shows usage with list, search, create, delete."""
+        result = _run_dragon("skills", "--help")
         assert result.returncode == 0
         stdout_lower = result.stdout.lower()
         assert "usage" in stdout_lower or "skills" in stdout_lower
@@ -480,16 +480,16 @@ class TestAllHelpOutput:
         assert "search" in stdout_lower, f"Expected 'search' in help: {result.stdout[:300]}"
 
     def test_tools_help(self):
-        """panda tools --help shows usage with list, search, call."""
-        result = _run_panda("tools", "--help")
+        """dragon tools --help shows usage with list, search, call."""
+        result = _run_dragon("tools", "--help")
         assert result.returncode == 0
         stdout_lower = result.stdout.lower()
         assert "usage" in stdout_lower or "tools" in stdout_lower
         assert "list" in stdout_lower, f"Expected 'list' in help: {result.stdout[:300]}"
 
     def test_cron_help(self):
-        """panda cron --help shows usage with list, add, pause, resume, remove, run."""
-        result = _run_panda("cron", "--help")
+        """dragon cron --help shows usage with list, add, pause, resume, remove, run."""
+        result = _run_dragon("cron", "--help")
         assert result.returncode == 0
         stdout_lower = result.stdout.lower()
         assert "usage" in stdout_lower or "cron" in stdout_lower
@@ -498,8 +498,8 @@ class TestAllHelpOutput:
             assert action in stdout_lower, f"Expected '{action}' in cron help: {result.stdout[:300]}"
 
     def test_profile_help(self):
-        """panda profile --help shows usage with list, create, delete, use."""
-        result = _run_panda("profile", "--help")
+        """dragon profile --help shows usage with list, create, delete, use."""
+        result = _run_dragon("profile", "--help")
         assert result.returncode == 0
         stdout_lower = result.stdout.lower()
         assert "usage" in stdout_lower or "profile" in stdout_lower
@@ -515,8 +515,8 @@ class TestGatewayStatusAdapters:
     """Test that gateway status shows adapter information."""
 
     def test_gateway_status_adapters_list(self):
-        """panda gateway status lists Feishu adapter and other integrations."""
-        result = _run_panda("gateway", "status")
+        """dragon gateway status lists Feishu adapter and other integrations."""
+        result = _run_dragon("gateway", "status")
         assert result.returncode == 0
         # Check for adapter mentions
         stdout_lower = result.stdout.lower()
@@ -528,7 +528,7 @@ class TestGatewayStatusAdapters:
 
     def test_gateway_status_has_structured_output(self):
         """Gateway status output contains recognizable sections."""
-        result = _run_panda("gateway", "status")
+        result = _run_dragon("gateway", "status")
         assert result.returncode == 0
         # Should have "Status" or "状态" header
         assert ("status" in result.stdout.lower() or "状态" in result.stdout)
@@ -542,17 +542,17 @@ class TestCLIVersion:
     """Test the --version flag."""
 
     def test_cli_version(self):
-        """panda --version shows version string."""
-        result = _run_panda("--version")
+        """dragon --version shows version string."""
+        result = _run_dragon("--version")
         assert result.returncode == 0
-        assert "Panda Agent" in result.stdout, f"Expected 'Panda Agent' in version output: {result.stdout}"
+        assert "Dragon Agent" in result.stdout, f"Expected 'Dragon Agent' in version output: {result.stdout}"
         # Should contain a version number like 1.2.0
         import re
         assert re.search(r'\d+\.\d+\.\d+', result.stdout), f"No semver found: {result.stdout}"
 
     def test_cli_version_is_not_error(self):
-        """panda --version exits 0 and has clean output."""
-        result = _run_panda("--version")
+        """dragon --version exits 0 and has clean output."""
+        result = _run_dragon("--version")
         assert result.returncode == 0
         assert result.stderr == "" or "warning" not in result.stderr.lower()
 
@@ -565,8 +565,8 @@ class TestDoctorJSONDetailed:
     """Detailed tests for doctor --json output structure."""
 
     def test_doctor_json_valid_structure(self):
-        """panda doctor --json has valid structure with all required fields."""
-        result = _run_panda("doctor", "--json")
+        """dragon doctor --json has valid structure with all required fields."""
+        result = _run_dragon("doctor", "--json")
         assert result.returncode == 0, f"doctor --json failed: {result.stderr}"
 
         data = json.loads(result.stdout)
@@ -585,7 +585,7 @@ class TestDoctorJSONDetailed:
 
     def test_doctor_json_python_check_always_first(self):
         """Doctor JSON output has Python version as first check."""
-        result = _run_panda("doctor", "--json")
+        result = _run_dragon("doctor", "--json")
         data = json.loads(result.stdout)
         # Python check should be first or near the top
         python_checks = [i for i, item in enumerate(data) if "python" in item["name"].lower()]
@@ -600,12 +600,12 @@ class TestDoctorJSONDetailed:
 class TestNoCommand:
     """Test behavior with no command given."""
 
-    def test_panda_with_no_args(self):
-        """Running panda with no args shows help/version and exits 0."""
-        result = _run_panda()
+    def test_dragon_with_no_args(self):
+        """Running dragon with no args shows help/version and exits 0."""
+        result = _run_dragon()
         assert result.returncode == 0
         output = result.stdout
-        assert "Panda Agent" in output or "usage" in output.lower()
+        assert "Dragon Agent" in output or "usage" in output.lower()
 
 
 # ───────────────────────────────────────────────────────────────────────
@@ -614,24 +614,24 @@ class TestNoCommand:
 # ───────────────────────────────────────────────────────────────────────
 
 class TestToolsList:
-    """Test panda tools list subcommand."""
+    """Test dragon tools list subcommand."""
 
     def test_tools_list(self):
-        """panda tools list prints registered tools."""
-        result = _run_panda("tools", "list")
+        """dragon tools list prints registered tools."""
+        result = _run_dragon("tools", "list")
         assert result.returncode == 0, f"tools list failed: {result.stderr}"
         output = result.stdout
         assert "Tools" in output, f"Expected 'Tools' in output: {output[:200]}"
 
 
 class TestCronList:
-    """Test panda cron list subcommand."""
+    """Test dragon cron list subcommand."""
 
     def test_cron_list(self):
-        """panda cron list shows job list (empty or with jobs)."""
+        """dragon cron list shows job list (empty or with jobs)."""
         tmpdir = tempfile.mkdtemp()
         try:
-            result = _run_panda("cron", "list", cwd=tmpdir)
+            result = _run_dragon("cron", "list", cwd=tmpdir)
             assert result.returncode == 0, f"cron list failed: {result.stderr}"
             assert "Cron jobs" in result.stdout, f"Expected 'Cron jobs': {result.stdout[:200]}"
         finally:
@@ -650,18 +650,18 @@ class TestProfileSubprocessCLI:
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_profile_create_cli(self):
-        """panda profile create <name> creates a profile."""
-        result = _run_panda("profile", "create", "cli-test-prof", env=self._home_env)
+        """dragon profile create <name> creates a profile."""
+        result = _run_dragon("profile", "create", "cli-test-prof", env=self._home_env)
         assert result.returncode == 0, f"profile create failed: {result.stderr}"
         assert "Created profile" in result.stdout or "cli-test-prof" in result.stdout, \
             f"Expected creation message: {result.stdout[:200]}"
 
     def test_profile_delete_cli(self):
-        """panda profile delete <name> removes a profile."""
+        """dragon profile delete <name> removes a profile."""
         # Create first
-        _run_panda("profile", "create", "to-delete", env=self._home_env)
+        _run_dragon("profile", "create", "to-delete", env=self._home_env)
         # Then delete
-        result = _run_panda("profile", "delete", "to-delete", env=self._home_env)
+        result = _run_dragon("profile", "delete", "to-delete", env=self._home_env)
         assert result.returncode == 0, f"profile delete failed: {result.stderr}"
         # Deletion should succeed
         assert "Deleted" in result.stdout or "deleted" in result.stdout.lower(), \
@@ -669,11 +669,11 @@ class TestProfileSubprocessCLI:
 
 
 class TestSessionsListCLI:
-    """Test panda sessions list subcommand."""
+    """Test dragon sessions list subcommand."""
 
     def test_sessions_list(self):
-        """panda sessions list shows recent sessions."""
-        result = _run_panda("sessions", "list")
+        """dragon sessions list shows recent sessions."""
+        result = _run_dragon("sessions", "list")
         assert result.returncode == 0, f"sessions list failed: {result.stderr}"
         assert "Recent sessions" in result.stdout, f"Expected 'Recent sessions': {result.stdout[:200]}"
 
@@ -682,10 +682,10 @@ class TestConfigValidateMissingFile:
     """Test config validate when config.yaml is missing."""
 
     def test_config_validate_missing_file(self):
-        """panda config validate with no config.yaml shows helpful message."""
+        """dragon config validate with no config.yaml shows helpful message."""
         tmpdir = tempfile.mkdtemp()
         try:
-            result = _run_panda("config", "validate", cwd=tmpdir)
+            result = _run_dragon("config", "validate", cwd=tmpdir)
             # Should not crash; should report missing file
             assert result.returncode == 0, f"validate should exit 0: {result.stderr}"
             assert "未找到" in result.stdout or "config" in result.stdout.lower(), \
@@ -695,21 +695,21 @@ class TestConfigValidateMissingFile:
 
 
 class TestMCPToolsList:
-    """Test panda mcp tools subcommand."""
+    """Test dragon mcp tools subcommand."""
 
     def test_mcp_tools_list(self):
-        """panda mcp tools lists MCP tool names."""
-        result = _run_panda("mcp", "tools")
+        """dragon mcp tools lists MCP tool names."""
+        result = _run_dragon("mcp", "tools")
         assert result.returncode == 0, f"mcp tools failed: {result.stderr}"
         assert "MCP Tools" in result.stdout, f"Expected 'MCP Tools': {result.stdout[:200]}"
 
 
 class TestSkillsListCLI:
-    """Test panda skills list subcommand."""
+    """Test dragon skills list subcommand."""
 
     def test_skills_list_cli(self):
-        """panda skills list prints skills or 'No skills' message."""
-        result = _run_panda("skills", "list")
+        """dragon skills list prints skills or 'No skills' message."""
+        result = _run_dragon("skills", "list")
         assert result.returncode == 0, f"skills list failed: {result.stderr}"
         output = result.stdout
         assert "Skills" in output or "No skills" in output, \
@@ -717,22 +717,22 @@ class TestSkillsListCLI:
 
 
 class TestConfigShowCLI:
-    """Test panda config show subcommand."""
+    """Test dragon config show subcommand."""
 
     def test_config_show_output(self):
-        """panda config show prints configuration details."""
-        result = _run_panda("config", "show")
+        """dragon config show prints configuration details."""
+        result = _run_dragon("config", "show")
         assert result.returncode == 0, f"config show failed: {result.stderr}"
         assert "Configuration" in result.stdout or "Router" in result.stdout or "model" in result.stdout, \
             f"Expected config output: {result.stdout[:200]}"
 
 
 class TestConfigCheckCLI:
-    """Test panda config check subcommand."""
+    """Test dragon config check subcommand."""
 
     def test_config_check_output(self):
-        """panda config check runs without error and gives status."""
-        result = _run_panda("config", "check")
+        """dragon config check runs without error and gives status."""
+        result = _run_dragon("config", "check")
         assert result.returncode == 0, f"config check failed: {result.stderr}"
         output = result.stdout
         assert "Issues" in output or "looks good" in output or "✓" in output, \
@@ -740,11 +740,11 @@ class TestConfigCheckCLI:
 
 
 class TestGatewayHelpCLI:
-    """Test panda gateway --help subcommand."""
+    """Test dragon gateway --help subcommand."""
 
     def test_gateway_help(self):
-        """panda gateway --help shows usage with start/status actions."""
-        result = _run_panda("gateway", "--help")
+        """dragon gateway --help shows usage with start/status actions."""
+        result = _run_dragon("gateway", "--help")
         assert result.returncode == 0
         stdout_lower = result.stdout.lower()
         assert "usage" in stdout_lower or "gateway" in stdout_lower
@@ -753,31 +753,31 @@ class TestGatewayHelpCLI:
 
 
 class TestDoctorHelpCLI:
-    """Test panda doctor --help subcommand."""
+    """Test dragon doctor --help subcommand."""
 
     def test_doctor_help(self):
-        """panda doctor --help shows usage."""
-        result = _run_panda("doctor", "--help")
+        """dragon doctor --help shows usage."""
+        result = _run_dragon("doctor", "--help")
         assert result.returncode == 0
         assert "usage" in result.stdout.lower() or "doctor" in result.stdout.lower() or "诊断" in result.stdout, \
             f"Expected help output: {result.stdout[:200]}"
 
 
 class TestTestHelpCLI:
-    """Test panda test --help subcommand."""
+    """Test dragon test --help subcommand."""
 
     def test_test_help(self):
-        """panda test --help shows usage."""
-        result = _run_panda("test", "--help")
+        """dragon test --help shows usage."""
+        result = _run_dragon("test", "--help")
         assert result.returncode == 0
         assert "usage" in result.stdout.lower() or "test" in result.stdout.lower(), \
             f"Expected help output: {result.stdout[:200]}"
 
 
 class TestSessionsSearchCLI:
-    """Test panda sessions search subcommand."""
+    """Test dragon sessions search subcommand."""
 
     def test_sessions_search(self):
-        """panda sessions search runs without error."""
-        result = _run_panda("sessions", "search", "--query", "test")
+        """dragon sessions search runs without error."""
+        result = _run_dragon("sessions", "search", "--query", "test")
         assert result.returncode == 0, f"sessions search failed: {result.stderr}"

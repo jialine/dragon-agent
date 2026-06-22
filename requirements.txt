@@ -1,4 +1,4 @@
-# Panda Agent — Core Dependencies
+# Dragon Agent — Core Dependencies
 # Install: pip install -r requirements.txt
 #
 # Knowledge base extras (optional, ~500MB):

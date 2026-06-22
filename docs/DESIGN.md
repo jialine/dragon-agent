@@ -1,26 +1,26 @@
-# Panda Agent — Architecture Design Document
+# Dragon Agent — Architecture Design Document
 
 ## 1. System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      Panda Agent                            │
+│                      Dragon Agent                            │
 ├───────────┬───────────┬───────────┬───────────┬────────────┤
 │   CLI     │   TUI     │  Gateway  │   MCP     │   Cron     │
 │  (chat,   │ (Ink/     │ (Feishu,  │ (tools    │ (scheduled │
 │  config…) │  React)   │ Telegram…)│ server)   │  jobs)     │
 ├───────────┴───────────┴───────────┴───────────┴────────────┤
 │                    Core Services                           │
-│  ┌──────────┬──────────┬──────────┬──────────┬──────────┐ │
-│  │ Session  │  Skill   │  Tool    │  Memory  │  Config  │ │
-│  │ Manager  │  Engine  │ Registry │  Store   │  Manager │ │
-│  └──────────┴──────────┴──────────┴──────────┴──────────┘ │
+│  ┌──────────┬──────────┬──────────┬──────────┬──────────┬──────────┐ │
+│  │ Session  │  Skill   │  Tool    │  Memory  │ Compress │  Config  │ │
+│  │ Manager  │  Engine  │ Registry │  Store   │  Engine  │  Manager │ │
+│  └──────────┴──────────┴──────────┴──────────┴──────────┴──────────┘ │
 ├─────────────────────────────────────────────────────────────┤
 │                   Provider Layer                           │
-│  ┌──────────┬──────────┬──────────┬──────────┐            │
-│  │ OpenAI   │Anthropic │ Local    │  Custom  │            │
-│  │          │          │ (GGUF)   │          │            │
-│  └──────────┴──────────┴──────────┴──────────┘            │
+│  ┌──────────┬──────────┬──────────┬──────────────────┐    │
+│  │AgileMind │  DeepSeek│  OpenAI  │   Anthropic ...  │    │
+│  │(default) │(fallback)│(fallback)│                  │    │
+│  └──────────┴──────────┴──────────┴──────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -29,7 +29,7 @@
 | Layer | Role |
 |---|---|
 | **Interface** | CLI, TUI, Gateway, MCP — user-facing entry points |
-| **Core Services** | Session, Skill, Tool, Memory, Config — business logic |
+| **Core Services** | Session, Skill, Tool, Memory, Compression, Config — business logic |
 | **Provider** | Model abstraction layer — OpenAI, Anthropic, local GGUF |
 
 ---
@@ -45,7 +45,7 @@
 │     │ pipe (stdin/stdout)                  │
 │     ▼                                      │
 │  ┌─ Python Subprocess ───────────────┐     │
-│  │  panda.tui.server                 │     │
+│  │  dragon.tui.server                 │     │
 │  │  JSON-RPC 2.0 over stdio          │     │
 │  └───────────────────────────────────┘     │
 └────────────────────────────────────────────┘
@@ -129,7 +129,7 @@ SkillEngine
 └── get(name) → Skill | None
 ```
 
-**Storage:** File-based — each skill is a markdown file in `panda_data/skills/` with YAML frontmatter.
+**Storage:** File-based — each skill is a markdown file in `dragon_data/skills/` with YAML frontmatter.
 
 ### 3.3 Tool Registry
 
@@ -156,7 +156,7 @@ ConfigManager
 └── check() → bool
 ```
 
-**Storage:** YAML file at `~/.panda/config.yaml`. Environment variable overrides with `PANDA_` prefix.
+**Storage:** YAML file at `~/.dragon/config.yaml`. Environment variable overrides with `DRAGON_` prefix.
 
 ### 3.5 Provider Registry
 
@@ -170,6 +170,27 @@ ProviderRegistry
 
 **Supported providers:** OpenAI (GPT-4o, etc.), Anthropic (Claude), Local GGUF (via llama.cpp).
 
+### 3.6 Context Compressor
+
+```
+ContextCompressor
+├── compress(messages, current_query, max_tokens=512) → CompressedContext
+│   ├── Step 1: Semantic retrieval from MemoryStore (top_k=5)
+│   ├── Step 2: Retrieval from Skill Store (top_k=3)
+│   ├── Step 3: Summary generation via local router model (0.8B)
+│   └── Step 4: Build injection-friendly system prompt
+├── stats(session_id) → CompressionStats
+│   ├── original_tokens, compressed_tokens, ratio
+│   └── latency_ms, relevance_score
+└── get_summary(session_id) → str | None
+```
+
+**Purpose:** Before each request to the industry LLM, extract relevant context from conversation history and knowledge base, compress into a compact summary (≤512 tokens). Reduces upstream token count by 5-26x, saving API costs.
+
+**Integration point:** Sits between Router/Dispatch and the actual Provider call. Takes full `messages` array, returns `compressed_messages` array with summary injected as system prompt.
+
+**Resource:** Reuses the 0.8B router model for summary generation. No additional model loading required.
+
 ---
 
 ## 4. Data Flow: Chat Message
@@ -181,7 +202,19 @@ User Input
 CLI / TUI / Gateway
     │
     ▼
-ProviderRegistry.call(provider, model, messages)
+Router.classify(query) → industry, confidence
+    │
+    ▼
+ContextCompressor.compress(messages, query)
+    │  Step 1: MemoryStore.recall(query)    → relevant history
+    │  Step 2: SkillStore.search(query)     → knowledge hits
+    │  Step 3: Local model summary          → ≤512 tokens
+    │
+    ▼
+Build compressed_messages = [summary_system_prompt, current_question]
+    │
+    ▼
+ProviderRegistry.call(provider, model, compressed_messages)
     │
     ├─→ OpenAI HTTP API ──→ response
     ├─→ Anthropic API   ──→ response
@@ -237,8 +270,8 @@ Gateway
 ## 7. Directory Layout
 
 ```
-panda-agent/
-├── panda/                    # Python package (namespace)
+dragon-agent/
+├── dragon/                    # Python package (namespace)
 │   ├── __init__.py
 │   ├── cli.py                # CLI entry point
 │   ├── session/              # Session management
@@ -255,6 +288,10 @@ panda-agent/
 │   │   ├── builtins.py       # Terminal, file, web, etc.
 │   │   └── models.py
 │   ├── memory/               # Persistent memory
+│   ├── compressor/           # Context compression engine
+│   │   ├── __init__.py
+│   │   ├── compressor.py     # Summary generation + retrieval
+│   │   └── estimator.py      # Token counting + stats
 │   ├── config/               # Config management
 │   ├── provider/             # Model provider abstraction
 │   ├── cron/                 # Scheduled jobs
@@ -317,7 +354,8 @@ panda-agent/
 
 | Phase | Features |
 |---|---|
-| v1.3 | pip installable `panda-agent` package, Docker support |
+| v1.2 | Context compression engine — auto-summarize history before LLM requests |
+| v1.3 | pip installable `dragon-agent` package, Docker support |
 | v1.4 | Plugin system, custom tool SDK |
 | v2.0 | Distributed agent mesh (multi-node), agent-to-agent communication |
 | v2.1 | Web UI (React SPA) alongside TUI |

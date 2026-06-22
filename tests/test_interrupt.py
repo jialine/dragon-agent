@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from panda.interrupt import (
+from dragon.interrupt import (
     InterruptManager,
     TaskInterrupted,
     TaskState,

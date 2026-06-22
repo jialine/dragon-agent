@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Panda Agent — one-click deployment script
+# Dragon Agent — one-click deployment script
 # =============================================================================
 # Usage:
 #   bash scripts/deploy.sh           # interactive deploy
@@ -157,9 +157,20 @@ else
 fi
 
 if $generate_config; then
-    cat > "$CONFIG_FILE" << 'YAMLEOF'
-# Panda Agent Configuration
-# See panda/config.py for all options
+    # Auto-detect AgileMind Engine API
+    DEFAULT_PROVIDER="deepseek"
+    DEFAULT_MODEL="deepseek-chat"
+    if [ -n "${AGILEMIND_API_KEY:-}" ]; then
+        DEFAULT_PROVIDER="agilemind"
+        DEFAULT_MODEL="qwen3.5-122b-a10b"
+        echo -e "${GREEN}🐉${NC} AgileMind API Key detected — set as default"
+    else
+        echo -e "${YELLOW}⚠${NC} AgileMind API Key not set — defaulting to DeepSeek cloud"
+    fi
+    
+    cat > "$CONFIG_FILE" << YAMLEOF
+# Dragon Agent Configuration
+# See dragon/config.py for all options
 
 router:
   model_path: "models/qwen3-0.6b-q4_k_m.gguf"
@@ -174,7 +185,7 @@ server:
   log_level: "info"
 
 memory:
-  persist_dir: "panda_data/vectordb"
+  persist_dir: "dragon_data/vectordb"
   embedding_model: "BAAI/bge-small-zh-v1.5"
   search_top_k: 5
   search_threshold: 0.5
@@ -186,12 +197,17 @@ guard:
   window_size: 50
   task_timeout_secs: 300
 
+provider:
+  default: "$DEFAULT_PROVIDER"
+  $DEFAULT_PROVIDER:
+    model: "$DEFAULT_MODEL"
+
 dispatch:
   industries: {}
 
 backup:
   endpoint: ""
-  bucket: "panda-backups"
+  bucket: "dragon-backups"
   interval_hours: 6
 YAMLEOF
     ok "Created config.yaml"
@@ -237,13 +253,13 @@ fi
 
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║       Panda Agent deployment complete!       ║${NC}"
+echo -e "${GREEN}║       Dragon Agent deployment complete!       ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════╝${NC}"
 echo ""
 echo "  Start server:"
 echo "    cd $PROJECT_ROOT"
 echo "    source .venv/bin/activate"
-echo "    python -m uvicorn panda.main:app --host 0.0.0.0 --port 8000"
+echo "    python -m uvicorn dragon.main:app --host 0.0.0.0 --port 8000"
 echo ""
 echo "  API endpoints:"
 echo "    GET  http://localhost:8000/health"
@@ -256,5 +272,5 @@ echo ""
 
 if confirm "Start server now?"; then
     cd "$PROJECT_ROOT"
-    python -m uvicorn panda.main:app --host 0.0.0.0 --port 8000 --log-level info
+    python -m uvicorn dragon.main:app --host 0.0.0.0 --port 8000 --log-level info
 fi

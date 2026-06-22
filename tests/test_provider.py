@@ -1,5 +1,5 @@
 """
-Unit tests for panda.provider module — data classes, BaseProvider,
+Unit tests for dragon.provider module — data classes, BaseProvider,
 ProviderRegistry, and concrete provider constructors.
 
 All tests are synchronous. No HTTP/API calls — mock as needed.
@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
 
-from panda.provider import (
+from dragon.provider import (
     ProviderResult,
     StreamChunk,
     ProviderConfig,

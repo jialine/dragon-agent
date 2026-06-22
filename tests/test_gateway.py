@@ -1,5 +1,5 @@
 """
-Unit tests for Panda Gateway — adapters, message processing.
+Unit tests for Dragon Gateway — adapters, message processing.
 """
 import json
 import asyncio
@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 
 import pytest
 
-from panda.gateway.base import (
+from dragon.gateway.base import (
     PlatformMessage, PlatformReply, PlatformAdapter,
     verify_hmac_signature, verify_telegram_signature,
 )
@@ -75,7 +75,7 @@ class TestSignatureVerification:
 
 class TestFeishuAdapter:
     def test_parse_challenge(self):
-        from panda.gateway.feishu import FeishuAdapter
+        from dragon.gateway.feishu import FeishuAdapter
 
         adapter = FeishuAdapter(app_id="test", app_secret="test")
         body = {"type": "url_verification", "challenge": "test-challenge-123"}
@@ -88,7 +88,7 @@ class TestFeishuAdapter:
         assert msg.content == "test-challenge-123"
 
     def test_parse_text_message(self):
-        from panda.gateway.feishu import FeishuAdapter
+        from dragon.gateway.feishu import FeishuAdapter
 
         adapter = FeishuAdapter(app_id="test", app_secret="test")
         body = {
@@ -121,7 +121,7 @@ class TestFeishuAdapter:
 
 class TestTelegramAdapter:
     def test_parse_text_message(self):
-        from panda.gateway.telegram import TelegramAdapter
+        from dragon.gateway.telegram import TelegramAdapter
 
         adapter = TelegramAdapter(bot_token="test:token")
         body = {
@@ -145,7 +145,7 @@ class TestTelegramAdapter:
         assert msg.content == "Hello bot"
 
     def test_parse_message_with_thread(self):
-        from panda.gateway.telegram import TelegramAdapter
+        from dragon.gateway.telegram import TelegramAdapter
 
         adapter = TelegramAdapter(bot_token="test:token")
         body = {
@@ -169,14 +169,14 @@ class TestTelegramAdapter:
 
 class TestGatewayServer:
     def test_server_creation(self):
-        from panda.gateway.server import GatewayServer
+        from dragon.gateway.server import GatewayServer
         server = GatewayServer()
         assert server.app is not None
         assert len(server.adapters) == 0
 
     def test_register_adapter(self):
-        from panda.gateway.server import GatewayServer
-        from panda.gateway.base import PlatformAdapter
+        from dragon.gateway.server import GatewayServer
+        from dragon.gateway.base import PlatformAdapter
 
         class FakeAdapter(PlatformAdapter):
             async def verify_webhook(self, headers, body): return True
@@ -192,7 +192,7 @@ class TestGatewayServer:
 
 class TestMessageProcessor:
     def test_processor_without_provider(self):
-        from panda.gateway.server import MessageProcessor
+        from dragon.gateway.server import MessageProcessor
 
         proc = MessageProcessor()
         msg = PlatformMessage(
@@ -209,13 +209,13 @@ class TestMessageProcessor:
 
 class TestHandleURLVerification:
     def test_challenge_response(self):
-        from panda.gateway.feishu import handle_url_verification
+        from dragon.gateway.feishu import handle_url_verification
         body = {"type": "url_verification", "challenge": "abc123"}
         result = handle_url_verification(body)
         assert result == {"challenge": "abc123"}
 
     def test_non_challenge_ignored(self):
-        from panda.gateway.feishu import handle_url_verification
+        from dragon.gateway.feishu import handle_url_verification
         assert handle_url_verification({}) == {}
 
 
@@ -225,24 +225,24 @@ class TestHandleURLVerification:
 
 class TestSlackAdapter:
     def test_constructor_reads_bot_token_from_env(self):
-        from panda.gateway.slack import SlackAdapter
+        from dragon.gateway.slack import SlackAdapter
         with patch.dict("os.environ", {"SLACK_BOT_TOKEN": "xoxb-test-token"}):
             adapter = SlackAdapter()
             assert adapter.bot_token == "xoxb-test-token"
 
     def test_constructor_explicit_token_overrides_env(self):
-        from panda.gateway.slack import SlackAdapter
+        from dragon.gateway.slack import SlackAdapter
         with patch.dict("os.environ", {"SLACK_BOT_TOKEN": "env-token"}):
             adapter = SlackAdapter(bot_token="explicit-token")
             assert adapter.bot_token == "explicit-token"
 
     def test_webhook_path(self):
-        from panda.gateway.slack import SlackAdapter
+        from dragon.gateway.slack import SlackAdapter
         adapter = SlackAdapter()
         assert adapter.webhook_path == "/slack/webhook"
 
     def test_verify_webhook_empty_headers_returns_true(self):
-        from panda.gateway.slack import SlackAdapter
+        from dragon.gateway.slack import SlackAdapter
         adapter = SlackAdapter()
         result = asyncio.new_event_loop().run_until_complete(
             adapter.verify_webhook({}, b"{}")
@@ -250,7 +250,7 @@ class TestSlackAdapter:
         assert result is True
 
     def test_parse_webhook_url_verification_challenge(self):
-        from panda.gateway.slack import SlackAdapter
+        from dragon.gateway.slack import SlackAdapter
         adapter = SlackAdapter()
         body = {"type": "url_verification", "challenge": "challenge-token-xyz"}
         msg = asyncio.new_event_loop().run_until_complete(
@@ -262,7 +262,7 @@ class TestSlackAdapter:
         assert msg.content == "challenge-token-xyz"
 
     def test_parse_webhook_text_message_event(self):
-        from panda.gateway.slack import SlackAdapter
+        from dragon.gateway.slack import SlackAdapter
         adapter = SlackAdapter()
         body = {
             "type": "event_callback",
@@ -287,7 +287,7 @@ class TestSlackAdapter:
         assert msg.message_id == "1700000000.000100"
 
     def test_parse_webhook_skips_bot_subtype(self):
-        from panda.gateway.slack import SlackAdapter
+        from dragon.gateway.slack import SlackAdapter
         adapter = SlackAdapter()
         body = {
             "type": "event_callback",
@@ -305,8 +305,8 @@ class TestSlackAdapter:
         assert msg is None
 
     def test_send_message_calls_api(self):
-        from panda.gateway.slack import SlackAdapter
-        from panda.gateway.base import PlatformReply
+        from dragon.gateway.slack import SlackAdapter
+        from dragon.gateway.base import PlatformReply
 
         adapter = SlackAdapter(bot_token="xoxb-fake")
         reply = PlatformReply(content="Hi from test", chat_id="C12345")
@@ -326,8 +326,8 @@ class TestSlackAdapter:
             assert call_kwargs.kwargs["json"]["channel"] == "C12345"
 
     def test_send_message_no_token_returns_false(self):
-        from panda.gateway.slack import SlackAdapter
-        from panda.gateway.base import PlatformReply
+        from dragon.gateway.slack import SlackAdapter
+        from dragon.gateway.base import PlatformReply
 
         adapter = SlackAdapter(bot_token="")
         reply = PlatformReply(content="Hi", chat_id="C12345")
@@ -343,7 +343,7 @@ class TestSlackAdapter:
 
 class TestWhatsAppAdapter:
     def test_constructor_reads_env_vars(self):
-        from panda.gateway.whatsapp import WhatsAppAdapter
+        from dragon.gateway.whatsapp import WhatsAppAdapter
         with patch.dict("os.environ", {
             "WHATSAPP_CLOUD_TOKEN": "cloud-token-abc",
             "WHATSAPP_PHONE_ID": "123456789",
@@ -353,7 +353,7 @@ class TestWhatsAppAdapter:
             assert adapter.phone_number_id == "123456789"
 
     def test_verify_webhook_always_returns_true(self):
-        from panda.gateway.whatsapp import WhatsAppAdapter
+        from dragon.gateway.whatsapp import WhatsAppAdapter
         adapter = WhatsAppAdapter()
         result = asyncio.new_event_loop().run_until_complete(
             adapter.verify_webhook({}, b"{}")
@@ -361,7 +361,7 @@ class TestWhatsAppAdapter:
         assert result is True
 
     def test_parse_webhook_hub_verification(self):
-        from panda.gateway.whatsapp import WhatsAppAdapter
+        from dragon.gateway.whatsapp import WhatsAppAdapter
         adapter = WhatsAppAdapter(verify_token="my-verify-token")
         body = {
             "_method": "GET",
@@ -378,7 +378,7 @@ class TestWhatsAppAdapter:
         assert msg.content == "challenge-abc-123"
 
     def test_parse_webhook_hub_verification_wrong_token(self):
-        from panda.gateway.whatsapp import WhatsAppAdapter
+        from dragon.gateway.whatsapp import WhatsAppAdapter
         adapter = WhatsAppAdapter(verify_token="correct-token")
         body = {
             "_method": "GET",
@@ -392,7 +392,7 @@ class TestWhatsAppAdapter:
         assert msg is None
 
     def test_parse_webhook_message_entry(self):
-        from panda.gateway.whatsapp import WhatsAppAdapter
+        from dragon.gateway.whatsapp import WhatsAppAdapter
         adapter = WhatsAppAdapter()
         body = {
             "object": "whatsapp_business_account",
@@ -421,7 +421,7 @@ class TestWhatsAppAdapter:
         assert msg.message_id == "wamid.abc123"
 
     def test_parse_webhook_non_text_message_skipped(self):
-        from panda.gateway.whatsapp import WhatsAppAdapter
+        from dragon.gateway.whatsapp import WhatsAppAdapter
         adapter = WhatsAppAdapter()
         body = {
             "entry": [{
@@ -449,18 +449,18 @@ class TestWhatsAppAdapter:
 
 class TestSignalAdapter:
     def test_constructor_reads_env_with_default(self):
-        from panda.gateway.signal import SignalAdapter
+        from dragon.gateway.signal import SignalAdapter
         adapter = SignalAdapter()
         assert adapter.rest_url == "http://localhost:8080"
 
     def test_constructor_custom_rest_url(self):
-        from panda.gateway.signal import SignalAdapter
+        from dragon.gateway.signal import SignalAdapter
         with patch.dict("os.environ", {"SIGNAL_REST_URL": "http://signal-api:9000"}):
             adapter = SignalAdapter()
             assert adapter.rest_url == "http://signal-api:9000"
 
     def test_verify_webhook_always_returns_true(self):
-        from panda.gateway.signal import SignalAdapter
+        from dragon.gateway.signal import SignalAdapter
         adapter = SignalAdapter()
         result = asyncio.new_event_loop().run_until_complete(
             adapter.verify_webhook({}, b"{}")
@@ -468,7 +468,7 @@ class TestSignalAdapter:
         assert result is True
 
     def test_parse_webhook_signal_cli_format(self):
-        from panda.gateway.signal import SignalAdapter
+        from dragon.gateway.signal import SignalAdapter
         adapter = SignalAdapter()
         body = {
             "envelope": {
@@ -491,7 +491,7 @@ class TestSignalAdapter:
         assert msg.message_id == "1700000000000"
 
     def test_parse_webhook_skips_sync_message(self):
-        from panda.gateway.signal import SignalAdapter
+        from dragon.gateway.signal import SignalAdapter
         adapter = SignalAdapter()
         body = {
             "envelope": {
@@ -505,7 +505,7 @@ class TestSignalAdapter:
         assert msg is None
 
     def test_webhook_path(self):
-        from panda.gateway.signal import SignalAdapter
+        from dragon.gateway.signal import SignalAdapter
         adapter = SignalAdapter()
         assert adapter.webhook_path == "/signal/webhook"
 
@@ -516,7 +516,7 @@ class TestSignalAdapter:
 
 class TestDingTalkAdapter:
     def test_constructor_reads_env_vars(self):
-        from panda.gateway.dingtalk import DingTalkAdapter
+        from dragon.gateway.dingtalk import DingTalkAdapter
         with patch.dict("os.environ", {
             "DINGTALK_APP_KEY": "dingabc123",
             "DINGTALK_APP_SECRET": "secret-xyz",
@@ -526,7 +526,7 @@ class TestDingTalkAdapter:
             assert adapter.app_secret == "secret-xyz"
 
     def test_parse_webhook_robot_text_message(self):
-        from panda.gateway.dingtalk import DingTalkAdapter
+        from dragon.gateway.dingtalk import DingTalkAdapter
         adapter = DingTalkAdapter()
         body = {
             "msgtype": "text",
@@ -546,7 +546,7 @@ class TestDingTalkAdapter:
         assert msg.content == "你好 DingTalk"
 
     def test_parse_webhook_check_url_challenge(self):
-        from panda.gateway.dingtalk import DingTalkAdapter
+        from dragon.gateway.dingtalk import DingTalkAdapter
         adapter = DingTalkAdapter()
         body = {"msgtype": "check_url"}
         msg = asyncio.new_event_loop().run_until_complete(
@@ -559,7 +559,7 @@ class TestDingTalkAdapter:
 
     def test_verify_webhook_with_hmac_signature(self):
         import base64, hmac, hashlib
-        from panda.gateway.dingtalk import DingTalkAdapter
+        from dragon.gateway.dingtalk import DingTalkAdapter
         adapter = DingTalkAdapter(app_secret="test-secret")
         timestamp = "1700000000000"
         string_to_sign = f"{timestamp}\ntest-secret"
@@ -577,7 +577,7 @@ class TestDingTalkAdapter:
         assert result is True
 
     def test_verify_webhook_no_secret_allows_all(self):
-        from panda.gateway.dingtalk import DingTalkAdapter
+        from dragon.gateway.dingtalk import DingTalkAdapter
         adapter = DingTalkAdapter(app_secret="")
         result = asyncio.new_event_loop().run_until_complete(
             adapter.verify_webhook({}, b"{}")
@@ -591,7 +591,7 @@ class TestDingTalkAdapter:
 
 class TestWeComAdapter:
     def test_constructor_reads_env_vars(self):
-        from panda.gateway.wecom import WeComAdapter
+        from dragon.gateway.wecom import WeComAdapter
         with patch.dict("os.environ", {
             "WECOM_CORP_ID": "ww123456",
             "WECOM_CORP_SECRET": "corp-secret-xyz",
@@ -601,7 +601,7 @@ class TestWeComAdapter:
             assert adapter.corp_secret == "corp-secret-xyz"
 
     def test_verify_webhook_returns_true(self):
-        from panda.gateway.wecom import WeComAdapter
+        from dragon.gateway.wecom import WeComAdapter
         adapter = WeComAdapter()
         result = asyncio.new_event_loop().run_until_complete(
             adapter.verify_webhook({}, b"{}")
@@ -610,7 +610,7 @@ class TestWeComAdapter:
 
     def test_parse_webhook_echostr_verification(self):
         import hashlib
-        from panda.gateway.wecom import WeComAdapter
+        from dragon.gateway.wecom import WeComAdapter
         adapter = WeComAdapter(token="test-token")
         # Build a valid sha1 signature for the test token
         ts = "1700000000"
@@ -634,7 +634,7 @@ class TestWeComAdapter:
         assert msg.content == "echo-test-value"
 
     def test_parse_webhook_xml_text_message(self):
-        from panda.gateway.wecom import WeComAdapter
+        from dragon.gateway.wecom import WeComAdapter
         adapter = WeComAdapter()
         xml_body = (
             "<xml>"
@@ -658,7 +658,7 @@ class TestWeComAdapter:
         assert msg.message_id == "123456"
 
     def test_parse_webhook_non_text_xml_skipped(self):
-        from panda.gateway.wecom import WeComAdapter
+        from dragon.gateway.wecom import WeComAdapter
         adapter = WeComAdapter()
         xml_body = (
             "<xml>"
@@ -675,7 +675,7 @@ class TestWeComAdapter:
         assert msg is None
 
     def test_webhook_path(self):
-        from panda.gateway.wecom import WeComAdapter
+        from dragon.gateway.wecom import WeComAdapter
         adapter = WeComAdapter()
         assert adapter.webhook_path == "/wecom/webhook"
 
@@ -686,19 +686,19 @@ class TestWeComAdapter:
 
 class TestGenericWebhookAdapter:
     def test_constructor_with_secret_from_env(self):
-        from panda.gateway.webhook import GenericWebhookAdapter
+        from dragon.gateway.webhook import GenericWebhookAdapter
         with patch.dict("os.environ", {"WEBHOOK_SECRET": "shared-secret-123"}):
             adapter = GenericWebhookAdapter()
             assert adapter.secret == "shared-secret-123"
 
     def test_constructor_without_secret(self):
-        from panda.gateway.webhook import GenericWebhookAdapter
+        from dragon.gateway.webhook import GenericWebhookAdapter
         with patch.dict("os.environ", {}, clear=True):
             adapter = GenericWebhookAdapter()
             assert adapter.secret == ""
 
     def test_verify_webhook_no_secret_returns_true(self):
-        from panda.gateway.webhook import GenericWebhookAdapter
+        from dragon.gateway.webhook import GenericWebhookAdapter
         adapter = GenericWebhookAdapter()
         result = asyncio.new_event_loop().run_until_complete(
             adapter.verify_webhook({}, b"{}")
@@ -707,7 +707,7 @@ class TestGenericWebhookAdapter:
 
     def test_verify_webhook_matching_signature(self):
         import hmac, hashlib
-        from panda.gateway.webhook import GenericWebhookAdapter
+        from dragon.gateway.webhook import GenericWebhookAdapter
         adapter = GenericWebhookAdapter(secret="my-secret")
         body = b'{"test": true}'
         expected = hmac.new(
@@ -720,7 +720,7 @@ class TestGenericWebhookAdapter:
         assert result is True
 
     def test_verify_webhook_non_matching_signature(self):
-        from panda.gateway.webhook import GenericWebhookAdapter
+        from dragon.gateway.webhook import GenericWebhookAdapter
         adapter = GenericWebhookAdapter(secret="my-secret")
         body = b'{"test": true}'
         headers = {"x-signature": "bad-signature-value"}
@@ -730,7 +730,7 @@ class TestGenericWebhookAdapter:
         assert result is False
 
     def test_verify_webhook_no_signature_header_returns_true(self):
-        from panda.gateway.webhook import GenericWebhookAdapter
+        from dragon.gateway.webhook import GenericWebhookAdapter
         adapter = GenericWebhookAdapter(secret="my-secret")
         result = asyncio.new_event_loop().run_until_complete(
             adapter.verify_webhook({}, b"{}")
@@ -738,7 +738,7 @@ class TestGenericWebhookAdapter:
         assert result is True
 
     def test_parse_webhook_simple_json(self):
-        from panda.gateway.webhook import GenericWebhookAdapter
+        from dragon.gateway.webhook import GenericWebhookAdapter
         adapter = GenericWebhookAdapter()
         body = {
             "content": "Hello from webhook",
@@ -757,7 +757,7 @@ class TestGenericWebhookAdapter:
         assert msg.message_id == "msg-001"
 
     def test_parse_webhook_text_fallback(self):
-        from panda.gateway.webhook import GenericWebhookAdapter
+        from dragon.gateway.webhook import GenericWebhookAdapter
         adapter = GenericWebhookAdapter()
         body = {
             "text": "Fallback text content",
@@ -771,7 +771,7 @@ class TestGenericWebhookAdapter:
         assert msg.chat_id == "channel-2"
 
     def test_parse_webhook_message_fallback(self):
-        from panda.gateway.webhook import GenericWebhookAdapter
+        from dragon.gateway.webhook import GenericWebhookAdapter
         adapter = GenericWebhookAdapter()
         body = {
             "message": "Message field fallback",
@@ -784,7 +784,7 @@ class TestGenericWebhookAdapter:
         assert msg.content == "Message field fallback"
 
     def test_parse_webhook_no_content_returns_none(self):
-        from panda.gateway.webhook import GenericWebhookAdapter
+        from dragon.gateway.webhook import GenericWebhookAdapter
         adapter = GenericWebhookAdapter()
         body = {"chat_id": "channel-x", "user_id": "user-x"}
         msg = asyncio.new_event_loop().run_until_complete(
@@ -793,8 +793,8 @@ class TestGenericWebhookAdapter:
         assert msg is None
 
     def test_send_message_returns_true(self):
-        from panda.gateway.webhook import GenericWebhookAdapter
-        from panda.gateway.base import PlatformReply
+        from dragon.gateway.webhook import GenericWebhookAdapter
+        from dragon.gateway.base import PlatformReply
         adapter = GenericWebhookAdapter()
         reply = PlatformReply(content="test", chat_id="ch1")
         result = asyncio.new_event_loop().run_until_complete(
@@ -803,7 +803,7 @@ class TestGenericWebhookAdapter:
         assert result is True
 
     def test_webhook_path(self):
-        from panda.gateway.webhook import GenericWebhookAdapter
+        from dragon.gateway.webhook import GenericWebhookAdapter
         adapter = GenericWebhookAdapter()
         assert adapter.webhook_path == "/webhook/webhook"
 
@@ -814,7 +814,7 @@ class TestGenericWebhookAdapter:
 
 class TestSMSAdapter:
     def test_constructor_reads_env_vars(self):
-        from panda.gateway.sms import SMSAdapter
+        from dragon.gateway.sms import SMSAdapter
         with patch.dict("os.environ", {
             "TWILIO_ACCOUNT_SID": "AC123test",
             "TWILIO_AUTH_TOKEN": "auth-token-xyz",
@@ -826,7 +826,7 @@ class TestSMSAdapter:
             assert adapter.phone_number == "+15551234567"
 
     def test_constructor_explicit_values_override_env(self):
-        from panda.gateway.sms import SMSAdapter
+        from dragon.gateway.sms import SMSAdapter
         with patch.dict("os.environ", {
             "TWILIO_ACCOUNT_SID": "env-sid",
             "TWILIO_AUTH_TOKEN": "env-token",
@@ -842,12 +842,12 @@ class TestSMSAdapter:
             assert adapter.phone_number == "+2222"
 
     def test_webhook_path(self):
-        from panda.gateway.sms import SMSAdapter
+        from dragon.gateway.sms import SMSAdapter
         adapter = SMSAdapter()
         assert adapter.webhook_path == "/sms/webhook"
 
     def test_verify_webhook_returns_true(self):
-        from panda.gateway.sms import SMSAdapter
+        from dragon.gateway.sms import SMSAdapter
         adapter = SMSAdapter()
         result = asyncio.new_event_loop().run_until_complete(
             adapter.verify_webhook({}, b"{}")
@@ -855,7 +855,7 @@ class TestSMSAdapter:
         assert result is True
 
     def test_parse_webhook_form_encoded_body(self):
-        from panda.gateway.sms import SMSAdapter
+        from dragon.gateway.sms import SMSAdapter
         adapter = SMSAdapter()
         body = {
             "Body": "Hello from SMS",
@@ -875,7 +875,7 @@ class TestSMSAdapter:
         assert msg.message_id == "SMabc123"
 
     def test_parse_webhook_raw_bytes_fallback(self):
-        from panda.gateway.sms import SMSAdapter
+        from dragon.gateway.sms import SMSAdapter
         adapter = SMSAdapter()
         body = {
             "_raw_body": b"Body=Hello+raw&From=%2B15559999999&MessageSid=SMraw999",
@@ -890,7 +890,7 @@ class TestSMSAdapter:
         assert msg.message_id == "SMraw999"
 
     def test_parse_webhook_empty_body_returns_none(self):
-        from panda.gateway.sms import SMSAdapter
+        from dragon.gateway.sms import SMSAdapter
         adapter = SMSAdapter()
         msg = asyncio.new_event_loop().run_until_complete(
             adapter.parse_webhook({})
@@ -898,8 +898,8 @@ class TestSMSAdapter:
         assert msg is None
 
     def test_send_message_calls_twilio_api(self):
-        from panda.gateway.sms import SMSAdapter
-        from panda.gateway.base import PlatformReply
+        from dragon.gateway.sms import SMSAdapter
+        from dragon.gateway.base import PlatformReply
 
         adapter = SMSAdapter(
             account_sid="ACtest", auth_token="test-token", phone_number="+1555"
@@ -923,8 +923,8 @@ class TestSMSAdapter:
             assert call_kwargs.kwargs["data"]["Body"] == "Hi from SMS"
 
     def test_send_message_no_credentials_returns_false(self):
-        from panda.gateway.sms import SMSAdapter
-        from panda.gateway.base import PlatformReply
+        from dragon.gateway.sms import SMSAdapter
+        from dragon.gateway.base import PlatformReply
 
         adapter = SMSAdapter(account_sid="", auth_token="")
         reply = PlatformReply(content="Hi", chat_id="+15551234567")
@@ -940,7 +940,7 @@ class TestSMSAdapter:
 
 class TestEmailAdapter:
     def test_constructor_reads_env_vars(self):
-        from panda.gateway.email import EmailAdapter
+        from dragon.gateway.email import EmailAdapter
         with patch.dict("os.environ", {
             "SMTP_HOST": "smtp.example.com",
             "SMTP_PORT": "465",
@@ -954,7 +954,7 @@ class TestEmailAdapter:
             assert adapter.smtp_pass == "s3cr3t"
 
     def test_constructor_defaults(self):
-        from panda.gateway.email import EmailAdapter
+        from dragon.gateway.email import EmailAdapter
         with patch.dict("os.environ", {}, clear=True):
             adapter = EmailAdapter()
             assert adapter.smtp_host == "smtp.gmail.com"
@@ -963,12 +963,12 @@ class TestEmailAdapter:
             assert adapter.smtp_pass == ""
 
     def test_webhook_path(self):
-        from panda.gateway.email import EmailAdapter
+        from dragon.gateway.email import EmailAdapter
         adapter = EmailAdapter()
         assert adapter.webhook_path == "/email/webhook"
 
     def test_verify_webhook_returns_true(self):
-        from panda.gateway.email import EmailAdapter
+        from dragon.gateway.email import EmailAdapter
         adapter = EmailAdapter()
         result = asyncio.new_event_loop().run_until_complete(
             adapter.verify_webhook({}, b"{}")
@@ -976,7 +976,7 @@ class TestEmailAdapter:
         assert result is True
 
     def test_parse_webhook_email_dict(self):
-        from panda.gateway.email import EmailAdapter
+        from dragon.gateway.email import EmailAdapter
         adapter = EmailAdapter()
         body = {
             "from": "sender@example.com",
@@ -996,7 +996,7 @@ class TestEmailAdapter:
         assert msg.message_id == "<msg-001@example.com>"
 
     def test_parse_webhook_empty_body_returns_none(self):
-        from panda.gateway.email import EmailAdapter
+        from dragon.gateway.email import EmailAdapter
         adapter = EmailAdapter()
         msg = asyncio.new_event_loop().run_until_complete(
             adapter.parse_webhook({"from": "a@b.com"})
@@ -1004,8 +1004,8 @@ class TestEmailAdapter:
         assert msg is None
 
     def test_send_message_constructs_mime_and_uses_smtp(self):
-        from panda.gateway.email import EmailAdapter
-        from panda.gateway.base import PlatformReply
+        from dragon.gateway.email import EmailAdapter
+        from dragon.gateway.base import PlatformReply
 
         adapter = EmailAdapter(
             smtp_host="smtp.test.com", smtp_port=587,
@@ -1029,8 +1029,8 @@ class TestEmailAdapter:
             assert "Hello via email" in call_args[0][2]
 
     def test_send_message_no_credentials_returns_false(self):
-        from panda.gateway.email import EmailAdapter
-        from panda.gateway.base import PlatformReply
+        from dragon.gateway.email import EmailAdapter
+        from dragon.gateway.base import PlatformReply
 
         adapter = EmailAdapter(smtp_user="", smtp_pass="")
         reply = PlatformReply(content="Hi", chat_id="user@test.com")
@@ -1046,7 +1046,7 @@ class TestEmailAdapter:
 
 class TestMatrixAdapter:
     def test_constructor_reads_env_vars(self):
-        from panda.gateway.matrix import MatrixAdapter
+        from dragon.gateway.matrix import MatrixAdapter
         with patch.dict("os.environ", {
             "MATRIX_HOMESERVER": "https://matrix.example.com",
             "MATRIX_ACCESS_TOKEN": "syt_test123",
@@ -1056,19 +1056,19 @@ class TestMatrixAdapter:
             assert adapter.access_token == "syt_test123"
 
     def test_constructor_defaults(self):
-        from panda.gateway.matrix import MatrixAdapter
+        from dragon.gateway.matrix import MatrixAdapter
         with patch.dict("os.environ", {}, clear=True):
             adapter = MatrixAdapter()
             assert adapter.homeserver == "https://matrix.org"
             assert adapter.access_token == ""
 
     def test_webhook_path(self):
-        from panda.gateway.matrix import MatrixAdapter
+        from dragon.gateway.matrix import MatrixAdapter
         adapter = MatrixAdapter()
         assert adapter.webhook_path == "/matrix/webhook"
 
     def test_verify_webhook_returns_true(self):
-        from panda.gateway.matrix import MatrixAdapter
+        from dragon.gateway.matrix import MatrixAdapter
         adapter = MatrixAdapter()
         result = asyncio.new_event_loop().run_until_complete(
             adapter.verify_webhook({}, b"{}")
@@ -1076,7 +1076,7 @@ class TestMatrixAdapter:
         assert result is True
 
     def test_parse_webhook_m_room_message_event(self):
-        from panda.gateway.matrix import MatrixAdapter
+        from dragon.gateway.matrix import MatrixAdapter
         adapter = MatrixAdapter()
         body = {
             "room_id": "!abc123:matrix.org",
@@ -1098,7 +1098,7 @@ class TestMatrixAdapter:
         assert msg.message_id == "$event456"
 
     def test_parse_webhook_non_text_msgtype_skipped(self):
-        from panda.gateway.matrix import MatrixAdapter
+        from dragon.gateway.matrix import MatrixAdapter
         adapter = MatrixAdapter()
         body = {
             "room_id": "!abc:matrix.org",
@@ -1115,7 +1115,7 @@ class TestMatrixAdapter:
         assert msg is None
 
     def test_parse_webhook_empty_content_skipped(self):
-        from panda.gateway.matrix import MatrixAdapter
+        from dragon.gateway.matrix import MatrixAdapter
         adapter = MatrixAdapter()
         body = {
             "room_id": "!abc:matrix.org",
@@ -1128,8 +1128,8 @@ class TestMatrixAdapter:
         assert msg is None
 
     def test_send_message_calls_matrix_api(self):
-        from panda.gateway.matrix import MatrixAdapter
-        from panda.gateway.base import PlatformReply
+        from dragon.gateway.matrix import MatrixAdapter
+        from dragon.gateway.base import PlatformReply
 
         adapter = MatrixAdapter(
             homeserver="https://matrix.test.org", access_token="syt_fake"
@@ -1153,8 +1153,8 @@ class TestMatrixAdapter:
             assert call_kwargs.kwargs["json"]["body"] == "Hello Matrix"
 
     def test_send_message_no_credentials_returns_false(self):
-        from panda.gateway.matrix import MatrixAdapter
-        from panda.gateway.base import PlatformReply
+        from dragon.gateway.matrix import MatrixAdapter
+        from dragon.gateway.base import PlatformReply
 
         adapter = MatrixAdapter(access_token="")
         reply = PlatformReply(content="Hi", chat_id="!room:matrix.org")
@@ -1170,7 +1170,7 @@ class TestMatrixAdapter:
 
 class TestMattermostAdapter:
     def test_constructor_reads_env_vars(self):
-        from panda.gateway.mattermost import MattermostAdapter
+        from dragon.gateway.mattermost import MattermostAdapter
         with patch.dict("os.environ", {
             "MATTERMOST_URL": "https://mm.example.com",
             "MATTERMOST_TOKEN": "bot-token-abc",
@@ -1180,7 +1180,7 @@ class TestMattermostAdapter:
             assert adapter.bot_token == "bot-token-abc"
 
     def test_constructor_explicit_values_override_env(self):
-        from panda.gateway.mattermost import MattermostAdapter
+        from dragon.gateway.mattermost import MattermostAdapter
         with patch.dict("os.environ", {
             "MATTERMOST_URL": "env-url",
             "MATTERMOST_TOKEN": "env-token",
@@ -1193,12 +1193,12 @@ class TestMattermostAdapter:
             assert adapter.bot_token == "explicit-token"
 
     def test_webhook_path(self):
-        from panda.gateway.mattermost import MattermostAdapter
+        from dragon.gateway.mattermost import MattermostAdapter
         adapter = MattermostAdapter()
         assert adapter.webhook_path == "/mattermost/webhook"
 
     def test_verify_webhook_valid_bearer_token(self):
-        from panda.gateway.mattermost import MattermostAdapter
+        from dragon.gateway.mattermost import MattermostAdapter
         adapter = MattermostAdapter(bot_token="my-secret-token")
         headers = {"Authorization": "Bearer my-secret-token"}
         result = asyncio.new_event_loop().run_until_complete(
@@ -1207,7 +1207,7 @@ class TestMattermostAdapter:
         assert result is True
 
     def test_verify_webhook_wrong_token(self):
-        from panda.gateway.mattermost import MattermostAdapter
+        from dragon.gateway.mattermost import MattermostAdapter
         adapter = MattermostAdapter(bot_token="my-secret-token")
         headers = {"Authorization": "Bearer wrong-token"}
         result = asyncio.new_event_loop().run_until_complete(
@@ -1216,7 +1216,7 @@ class TestMattermostAdapter:
         assert result is False
 
     def test_verify_webhook_no_token_configured_allows_all(self):
-        from panda.gateway.mattermost import MattermostAdapter
+        from dragon.gateway.mattermost import MattermostAdapter
         adapter = MattermostAdapter(bot_token="")
         result = asyncio.new_event_loop().run_until_complete(
             adapter.verify_webhook({}, b"{}")
@@ -1224,14 +1224,14 @@ class TestMattermostAdapter:
         assert result is True
 
     def test_parse_webhook_slash_command(self):
-        from panda.gateway.mattermost import MattermostAdapter
+        from dragon.gateway.mattermost import MattermostAdapter
         adapter = MattermostAdapter()
         body = {
             "token": "verification-token",
             "team_id": "team123",
             "channel_id": "channel456",
             "user_id": "user789",
-            "command": "/panda",
+            "command": "/dragon",
             "text": "hello world",
             "response_url": "https://mm.example.com/hooks/abc",
         }
@@ -1245,15 +1245,15 @@ class TestMattermostAdapter:
         assert msg.content == "hello world"
 
     def test_parse_webhook_outgoing_webhook(self):
-        from panda.gateway.mattermost import MattermostAdapter
+        from dragon.gateway.mattermost import MattermostAdapter
         adapter = MattermostAdapter()
         body = {
             "token": "hook-token",
             "team_id": "team111",
             "channel_id": "channel222",
             "user_id": "user333",
-            "text": "!panda how are you",
-            "trigger_word": "!panda",
+            "text": "!dragon how are you",
+            "trigger_word": "!dragon",
         }
         msg = asyncio.new_event_loop().run_until_complete(
             adapter.parse_webhook(body)
@@ -1266,7 +1266,7 @@ class TestMattermostAdapter:
         assert msg.content == "how are you"
 
     def test_parse_webhook_no_text_returns_none(self):
-        from panda.gateway.mattermost import MattermostAdapter
+        from dragon.gateway.mattermost import MattermostAdapter
         adapter = MattermostAdapter()
         body = {"channel_id": "c1", "user_id": "u1"}
         msg = asyncio.new_event_loop().run_until_complete(
@@ -1275,8 +1275,8 @@ class TestMattermostAdapter:
         assert msg is None
 
     def test_send_message_calls_mattermost_api(self):
-        from panda.gateway.mattermost import MattermostAdapter
-        from panda.gateway.base import PlatformReply
+        from dragon.gateway.mattermost import MattermostAdapter
+        from dragon.gateway.base import PlatformReply
 
         adapter = MattermostAdapter(
             server_url="https://mm.test.com", bot_token="bot-token-123"
@@ -1300,8 +1300,8 @@ class TestMattermostAdapter:
             assert call_kwargs.kwargs["headers"]["Authorization"] == "Bearer bot-token-123"
 
     def test_send_message_no_credentials_returns_false(self):
-        from panda.gateway.mattermost import MattermostAdapter
-        from panda.gateway.base import PlatformReply
+        from dragon.gateway.mattermost import MattermostAdapter
+        from dragon.gateway.base import PlatformReply
 
         adapter = MattermostAdapter(server_url="", bot_token="")
         reply = PlatformReply(content="Hi", chat_id="channel1")
@@ -1317,7 +1317,7 @@ class TestMattermostAdapter:
 
 class TestQQBotAdapter:
     def test_constructor_reads_env_vars(self):
-        from panda.gateway.qqbot import QQBotAdapter
+        from dragon.gateway.qqbot import QQBotAdapter
         with patch.dict("os.environ", {
             "QQ_BOT_APP_ID": "102012345",
             "QQ_BOT_TOKEN": "qq-token-abc",
@@ -1327,7 +1327,7 @@ class TestQQBotAdapter:
             assert adapter.token == "qq-token-abc"
 
     def test_constructor_explicit_values_override_env(self):
-        from panda.gateway.qqbot import QQBotAdapter
+        from dragon.gateway.qqbot import QQBotAdapter
         with patch.dict("os.environ", {
             "QQ_BOT_APP_ID": "env-app-id",
             "QQ_BOT_TOKEN": "env-token",
@@ -1337,12 +1337,12 @@ class TestQQBotAdapter:
             assert adapter.token == "explicit-token"
 
     def test_webhook_path(self):
-        from panda.gateway.qqbot import QQBotAdapter
+        from dragon.gateway.qqbot import QQBotAdapter
         adapter = QQBotAdapter()
         assert adapter.webhook_path == "/qqbot/webhook"
 
     def test_verify_webhook_no_token_returns_true(self):
-        from panda.gateway.qqbot import QQBotAdapter
+        from dragon.gateway.qqbot import QQBotAdapter
         adapter = QQBotAdapter(token="")
         result = asyncio.new_event_loop().run_until_complete(
             adapter.verify_webhook({}, b"{}")
@@ -1350,7 +1350,7 @@ class TestQQBotAdapter:
         assert result is True
 
     def test_verify_webhook_no_signature_headers_returns_true(self):
-        from panda.gateway.qqbot import QQBotAdapter
+        from dragon.gateway.qqbot import QQBotAdapter
         adapter = QQBotAdapter(token="some-token")
         headers = {}
         result = asyncio.new_event_loop().run_until_complete(
@@ -1359,7 +1359,7 @@ class TestQQBotAdapter:
         assert result is True
 
     def test_parse_webhook_message_create_event(self):
-        from panda.gateway.qqbot import QQBotAdapter
+        from dragon.gateway.qqbot import QQBotAdapter
         adapter = QQBotAdapter()
         body = {
             "op": 0,
@@ -1383,7 +1383,7 @@ class TestQQBotAdapter:
         assert msg.message_id == "msg_abc123"
 
     def test_parse_webhook_group_message_uses_group_openid(self):
-        from panda.gateway.qqbot import QQBotAdapter
+        from dragon.gateway.qqbot import QQBotAdapter
         adapter = QQBotAdapter()
         body = {
             "op": 0,
@@ -1403,7 +1403,7 @@ class TestQQBotAdapter:
         assert msg.content == "Group chat message"
 
     def test_parse_webhook_verification_event(self):
-        from panda.gateway.qqbot import QQBotAdapter
+        from dragon.gateway.qqbot import QQBotAdapter
         adapter = QQBotAdapter()
         body = {
             "op": 1,
@@ -1418,7 +1418,7 @@ class TestQQBotAdapter:
         assert msg.chat_id == "__challenge__"
 
     def test_parse_webhook_non_message_create_skipped(self):
-        from panda.gateway.qqbot import QQBotAdapter
+        from dragon.gateway.qqbot import QQBotAdapter
         adapter = QQBotAdapter()
         body = {"op": 0, "t": "GUILD_CREATE", "d": {}}
         msg = asyncio.new_event_loop().run_until_complete(
@@ -1427,8 +1427,8 @@ class TestQQBotAdapter:
         assert msg is None
 
     def test_send_message_calls_qq_bot_api(self):
-        from panda.gateway.qqbot import QQBotAdapter
-        from panda.gateway.base import PlatformReply
+        from dragon.gateway.qqbot import QQBotAdapter
+        from dragon.gateway.base import PlatformReply
 
         adapter = QQBotAdapter(app_id="1020test", token="qq-token-test")
         reply = PlatformReply(content="Hello from QQ", chat_id="g12345")
@@ -1450,8 +1450,8 @@ class TestQQBotAdapter:
             assert call_kwargs.kwargs["headers"]["Authorization"] == "Bot 1020test.qq-token-test"
 
     def test_send_message_no_credentials_returns_false(self):
-        from panda.gateway.qqbot import QQBotAdapter
-        from panda.gateway.base import PlatformReply
+        from dragon.gateway.qqbot import QQBotAdapter
+        from dragon.gateway.base import PlatformReply
 
         adapter = QQBotAdapter(app_id="", token="")
         reply = PlatformReply(content="Hi", chat_id="g12345")

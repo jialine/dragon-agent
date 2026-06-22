@@ -8,7 +8,7 @@ import tempfile
 
 import pytest
 
-from panda.tool.registry import (
+from dragon.tool.registry import (
     ToolRegistry, ToolPipeline, PipelineToolStep,
     ToolDef, ToolResult, ToolOutcome, CircuitState, CircuitBreaker,
 )
@@ -699,23 +699,23 @@ class TestRegistrationEdgeCases:
 
     def test_register_with_env_requirements(self):
         import os
-        os.environ["PANDA_TEST_REQUIRED_ENV"] = "1"
+        os.environ["DRAGON_TEST_REQUIRED_ENV"] = "1"
         try:
             self.registry.register(
                 name="env-tool",
                 description="Needs env",
-                requires_env=["PANDA_TEST_REQUIRED_ENV"],
+                requires_env=["DRAGON_TEST_REQUIRED_ENV"],
             )(_echo)
             result = _sync_call(self.registry, "env-tool", {})
             assert result.success is True
         finally:
-            del os.environ["PANDA_TEST_REQUIRED_ENV"]
+            del os.environ["DRAGON_TEST_REQUIRED_ENV"]
 
     def test_register_env_requirement_missing_blocks_call(self):
         self.registry.register(
             name="env-missing-tool",
             description="Missing env",
-            requires_env=["PANDA_NONEXISTENT_ENV_VAR_XYZ"],
+            requires_env=["DRAGON_NONEXISTENT_ENV_VAR_XYZ"],
         )(_echo)
         result = _sync_call(self.registry, "env-missing-tool", {})
         assert result.success is False

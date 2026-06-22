@@ -1,4 +1,4 @@
-# Panda Agent — 多行业智能调度 Agent 需求文档
+# Dragon Agent — 多行业智能调度 Agent 需求文档
 
 > 版本: v0.1 | 日期: 2026-05-19 | 作者: ANDL Team
 > 参考架构: Hermes Agent (Nous Research)
@@ -9,43 +9,48 @@
 
 ### 1.1 一句话描述
 
-**Panda Agent = 内置小模型路由 + 多行业大模型调度 + 向量知识库 + 云端备份**
+**Dragon Agent = To-C Editor 深度绑定 AgileMind Engine (灵思引擎) SaaS API × 卖 Token**
 
-### 1.2 核心价值
+### 1.2 商业模式
 
 ```
-用户提问
+终端用户 (To C)
     │
     ▼
 ┌─────────────────────────────────────┐
-│  Panda Agent (本地/边缘)             │
+│  Dragon Agent (Editor)               │
+│  开箱即用 · 网络版/U盘版 · 即插即用    │
 │                                      │
 │  ┌─────────────────────────────┐    │
 │  │ 内置 0.8B 小模型 (Router)    │    │
 │  │  └─ 意图识别 + 行业分类       │    │
 │  └──────────┬──────────────────┘    │
 │             │ dispatch               │
+│             ▼                        │
+│  ┌─────────────────────────────┐    │
+│  │ AgileMind Engine API        │    │
+│  │ (灵思引擎 SaaS Token API)   │    │
+│  │ 122B MoE · 33 tok/s · 256K  │    │
+│  └──────────┬──────────────────┘    │
+│             │ fallback               │
 │     ┌───────┼───────┬────────┐      │
 │     ▼       ▼       ▼        ▼      │
-│  金融LLM 医疗LLM 法律LLM 通用LLM    │
+│  DeepSeek OpenAI Anthropic Gemini    │
 │                                      │
 │  ┌─────────────────────────────┐    │
 │  │ 向量知识库 (ChromaDB)        │    │
 │  │  └─ 企业知识 + 对话记忆      │    │
 │  └─────────────────────────────┘    │
-│                                      │
-│  ┌─────────────────────────────┐    │
-│  │ 云端备份 (S3/OSS)            │    │
-│  │  └─ 知识库 + 配置 + 日志     │    │
-│  └─────────────────────────────┘    │
 └─────────────────────────────────────┘
 ```
 
-**解决的问题：**
-- 一个 Agent 覆盖多个垂直行业，不用装 N 个 APP
-- 小模型本地路由，行业问题精准派发到专业大模型
-- 企业知识本地存储（向量库），敏感数据不出内网
-- 云端自动备份，换设备无缝恢复
+### 1.3 核心价值
+
+- **开箱即用**：网络版一键安装，U盘版即插即用
+- **深度绑定 AgileMind API**：默认走自家 122B MoE 推理，按 Token 计费
+- **智能路由**：0.8B 本地小模型做行业分类，精准派发
+- **云端兜底**：AgileMind 不可用时自动 fallback 到 DeepSeek/OpenAI 等
+- **成本优化**：上下文压缩减少 API Token 消耗
 
 ---
 
@@ -53,7 +58,7 @@
 
 ### 2.1 可借鉴的模块
 
-| Hermes 模块 | 路径 | Panda 借鉴 |
+| Hermes 模块 | 路径 | Dragon 借鉴 |
 |-------------|------|-----------|
 | **Provider 插件系统** | `plugins/model-providers/` | 行业大模型注册 (ProviderProfile) |
 | **Auxiliary Client** | `agent/auxiliary_client.py` | 小模型路由 → 大模型调度的 fallback 链 |
@@ -67,7 +72,7 @@
 
 ### 2.2 关键差异
 
-| 特性 | Hermes Agent | Panda Agent |
+| 特性 | Hermes Agent | Dragon Agent |
 |------|-------------|-------------|
 | 路由模型 | 配置指定主模型 | **内置 0.8B 本地小模型做路由** |
 | 模型调度 | fallback 链 (同任务多模型) | **行业分类 → 精准派发** |
@@ -80,7 +85,7 @@
 
 ## 3. 核心模块设计
 
-### 3.1 模块一：内置小模型路由器 (Panda Router)
+### 3.1 模块一：内置小模型路由器 (Dragon Router)
 
 **目标**：本地运行 0.8B 模型，做意图识别和行业分类，不依赖外部 API。
 
@@ -99,7 +104,7 @@
 # 基于 llama.cpp Python 绑定 (llama-cpp-python)
 from llama_cpp import Llama
 
-class PandaRouter:
+class DragonRouter:
     def __init__(self, model_path="models/qwen3-0.6b-q4_k_m.gguf"):
         self.llm = Llama(
             model_path=model_path,
@@ -138,14 +143,14 @@ class PandaRouter:
 - 内存占用: < 600MB（含模型）
 - 准确率: > 90%（5 行业分类）
 
-### 3.2 模块二：多行业大模型调度 (Panda Dispatch)
+### 3.2 模块二：多行业大模型调度 (Dragon Dispatch)
 
 **目标**：根据路由器结果，将请求派发到对应的行业大模型。
 
 **技术方案（参考 Hermes auxiliary_client 的 fallback 链）：**
 
 ```python
-class PandaDispatcher:
+class DragonDispatcher:
     def __init__(self, config):
         self.providers = self._load_providers(config)
     
@@ -190,49 +195,52 @@ class PandaDispatcher:
 **配置示例 (config.yaml)：**
 
 ```yaml
+provider:
+  default: "agilemind"          # 默认走 AgileMind Engine API
+  agilemind:
+    model: "qwen3.5-122b-a10b"  # 122B MoE, 256K context
+    # API Key: export AGILEMIND_API_KEY=your-key
+    # API URL:  export AGILEMIND_API_URL=https://api.agilemind.ai/v1
+
 dispatch:
-  router_model: "models/qwen3-0.6b-q4_k_m.gguf"
-  router_threads: 4
-  
   industries:
     finance:
-      provider: "deepseek"
-      model: "deepseek-chat"
-      api_key: "${FINANCE_API_KEY}"
-      base_url: "https://api.deepseek.com/v1"
+      provider: "agilemind"
+      model: "qwen3.5-122b-a10b"
       system_prompt: "你是金融行业专家，擅长风控分析、投资建议和合规审查。"
       
     medical:
-      provider: "custom"
-      model: "medical-llm-72b"
-      api_key: "${MEDICAL_API_KEY}"
-      base_url: "http://medical-llm.internal:8080/v1"
+      provider: "agilemind"
+      model: "qwen3.5-122b-a10b"
       system_prompt: "你是医疗行业专家，擅长诊断辅助、病历分析和药学咨询。"
       
     legal:
-      provider: "zai"
-      model: "glm-4"
-      api_key: "${LEGAL_API_KEY}"
+      provider: "agilemind"
+      model: "qwen3.5-122b-a10b"
       system_prompt: "你是法律行业专家，擅长合同审查、诉讼分析和法规解读。"
       
     education:
-      provider: "deepseek"
-      model: "deepseek-chat"
-      api_key: "${EDUCATION_API_KEY}"
+      provider: "agilemind"
+      model: "qwen3.5-122b-a10b"
       system_prompt: "你是教育行业专家，擅长教案设计、答疑辅导和学情评估。"
       
     general:
-      provider: "openrouter"
-      model: "openai/gpt-4o-mini"
-      api_key: "${OPENROUTER_API_KEY}"
+      provider: "agilemind"
+      model: "qwen3.5-122b-a10b"
 
-  # 超时与重试
+  # Fallback chain
+  fallback_providers:
+    - provider: "deepseek"
+      model: "deepseek-chat"
+    - provider: "openai"
+      model: "gpt-4o"
+
   timeout_secs: 60
   max_retries: 2
-  fallback_to_general: true   # 行业模型不可用时降级到 general
+  fallback_to_general: true
 ```
 
-### 3.3 模块三：向量知识库 (Panda Memory)
+### 3.3 模块三：向量知识库 (Dragon Memory)
 
 **目标**：本地嵌入向量数据库，存储企业知识和对话记忆，支持语义检索。
 
@@ -252,8 +260,8 @@ dispatch:
 import chromadb
 from chromadb.utils import embedding_functions
 
-class PandaMemory:
-    def __init__(self, persist_dir="./panda_data/vectordb"):
+class DragonMemory:
+    def __init__(self, persist_dir="./dragon_data/vectordb"):
         self.client = chromadb.PersistentClient(path=persist_dir)
         
         # 使用本地 embedding 模型 (不依赖外部 API)
@@ -314,7 +322,143 @@ class PandaMemory:
 | 10000 条对话记忆 | ~100MB |
 | **总计** | **~300MB** |
 
-### 3.4 模块四：云端备份 (Panda Backup)
+### 3.4 模块四：请求前上下文压缩 (Dragon Context Compressor)
+
+**目标**：在每次调用行业大模型前，自动提取并压缩历史对话中的相关信息，形成精简摘要注入请求，大幅减少上送的上下文 token 数，降低 API 成本。
+
+**为什么需要：**
+- 行业大模型通常按 token 计费，上下文越长成本越高
+- 多轮对话容易累积数千 token 的历史，但并非全部与当前问题相关
+- 通过语义检索 + 摘要压缩，只送入「对当前问题有用的信息」
+
+**技术方案：**
+
+```python
+class DragonContextCompressor:
+    """请求前上下文压缩器 —— 减少上送 token，降低成本"""
+    
+    def __init__(self, memory: DragonMemory, router: DragonRouter):
+        self.memory = memory          # 向量知识库 (ChromaDB)
+        self.router = router          # 路由小模型 (用于摘要生成)
+    
+    def compress(
+        self, 
+        messages: list,               # 完整对话历史
+        current_query: str,           # 当前用户问题
+        max_context_tokens: int = 512 # 压缩后上下文上限
+    ) -> dict:
+        """
+        从完整对话历史中提取与当前问题相关的信息，压缩为精简上下文。
+        返回: {
+            "summary": str,             # 精简摘要文本
+            "relevant_memories": list,  # 相关历史片段
+            "knowledge_hits": list,     # 知识库检索结果
+            "original_tokens": int,     # 压缩前 token 数
+            "compressed_tokens": int,   # 压缩后 token 数
+            "compression_ratio": float, # 压缩比
+        }
+        """
+        # Step 1: 语义检索相关历史
+        relevant_memories = self.memory.recall(current_query, top_k=5)
+        
+        # Step 2: 检索企业知识库
+        knowledge_hits = self.memory.search(
+            current_query, collection="knowledge", top_k=3
+        )
+        
+        # Step 3: 用小模型生成精简摘要
+        context_snippets = [
+            m["doc"] for m in relevant_memories
+        ] + [k["doc"] for k in knowledge_hits]
+        
+        if context_snippets:
+            summary_prompt = f"""以下是历史对话中与当前问题相关的信息：
+{chr(10).join(f'- {s[:200]}' for s in context_snippets)}
+
+当前用户问题：{current_query}
+
+请用 ≤{max_context_tokens} tokens 的中文总结上述相关信息，只保留对回答当前问题有用的内容。"""
+            
+            summary = self.router.llm.create_chat_completion(
+                messages=[{"role": "user", "content": summary_prompt}],
+                max_tokens=max_context_tokens,
+                temperature=0.1,
+            )
+            summary_text = summary['choices'][0]['message']['content']
+        else:
+            summary_text = ""
+        
+        # Step 4: 统计压缩效果
+        original = sum(len(m["content"]) for m in messages)
+        compressed = len(summary_text)
+        
+        return {
+            "summary": summary_text,
+            "relevant_memories": relevant_memories,
+            "knowledge_hits": knowledge_hits,
+            "original_tokens": original // 2,   # 粗略估算 (中文 ~2 char/token)
+            "compressed_tokens": compressed // 2,
+            "compression_ratio": original / max(compressed, 1),
+        }
+```
+
+**集成到请求流程：**
+
+```python
+# main.py — 修改后的 chat 接口
+@app.post("/v1/chat")
+async def chat(request: ChatRequest):
+    # 1. 路由分类
+    route_result = router.classify(request.messages[-1]["content"])
+    
+    # 2. 【新增】上下文压缩
+    ctx = compressor.compress(
+        messages=request.messages,
+        current_query=request.messages[-1]["content"],
+    )
+    
+    # 3. 构建精简后的 messages
+    compact_messages = []
+    if ctx["summary"]:
+        compact_messages.append({
+            "role": "system",
+            "content": f"[历史上下文摘要] {ctx['summary']}"
+        })
+    compact_messages.append(request.messages[-1])  # 只送当前问题
+    
+    # 4. 派发到行业模型（送精简后的 messages）
+    response = dispatcher.dispatch(
+        industry=route_result["industry"],
+        messages=compact_messages,
+    )
+    
+    return {
+        **response,
+        "compression": {
+            "original_tokens": ctx["original_tokens"],
+            "compressed_tokens": ctx["compressed_tokens"],
+            "ratio": f"{ctx['compression_ratio']:.1f}x",
+            "knowledge_used": [k["doc"][:80] for k in ctx["knowledge_hits"]],
+        }
+    }
+```
+
+**压缩效果预估：**
+
+| 场景 | 历史 token | 压缩后 | 压缩比 | 单次节省 |
+|------|-----------|--------|--------|---------|
+| 5 轮对话 | ~800 | ~150 | 5.3x | ~650 tokens |
+| 20 轮对话 | ~3200 | ~200 | 16x | ~3000 tokens |
+| 含长文档 | ~8000 | ~300 | 26x | ~7700 tokens |
+
+> 按 DeepSeek API 价格 ¥0.001/1K tokens 计：20 轮对话每次节省 ~¥0.003，日千次请求省 ¥3，年省 ~¥1,100。
+
+**资源占用：**
+- 路由小模型已有（0.8B），无额外显存开销
+- 摘要生成延迟 < 200ms（小模型本地推理）
+- ChromaDB 检索 < 50ms
+
+### 3.5 模块五：云端备份 (Dragon Backup)
 
 **目标**：向量知识库、配置、日志定时同步到云端 (S3/OSS/MinIO)。
 
@@ -326,7 +470,7 @@ import schedule
 import tarfile
 from pathlib import Path
 
-class PandaBackup:
+class DragonBackup:
     def __init__(self, config):
         self.s3 = boto3.client(
             's3',
@@ -335,20 +479,20 @@ class PandaBackup:
             aws_secret_access_key=config.backup.secret_key,
         )
         self.bucket = config.backup.bucket
-        self.prefix = config.backup.prefix  # e.g. "panda/backups/"
-        self.local_dir = Path("./panda_data")
+        self.prefix = config.backup.prefix  # e.g. "dragon/backups/"
+        self.local_dir = Path("./dragon_data")
     
     def backup(self):
         """打包并上传到云端"""
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        archive = f"/tmp/panda_backup_{timestamp}.tar.gz"
+        archive = f"/tmp/dragon_backup_{timestamp}.tar.gz"
         
         # 打包
         with tarfile.open(archive, "w:gz") as tar:
-            tar.add(self.local_dir, arcname="panda_data")
+            tar.add(self.local_dir, arcname="dragon_data")
         
         # 上传
-        key = f"{self.prefix}panda_backup_{timestamp}.tar.gz"
+        key = f"{self.prefix}dragon_backup_{timestamp}.tar.gz"
         self.s3.upload_file(archive, self.bucket, key)
         
         # 保留最近 7 个备份
@@ -372,7 +516,7 @@ class PandaBackup:
             backup_key = backups[0]
         
         # 下载
-        archive = "/tmp/panda_restore.tar.gz"
+        archive = "/tmp/dragon_restore.tar.gz"
         self.s3.download_file(self.bucket, backup_key, archive)
         
         # 解压
@@ -403,7 +547,7 @@ class PandaBackup:
 ## 4. 完整架构
 
 ```
-┌──────────────── Panda Agent ────────────────────┐
+┌──────────────── Dragon Agent ────────────────────┐
 │                                                   │
 │  ┌─────────────────────────────────────────┐     │
 │  │         HTTP API (FastAPI)               │     │
@@ -415,26 +559,31 @@ class PandaBackup:
 │  └──────────────┬──────────────────────────┘     │
 │                  │                                 │
 │  ┌───────────────▼──────────────────────────┐    │
-│  │          PandaRouter (0.8B)               │    │
+│  │          DragonRouter (0.8B)               │    │
 │  │  llama-cpp-python + Qwen3-0.6B-Q4_K_M    │    │
 │  │  意图识别 + 行业分类 (< 200ms)             │    │
 │  └───────────────┬──────────────────────────┘    │
 │                  │ industry                        │
 │  ┌───────────────▼──────────────────────────┐    │
-│  │        PandaDispatcher                    │    │
+│  │        DragonDispatcher                    │    │
 │  │  金融LLM │ 医疗LLM │ 法律LLM │ ...        │    │
 │  │  (OpenAI-compatible API dispatch)         │    │
 │  └───────────────┬──────────────────────────┘    │
 │                  │                                 │
 │  ┌───────────────▼──────────────────────────┐    │
-│  │         PandaMemory (ChromaDB)            │    │
+│  │     DragonContextCompressor (上下文压缩)    │    │
+│  │  语义检索历史 + 摘要压缩 → 减少 API token │    │
+│  └───────────────┬──────────────────────────┘    │
+│                  │                                 │
+│  ┌───────────────▼──────────────────────────┐    │
+│  │         DragonMemory (ChromaDB)            │    │
 │  │  ├─ enterprise_knowledge                 │    │
 │  │  └─ conversation_memories                │    │
 │  │  embedding: bge-small-zh-v1.5            │    │
 │  └──────────────────────────────────────────┘    │
 │                                                   │
 │  ┌──────────────────────────────────────────┐    │
-│  │       PandaBackup (S3/OSS/MinIO)          │    │
+│  │       DragonBackup (S3/OSS/MinIO)          │    │
 │  │  └─ 定时备份 + 按需恢复                   │    │
 │  └──────────────────────────────────────────┘    │
 └───────────────────────────────────────────────────┘
@@ -445,13 +594,13 @@ class PandaBackup:
 ## 5. 项目结构
 
 ```
-panda-agent/
+dragon-agent/
 ├── pyproject.toml                    # Python 项目配置
 ├── README.md
 ├── config.yaml.example               # 配置模板
 ├── .env.example                      # API Key 模板
 │
-├── panda/
+├── dragon/
 │   ├── __init__.py
 │   ├── main.py                       # FastAPI 入口
 │   ├── config.py                     # 配置加载
@@ -465,6 +614,11 @@ panda-agent/
 │   │   ├── __init__.py
 │   │   ├── dispatcher.py             # 大模型调度器
 │   │   └── providers.py              # 行业模型注册
+│   │
+│   ├── compressor/
+│   │   ├── __init__.py
+│   │   ├── compressor.py             # 上下文压缩器 (语义检索 + 摘要)
+│   │   └── estimator.py              # Token 估算 & 压缩统计
 │   │
 │   ├── memory/
 │   │   ├── __init__.py
@@ -489,7 +643,7 @@ panda-agent/
 ├── models/                            # 本地模型文件
 │   └── qwen3-0.6b-q4_k_m.gguf       # 路由小模型 (~400MB)
 │
-├── panda_data/                        # 持久化数据 (gitignore)
+├── dragon_data/                        # 持久化数据 (gitignore)
 │   ├── vectordb/                     # ChromaDB 数据
 │   ├── config.yaml                   # 运行时配置
 │   └── logs/
@@ -567,16 +721,16 @@ POST /v1/restore         # 从云端恢复
 ```yaml
 # docker-compose.yml
 services:
-  panda-agent:
+  dragon-agent:
     build: .
     ports:
       - "8000:8000"
     volumes:
       - ./models:/app/models
-      - ./panda_data:/app/panda_data
+      - ./dragon_data:/app/dragon_data
       - ./config.yaml:/app/config.yaml
     environment:
-      - PANDA_CONFIG=/app/config.yaml
+      - DRAGON_CONFIG=/app/config.yaml
     deploy:
       resources:
         limits:
@@ -588,7 +742,7 @@ services:
 
 ```
                     ┌──────────────┐
-                    │  Panda Agent │  (2C/2G)
+                    │  Dragon Agent │  (2C/2G)
                     │  :8000       │
                     └──┬───┬───┬──┘
                        │   │   │
@@ -610,10 +764,11 @@ services:
 |------|------|--------|
 | **P0: 路由 + 调度** | 2 周 | 0.8B 模型集成、行业分类 prompt、多模型 dispatch |
 | **P1: 向量知识库** | 2 周 | ChromaDB 集成、bge embedding、语义检索 API |
-| **P2: 云端备份** | 1 周 | S3/OSS 备份、定时调度、一键恢复 |
-| **P3: 行业知识** | 1 周 | 金融/医疗/法律/教育 SKILL.md |
-| **P4: Web UI** | 2 周 | 管理面板、对话界面、知识库管理 |
-| **P5: 生产加固** | 2 周 | 多平台接入、监控、压测、文档 |
+| **P2: 上下文压缩** | 1 周 | 语义检索历史 + 摘要生成、token 统计、集成到 chat 流程 |
+| **P3: 云端备份** | 1 周 | S3/OSS 备份、定时调度、一键恢复 |
+| **P4: 行业知识** | 1 周 | 金融/医疗/法律/教育 SKILL.md |
+| **P5: Web UI** | 2 周 | 管理面板、对话界面、知识库管理 |
+| **P6: 生产加固** | 2 周 | 多平台接入、监控、压测、文档 |
 
 ---
 
@@ -622,6 +777,7 @@ services:
 | 风险 | 对策 |
 |------|------|
 | 0.8B 模型分类不准 | 支持人工修正 → 微调（LoRA） |
+| 上下文摘要偏差 | 保留原始摘要文本供审计 + 摘要置信度评分 |
 | 向量库内存增长 | ChromaDB 持久化 + 定期清理过期记忆 |
 | 云端备份失败 | 本地保留最近 7 个备份 + 重试机制 |
 | 行业模型不可用 | 自动降级到 general 兜底模型 |
@@ -632,7 +788,7 @@ services:
 ## 10. 与 Hermes Agent 的关系
 
 ```
-Hermes Agent                      Panda Agent
+Hermes Agent                      Dragon Agent
 ─────────────                     ─────────────
 通用 AI Agent 平台                垂直行业智能调度 Agent
                                                                   
@@ -642,6 +798,7 @@ Hermes Agent                      Panda Agent
 ✅ Auxiliary Client        ──→    ✅ 小模型路由 + 大模型调度
 ✅ Skill System            ──→    ✅ 行业 SKILL.md (复用格式)
 ✅ config.yaml             ──→    ✅ 统一配置 (复用格式)
+✅ Context Compaction      ──→    ✅ 上下文压缩 (复用思路)
 ❌ 云端备份                 ──→    ✅ S3/OSS 内置备份 (新增)
 ❌ 本地小模型               ──→    ✅ llama-cpp-python (新增)
 ```

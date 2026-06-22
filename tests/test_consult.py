@@ -1,5 +1,5 @@
 """
-Unit tests for panda.consult — Expert Consultation Module.
+Unit tests for dragon.consult — Expert Consultation Module.
 
 Covers pure functions and data classes only (no async consult flow):
   - DIFFICULTY_SUCCESS_TABLE structure and all bands
@@ -18,7 +18,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from panda.consult import (
+from dragon.consult import (
     DIFFICULTY_SUCCESS_TABLE,
     ELITE_PANEL,
     ConsultationAssessment,
@@ -28,8 +28,8 @@ from panda.consult import (
     get_difficulty_band,
     should_consult,
 )
-from panda.explorer import ExplorationResult
-from panda.jury import JuryVerdict, VoteDecision
+from dragon.explorer import ExplorationResult
+from dragon.jury import JuryVerdict, VoteDecision
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -879,14 +879,14 @@ class TestExpertConsultationConstructor:
 
     def test_constructor_accepts_custom_cost_optimizer(self):
         """Custom cost optimizer is used when provided."""
-        from panda.utils.cost import CostOptimizer
+        from dragon.utils.cost import CostOptimizer
         custom_cost = CostOptimizer(daily_budget=10.0)
         consult = ExpertConsultation(MagicMock(), MagicMock(), cost_optimizer=custom_cost)
         assert consult._cost is custom_cost
 
     def test_constructor_accepts_custom_guard(self):
         """Custom guard is used when provided."""
-        from panda.guard import AntiLoopGuard
+        from dragon.guard import AntiLoopGuard
         custom_guard = AntiLoopGuard()
         consult = ExpertConsultation(MagicMock(), MagicMock(), guard=custom_guard)
         assert consult._guard is custom_guard

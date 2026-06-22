@@ -1,14 +1,14 @@
 """
 Unit tests for router dataclasses — RouteResult, RouterMetrics.
-Also tests PandaRouter construction/status and JSON parsing helpers.
+Also tests DragonRouter construction/status and JSON parsing helpers.
 
 Does NOT require a GGUF model.
 """
 import json
 import pytest
 
-from panda.router import (
-    PandaRouter,
+from dragon.router import (
+    DragonRouter,
     RouteResult,
     RouterMetrics,
     RouterStatus,
@@ -319,22 +319,22 @@ class TestSanitiseParsed:
 
 
 # ---------------------------------------------------------------------------
-# PandaRouter construction and status (no model required)
+# DragonRouter construction and status (no model required)
 # ---------------------------------------------------------------------------
 
 
-class TestPandaRouterConstruction:
-    """Tests PandaRouter creation without needing a real GGUF model."""
+class TestDragonRouterConstruction:
+    """Tests DragonRouter creation without needing a real GGUF model."""
 
     def test_construct_with_path(self):
-        router = PandaRouter("/tmp/nonexistent_model.gguf")
+        router = DragonRouter("/tmp/nonexistent_model.gguf")
         assert router._model_path == __import__("pathlib").Path("/tmp/nonexistent_model.gguf").resolve()
         assert router._n_ctx == 2048
         assert router._n_threads == 4
         assert router._n_gpu_layers == 0
 
     def test_construct_with_custom_params(self):
-        router = PandaRouter(
+        router = DragonRouter(
             "/tmp/test.gguf",
             n_ctx=4096,
             n_threads=8,
@@ -347,24 +347,24 @@ class TestPandaRouterConstruction:
         assert router._verbose is True
 
     def test_construct_default_values(self):
-        router = PandaRouter("/tmp/test.gguf")
+        router = DragonRouter("/tmp/test.gguf")
         assert router._n_ctx == 2048
         assert router._n_threads == 4
         assert router._n_gpu_layers == 0
         assert router._verbose is False
 
     def test_initial_status_is_loading(self):
-        router = PandaRouter("/tmp/test.gguf")
+        router = DragonRouter("/tmp/test.gguf")
         assert router.status == RouterStatus.LOADING
 
     def test_status_property_thread_safe(self):
-        router = PandaRouter("/tmp/test.gguf")
+        router = DragonRouter("/tmp/test.gguf")
         # Access status multiple times — should be stable
         for _ in range(10):
             assert router.status == RouterStatus.LOADING
 
     def test_metrics_snapshot_initial(self):
-        router = PandaRouter("/tmp/test.gguf")
+        router = DragonRouter("/tmp/test.gguf")
         snap = router.metrics
         assert isinstance(snap, RouterMetrics)
         assert snap.total_calls == 0
@@ -372,22 +372,22 @@ class TestPandaRouterConstruction:
         assert snap.total_latency_ms == 0.0
 
     def test_repr_contains_info(self):
-        router = PandaRouter("/tmp/test.gguf")
+        router = DragonRouter("/tmp/test.gguf")
         r = repr(router)
-        assert "PandaRouter" in r or "traces" in r or "PandaRouter" not in r  # smoke test
+        assert "DragonRouter" in r or "traces" in r or "DragonRouter" not in r  # smoke test
 
 
 # ---------------------------------------------------------------------------
-# PandaRouter classify behaviour (fast-path, no model needed)
+# DragonRouter classify behaviour (fast-path, no model needed)
 # ---------------------------------------------------------------------------
 
 
-class TestPandaRouterClassify:
+class TestDragonRouterClassify:
     """Tests classify() fast paths that don't need a loaded model."""
 
     @pytest.mark.asyncio
     async def test_classify_loading_returns_warming(self):
-        router = PandaRouter("/tmp/test.gguf")
+        router = DragonRouter("/tmp/test.gguf")
         result = await router.classify("什么是K线图？")
         assert result.fallback is True
         assert result.industry == "general"
@@ -396,28 +396,28 @@ class TestPandaRouterClassify:
 
     @pytest.mark.asyncio
     async def test_classify_loading_chinese_query(self):
-        router = PandaRouter("/tmp/test.gguf")
+        router = DragonRouter("/tmp/test.gguf")
         result = await router.classify("请帮我分析一下最近的股票走势")
         assert result.fallback is True
         assert result.industry == "general"
 
     @pytest.mark.asyncio
     async def test_classify_loading_empty_query(self):
-        router = PandaRouter("/tmp/test.gguf")
+        router = DragonRouter("/tmp/test.gguf")
         result = await router.classify("")
         assert result.fallback is True
         assert result.industry == "general"
 
     @pytest.mark.asyncio
     async def test_classify_loading_long_query(self):
-        router = PandaRouter("/tmp/test.gguf")
+        router = DragonRouter("/tmp/test.gguf")
         result = await router.classify("长查询" * 100)
         assert result.fallback is True
         assert result.industry == "general"
 
     @pytest.mark.asyncio
     async def test_classify_loading_english_query(self):
-        router = PandaRouter("/tmp/test.gguf")
+        router = DragonRouter("/tmp/test.gguf")
         result = await router.classify("What is the capital of France?")
         assert result.fallback is True
         assert result.industry == "general"
@@ -425,7 +425,7 @@ class TestPandaRouterClassify:
     @pytest.mark.asyncio
     async def test_classify_metrics_not_updated_for_warming(self):
         """Warming results should NOT increment total_calls (fast return before metrics)."""
-        router = PandaRouter("/tmp/test.gguf")
+        router = DragonRouter("/tmp/test.gguf")
         _ = await router.classify("test")
         snap = router.metrics
         assert snap.total_calls == 0

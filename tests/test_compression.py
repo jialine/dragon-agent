@@ -1,8 +1,8 @@
 """
-Unit tests for panda.compression — token estimation, CompressionConfig, ContextCompressor.
+Unit tests for dragon.compression — token estimation, CompressionConfig, ContextCompressor.
 """
 import pytest
-from panda.compression import (
+from dragon.compression import (
     estimate_tokens,
     estimate_message_tokens,
     CompressionConfig,

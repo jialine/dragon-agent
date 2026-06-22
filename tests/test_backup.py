@@ -1,7 +1,7 @@
 """
-Tests for panda.backup module — BackupManager, BackupManifest, helpers, and BackupConfig.
+Tests for dragon.backup module — BackupManager, BackupManifest, helpers, and BackupConfig.
 
-Covers: BackupConfig defaults, PandaBackup constructor, create/restore/list/cleanup
+Covers: BackupConfig defaults, DragonBackup constructor, create/restore/list/cleanup
 backups, scheduler, locks, and from_config factory.
 """
 from __future__ import annotations
@@ -17,15 +17,15 @@ from unittest.mock import MagicMock, patch, PropertyMock
 
 import pytest
 
-from panda.config import BackupConfig
-from panda.backup import (
+from dragon.config import BackupConfig
+from dragon.backup import (
     BackupError,
     BackupLockError,
     BackupUploadError,
     BackupRestoreError,
     BackupNotFoundError,
     BackupManifest,
-    PandaBackup,
+    DragonBackup,
     _sha256_file,
     _safe_remove,
 )
@@ -33,14 +33,14 @@ from panda.backup import (
 
 # ── Helpers ────────────────────────────────────────────────────────────
 
-def _make_backup_instance(tmpdir: str, **kwargs) -> PandaBackup:
-    """Create a PandaBackup pointed at a temp data dir."""
+def _make_backup_instance(tmpdir: str, **kwargs) -> DragonBackup:
+    """Create a DragonBackup pointed at a temp data dir."""
     defaults = dict(
-        data_dir=os.path.join(tmpdir, "panda_data"),
+        data_dir=os.path.join(tmpdir, "dragon_data"),
         config_path=os.path.join(tmpdir, "config.yaml"),
     )
     defaults.update(kwargs)
-    return PandaBackup(**defaults)
+    return DragonBackup(**defaults)
 
 
 def _create_fake_tar_gz(path: str, content: bytes = b"fake backup data"):
@@ -53,7 +53,7 @@ def _create_fake_tar_gz(path: str, content: bytes = b"fake backup data"):
             import json
             with open(manifest_path, "w") as f:
                 json.dump({
-                    "backup_id": "panda_backup_20260520_120000",
+                    "backup_id": "dragon_backup_20260520_120000",
                     "timestamp": "2026-05-20T12:00:00+00:00",
                     "size_bytes": len(content),
                     "checksum": "",
@@ -74,7 +74,7 @@ def _create_fake_tar_gz(path: str, content: bytes = b"fake backup data"):
 # ── BackupConfig ───────────────────────────────────────────────────────
 
 class TestBackupConfigDefaults:
-    """Test BackupConfig dataclass defaults from panda.config."""
+    """Test BackupConfig dataclass defaults from dragon.config."""
 
     def test_default_endpoint(self):
         cfg = BackupConfig()
@@ -82,11 +82,11 @@ class TestBackupConfigDefaults:
 
     def test_default_bucket(self):
         cfg = BackupConfig()
-        assert cfg.bucket == "panda-backups"
+        assert cfg.bucket == "dragon-backups"
 
     def test_default_prefix(self):
         cfg = BackupConfig()
-        assert cfg.prefix == "panda/backups/"
+        assert cfg.prefix == "dragon/backups/"
 
     def test_default_interval_hours(self):
         cfg = BackupConfig()
@@ -98,11 +98,11 @@ class TestBackupConfigDefaults:
 
     def test_default_access_key_env(self):
         cfg = BackupConfig()
-        assert cfg.access_key_env == "PANDA_BACKUP_ACCESS_KEY"
+        assert cfg.access_key_env == "DRAGON_BACKUP_ACCESS_KEY"
 
     def test_default_secret_key_env(self):
         cfg = BackupConfig()
-        assert cfg.secret_key_env == "PANDA_BACKUP_SECRET_KEY"
+        assert cfg.secret_key_env == "DRAGON_BACKUP_SECRET_KEY"
 
     def test_custom_values(self):
         cfg = BackupConfig(
@@ -130,13 +130,13 @@ class TestBackupManifest:
 
     def test_create_manifest(self):
         m = BackupManifest(
-            backup_id="panda_backup_20260520_120000",
+            backup_id="dragon_backup_20260520_120000",
             timestamp="2026-05-20T12:00:00+00:00",
             size_bytes=12345,
             checksum="abc123def456",
             collections=["default", "custom"],
         )
-        assert m.backup_id == "panda_backup_20260520_120000"
+        assert m.backup_id == "dragon_backup_20260520_120000"
         assert m.timestamp == "2026-05-20T12:00:00+00:00"
         assert m.size_bytes == 12345
         assert m.checksum == "abc123def456"
@@ -253,10 +253,10 @@ class TestHelperFunctions:
         _safe_remove("")
 
 
-# ── PandaBackup Constructor ────────────────────────────────────────────
+# ── DragonBackup Constructor ────────────────────────────────────────────
 
-class TestPandaBackupConstructor:
-    """Test PandaBackup initialization and attributes."""
+class TestDragonBackupConstructor:
+    """Test DragonBackup initialization and attributes."""
 
     def test_default_constructor(self):
         tmpdir = tempfile.mkdtemp()
@@ -265,8 +265,8 @@ class TestPandaBackupConstructor:
             assert backup.endpoint == ""
             assert backup.access_key == ""
             assert backup.secret_key == ""
-            assert backup.bucket == "panda-backups"
-            assert backup.prefix == "panda/backups/"
+            assert backup.bucket == "dragon-backups"
+            assert backup.prefix == "dragon/backups/"
             assert backup.interval_hours == 6
             assert backup.keep_last == 7
         finally:
@@ -311,7 +311,7 @@ class TestPandaBackupConstructor:
         try:
             backup = _make_backup_instance(tmpdir)
             assert isinstance(backup.data_dir, Path)
-            assert backup.data_dir.name == "panda_data"
+            assert backup.data_dir.name == "dragon_data"
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -351,7 +351,7 @@ class TestBackupOperations:
     def teardown_method(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    @patch("panda.backup.PandaBackup.client", new_callable=PropertyMock)
+    @patch("dragon.backup.DragonBackup.client", new_callable=PropertyMock)
     def test_create_backup_creates_tar_gz_and_uploads(self, mock_client_prop):
         """backup() creates archive, computes checksum, uploads to S3."""
         mock_client = MagicMock()
@@ -360,7 +360,7 @@ class TestBackupOperations:
         manifest = self.backup.backup()
 
         assert manifest is not None
-        assert manifest.backup_id.startswith("panda_backup_")
+        assert manifest.backup_id.startswith("dragon_backup_")
         assert manifest.size_bytes > 0
         assert manifest.checksum != ""
         assert len(manifest.checksum) == 64  # SHA256 hex
@@ -368,22 +368,22 @@ class TestBackupOperations:
         # Verify upload was called
         mock_client.upload_file.assert_called_once()
         call_args = mock_client.upload_file.call_args
-        assert call_args[0][1] == "panda-backups"  # bucket
-        assert call_args[0][2].startswith("panda/backups/panda_backup_")
+        assert call_args[0][1] == "dragon-backups"  # bucket
+        assert call_args[0][2].startswith("dragon/backups/dragon_backup_")
         assert call_args[0][2].endswith(".tar.gz")
 
-    @patch("panda.backup.PandaBackup.client", new_callable=PropertyMock)
+    @patch("dragon.backup.DragonBackup.client", new_callable=PropertyMock)
     def test_list_backups_returns_list(self, mock_client_prop):
         """list_backups returns BackupManifest list from S3 listing."""
         mock_client = MagicMock()
         mock_client.list_objects_v2.return_value = {
             "Contents": [
                 {
-                    "Key": "panda/backups/panda_backup_20260520_120000.tar.gz",
+                    "Key": "dragon/backups/dragon_backup_20260520_120000.tar.gz",
                     "Size": 1024,
                 },
                 {
-                    "Key": "panda/backups/panda_backup_20260519_110000.tar.gz",
+                    "Key": "dragon/backups/dragon_backup_20260519_110000.tar.gz",
                     "Size": 2048,
                 },
             ]
@@ -393,12 +393,12 @@ class TestBackupOperations:
         backups = self.backup.list_backups()
 
         assert len(backups) == 2
-        assert backups[0].backup_id == "panda_backup_20260520_120000"
-        assert backups[1].backup_id == "panda_backup_20260519_110000"
+        assert backups[0].backup_id == "dragon_backup_20260520_120000"
+        assert backups[1].backup_id == "dragon_backup_20260519_110000"
         # Newest first
         assert backups[0].timestamp > backups[1].timestamp
 
-    @patch("panda.backup.PandaBackup.client", new_callable=PropertyMock)
+    @patch("dragon.backup.DragonBackup.client", new_callable=PropertyMock)
     def test_list_backups_empty(self, mock_client_prop):
         """list_backups returns empty list when no backups exist."""
         mock_client = MagicMock()
@@ -408,7 +408,7 @@ class TestBackupOperations:
         backups = self.backup.list_backups()
         assert backups == []
 
-    @patch("panda.backup.PandaBackup.client", new_callable=PropertyMock)
+    @patch("dragon.backup.DragonBackup.client", new_callable=PropertyMock)
     def test_list_backups_handles_error(self, mock_client_prop):
         """list_backups returns empty list on exception."""
         mock_client = MagicMock()
@@ -418,7 +418,7 @@ class TestBackupOperations:
         backups = self.backup.list_backups()
         assert backups == []
 
-    @patch("panda.backup.PandaBackup.client", new_callable=PropertyMock)
+    @patch("dragon.backup.DragonBackup.client", new_callable=PropertyMock)
     def test_restore_backup(self, mock_client_prop):
         """restore() downloads, verifies, and extracts backup."""
         mock_client = MagicMock()
@@ -438,7 +438,7 @@ class TestBackupOperations:
         mock_client.list_objects_v2.return_value = {
             "Contents": [
                 {
-                    "Key": "panda/backups/panda_backup_20260520_120000.tar.gz",
+                    "Key": "dragon/backups/dragon_backup_20260520_120000.tar.gz",
                     "Size": os.path.getsize(archive_path),
                 }
             ]
@@ -447,14 +447,14 @@ class TestBackupOperations:
         manifest = self.backup.restore()
 
         assert manifest is not None
-        assert manifest.backup_id == "panda_backup_20260520_120000"
+        assert manifest.backup_id == "dragon_backup_20260520_120000"
 
         # Verify restoration directory exists
         restored_dir = self.backup.data_dir / "restored"
         assert restored_dir.exists()
         assert (restored_dir / "vectordb").exists()
 
-    @patch("panda.backup.PandaBackup.client", new_callable=PropertyMock)
+    @patch("dragon.backup.DragonBackup.client", new_callable=PropertyMock)
     def test_restore_specific_backup_id(self, mock_client_prop):
         """restore(backup_id='specific') downloads that specific backup."""
         mock_client = MagicMock()
@@ -464,15 +464,15 @@ class TestBackupOperations:
         _create_fake_tar_gz(archive_path)
 
         def fake_download(bucket, key, dest):
-            assert "panda_backup_20260519_110000" in key
+            assert "dragon_backup_20260519_110000" in key
             shutil.copy2(archive_path, dest)
 
         mock_client.download_file.side_effect = fake_download
 
-        manifest = self.backup.restore(backup_id="panda_backup_20260519_110000")
+        manifest = self.backup.restore(backup_id="dragon_backup_20260519_110000")
         assert manifest is not None
 
-    @patch("panda.backup.PandaBackup.client", new_callable=PropertyMock)
+    @patch("dragon.backup.DragonBackup.client", new_callable=PropertyMock)
     def test_restore_no_backups_raises(self, mock_client_prop):
         """restore() raises BackupNotFoundError when no backups exist."""
         mock_client = MagicMock()
@@ -482,20 +482,20 @@ class TestBackupOperations:
         with pytest.raises(BackupNotFoundError, match="No backups found"):
             self.backup.restore()
 
-    @patch("panda.backup.PandaBackup.client", new_callable=PropertyMock)
+    @patch("dragon.backup.DragonBackup.client", new_callable=PropertyMock)
     def test_delete_backup(self, mock_client_prop):
         """delete_backup deletes from S3."""
         mock_client = MagicMock()
         mock_client_prop.return_value = mock_client
 
-        result = self.backup.delete_backup("panda_backup_20260520_120000")
+        result = self.backup.delete_backup("dragon_backup_20260520_120000")
         assert result is True
         mock_client.delete_object.assert_called_once_with(
-            Bucket="panda-backups",
-            Key="panda/backups/panda_backup_20260520_120000.tar.gz",
+            Bucket="dragon-backups",
+            Key="dragon/backups/dragon_backup_20260520_120000.tar.gz",
         )
 
-    @patch("panda.backup.PandaBackup.client", new_callable=PropertyMock)
+    @patch("dragon.backup.DragonBackup.client", new_callable=PropertyMock)
     def test_delete_backup_error(self, mock_client_prop):
         """delete_backup returns False on error."""
         mock_client = MagicMock()
@@ -505,13 +505,13 @@ class TestBackupOperations:
         result = self.backup.delete_backup("some_id")
         assert result is False
 
-    @patch("panda.backup.PandaBackup.client", new_callable=PropertyMock)
+    @patch("dragon.backup.DragonBackup.client", new_callable=PropertyMock)
     def test_cleanup_old_backups(self, mock_client_prop):
         """_cleanup_old removes backups beyond keep_last."""
         mock_client = MagicMock()
         mock_client.list_objects_v2.return_value = {
             "Contents": [
-                {"Key": f"panda/backups/panda_backup_20260520_12000{i}.tar.gz", "Size": 100}
+                {"Key": f"dragon/backups/dragon_backup_20260520_12000{i}.tar.gz", "Size": 100}
                 for i in range(10)  # 10 backups, keep_last=7 → delete 3 oldest
             ]
         }
@@ -526,23 +526,23 @@ class TestBackupOperations:
         # Should have called delete_object 3 times (for the 3 oldest)
         assert mock_client.delete_object.call_count == 3
 
-    @patch("panda.backup.PandaBackup.client", new_callable=PropertyMock)
+    @patch("dragon.backup.DragonBackup.client", new_callable=PropertyMock)
     def test_get_latest_backup(self, mock_client_prop):
         """get_latest_backup returns the most recent backup."""
         mock_client = MagicMock()
         mock_client.list_objects_v2.return_value = {
             "Contents": [
-                {"Key": "panda/backups/panda_backup_20260520_120000.tar.gz", "Size": 100},
-                {"Key": "panda/backups/panda_backup_20260519_110000.tar.gz", "Size": 200},
+                {"Key": "dragon/backups/dragon_backup_20260520_120000.tar.gz", "Size": 100},
+                {"Key": "dragon/backups/dragon_backup_20260519_110000.tar.gz", "Size": 200},
             ]
         }
         mock_client_prop.return_value = mock_client
 
         latest = self.backup.get_latest_backup()
         assert latest is not None
-        assert latest.backup_id == "panda_backup_20260520_120000"
+        assert latest.backup_id == "dragon_backup_20260520_120000"
 
-    @patch("panda.backup.PandaBackup.client", new_callable=PropertyMock)
+    @patch("dragon.backup.DragonBackup.client", new_callable=PropertyMock)
     def test_get_latest_backup_empty(self, mock_client_prop):
         """get_latest_backup returns None when no backups."""
         mock_client = MagicMock()
@@ -614,7 +614,7 @@ class TestBackupScheduler:
         self.backup.stop_scheduler(timeout=1.0)
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    @patch("panda.backup.PandaBackup.backup")
+    @patch("dragon.backup.DragonBackup.backup")
     def test_start_scheduler_starts_thread(self, mock_backup):
         """start_scheduler creates and starts a background thread."""
         # Make backup do nothing
@@ -649,7 +649,7 @@ class TestBackupScheduler:
 # ── from_config Factory ────────────────────────────────────────────────
 
 class TestFromConfig:
-    """Test PandaBackup.from_config factory method."""
+    """Test DragonBackup.from_config factory method."""
 
     def test_from_config(self):
         cfg = BackupConfig(
@@ -666,10 +666,10 @@ class TestFromConfig:
             "MY_AK_ENV": "test-access-key",
             "MY_SK_ENV": "test-secret-key",
         }):
-            from panda.config import PandaConfig
-            # Create a minimal PandaConfig with our BackupConfig
-            panda_cfg = PandaConfig(backup=cfg)
-            backup = PandaBackup.from_config(panda_cfg)
+            from dragon.config import DragonConfig
+            # Create a minimal DragonConfig with our BackupConfig
+            dragon_cfg = DragonConfig(backup=cfg)
+            backup = DragonBackup.from_config(dragon_cfg)
 
         assert backup.endpoint == "https://oss.example.com"
         assert backup.access_key == "test-access-key"
@@ -686,9 +686,9 @@ class TestFromConfig:
             secret_key_env="ALSO_NONEXISTENT",
         )
         with patch.dict(os.environ, {}, clear=True):
-            from panda.config import PandaConfig
-            panda_cfg = PandaConfig(backup=cfg)
-            backup = PandaBackup.from_config(panda_cfg)
+            from dragon.config import DragonConfig
+            dragon_cfg = DragonConfig(backup=cfg)
+            backup = DragonBackup.from_config(dragon_cfg)
 
         assert backup.access_key == ""
         assert backup.secret_key == ""

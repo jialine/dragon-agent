@@ -5,7 +5,7 @@ import os
 import tempfile
 
 import pytest
-from panda.session import SessionStore, Session, SessionMessage
+from dragon.session import SessionStore, Session, SessionMessage
 
 
 class TestSessionStore:

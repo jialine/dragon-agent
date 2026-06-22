@@ -1,5 +1,5 @@
 """
-FastAPI endpoint tests for Panda Agent main.py.
+FastAPI endpoint tests for Dragon Agent main.py.
 
 Uses FastAPI's TestClient with all external dependencies mocked —
 no actual LLM calls, no GGUF model loading, no network access.
@@ -27,9 +27,9 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 
-import panda.main as main_module
-from panda.router import RouteResult, RouterMetrics, RouterStatus
-from panda.consult import ConsultationAssessment
+import dragon.main as main_module
+from dragon.router import RouteResult, RouterMetrics, RouterStatus
+from dragon.consult import ConsultationAssessment
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -82,7 +82,7 @@ def mock_consult_assessment_low():
 
 @pytest.fixture
 def mock_router(mock_route_result):
-    """Mock PandaRouter — returns a pre-built RouteResult."""
+    """Mock DragonRouter — returns a pre-built RouteResult."""
     router = MagicMock()
     router.classify = AsyncMock(return_value=mock_route_result)
     router.status = RouterStatus.LOADED
@@ -95,13 +95,13 @@ def mock_router(mock_route_result):
 
 @pytest.fixture
 def mock_dispatcher():
-    """Mock PandaDispatcher with dispatch and dispatch_stream."""
+    """Mock DragonDispatcher with dispatch and dispatch_stream."""
     dispatcher = MagicMock()
     dispatcher.dispatch = AsyncMock(
         return_value=MagicMock(
             model="qwen3-8b",
             provider="local",
-            content="Hello! This is a test response from Panda.",
+            content="Hello! This is a test response from Dragon.",
             usage={"prompt_tokens": 42, "completion_tokens": 18, "total_tokens": 60},
         )
     )
@@ -155,7 +155,7 @@ def client(mock_router, mock_dispatcher, mock_consult_engine):
     original_lifespan = main_module.app.router.lifespan_context
     main_module.app.router.lifespan_context = noop_lifespan
 
-    # ── 2. Inject mock globals into panda.main ──
+    # ── 2. Inject mock globals into dragon.main ──
     main_module.router = mock_router
     main_module.dispatcher = mock_dispatcher
     mock_guard = MagicMock()
@@ -719,11 +719,11 @@ class TestDocsEndpoints:
         data = response.json()
         assert data["openapi"].startswith("3.")
 
-    def test_openapi_title_is_panda_agent(self, client):
-        """OpenAPI info title is 'Panda Agent'."""
+    def test_openapi_title_is_dragon_agent(self, client):
+        """OpenAPI info title is 'Dragon Agent'."""
         response = client.get("/openapi.json")
         data = response.json()
-        assert data["info"]["title"] == "Panda Agent"
+        assert data["info"]["title"] == "Dragon Agent"
 
     def test_openapi_includes_chat_paths(self, client):
         """OpenAPI paths include /v1/chat and /v1/chat/stream."""

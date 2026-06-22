@@ -1,11 +1,11 @@
 """
-Unit tests for PandaSkill — versioning, evolution, rollback, metrics.
+Unit tests for DragonSkill — versioning, evolution, rollback, metrics.
 """
 import time
 
 import pytest
-from panda.skill.skill import (
-    PandaSkill, SkillMeta, SkillVersion, SkillMatch,
+from dragon.skill.skill import (
+    DragonSkill, SkillMeta, SkillVersion, SkillMatch,
     SkillOutcome, SkillStatus, ExecutionMode,
     SkillExecutionReport, EvolutionProposal,
     MAX_VERSIONS_PER_SKILL,
@@ -89,7 +89,7 @@ class TestSkillVersion:
         assert v.avg_latency_ms == pytest.approx(700.0 / 6.0)
 
 
-class TestPandaSkillBasics:
+class TestDragonSkillBasics:
     def setup_method(self):
         meta = SkillMeta(
             name="test-skill",
@@ -97,7 +97,7 @@ class TestPandaSkillBasics:
             tags=["testing"],
             version="1.0.0",
         )
-        self.skill = PandaSkill(meta=meta, content="# Test Skill\n\nDo the thing.")
+        self.skill = DragonSkill(meta=meta, content="# Test Skill\n\nDo the thing.")
 
     def test_properties(self):
         assert self.skill.name == "test-skill"
@@ -119,27 +119,27 @@ class TestPandaSkillBasics:
     # ── New edge case tests ──────────────────────────────────────
 
     def test_skill_with_custom_execution_mode(self):
-        """Test PandaSkill with parallel execution mode."""
+        """Test DragonSkill with parallel execution mode."""
         meta = SkillMeta(
             name="parallel-skill",
             description="Runs in parallel",
             execution_mode="parallel",
         )
-        skill = PandaSkill(meta=meta, content="# Parallel")
+        skill = DragonSkill(meta=meta, content="# Parallel")
         assert skill.meta.execution_mode == "parallel"
 
     def test_skill_with_conditional_execution_mode(self):
-        """Test PandaSkill with conditional execution mode."""
+        """Test DragonSkill with conditional execution mode."""
         meta = SkillMeta(
             name="cond-skill",
             description="Conditional skill",
             execution_mode="conditional",
         )
-        skill = PandaSkill(meta=meta, content="# Conditional")
+        skill = DragonSkill(meta=meta, content="# Conditional")
         assert skill.meta.execution_mode == "conditional"
 
     def test_skill_metrics_after_many_executions(self):
-        """Test PandaSkill metrics after many executions."""
+        """Test DragonSkill metrics after many executions."""
         for i in range(10):
             self.skill.record_execution(i % 3 != 0, latency_ms=100.0)  # ~67% success
 
@@ -157,13 +157,13 @@ class TestPandaSkillBasics:
         assert "testing" in text
 
     def test_skill_with_related_skills(self):
-        """Test PandaSkill with related_skills metadata."""
+        """Test DragonSkill with related_skills metadata."""
         meta = SkillMeta(
             name="main-skill",
             description="Main skill",
             related_skills=["helper-1", "helper-2"],
         )
-        skill = PandaSkill(meta=meta, content="# Main")
+        skill = DragonSkill(meta=meta, content="# Main")
         assert skill.meta.related_skills == ["helper-1", "helper-2"]
 
 
@@ -175,7 +175,7 @@ class TestSkillEvolution:
             tags=["test"],
             version="1.0.0",
         )
-        self.skill = PandaSkill(meta=meta, content="original content")
+        self.skill = DragonSkill(meta=meta, content="original content")
 
     def test_evolve_creates_new_version(self):
         new_ver = self.skill.evolve(
@@ -322,11 +322,11 @@ class TestSkillSerialization:
             tags=["test"],
             version="1.2.3",
         )
-        skill = PandaSkill(meta=meta, content="# Hello")
+        skill = DragonSkill(meta=meta, content="# Hello")
         skill.record_execution(True, latency_ms=123.0)
 
         data = skill.to_dict()
-        restored = PandaSkill.from_dict(data)
+        restored = DragonSkill.from_dict(data)
 
         assert restored.name == "roundtrip"
         assert restored.meta.version == "1.2.3"
@@ -349,7 +349,7 @@ class TestSkillSerialization:
             output_schema={"result": "string"},
             status="active",
         )
-        skill = PandaSkill(meta=meta, content="# Full")
+        skill = DragonSkill(meta=meta, content="# Full")
         skill.record_execution(True, latency_ms=50.0)
         skill.record_execution(False, latency_ms=30.0)
 
@@ -373,7 +373,7 @@ class TestSkillSerialization:
             },
             "content": "minimal",
         }
-        skill = PandaSkill.from_dict(data)
+        skill = DragonSkill.from_dict(data)
         assert skill.name == "minimal"
         assert skill.content == "minimal"
         assert skill.meta.version == "1.0.0"
@@ -381,7 +381,7 @@ class TestSkillSerialization:
     def test_serialization_with_multiple_versions(self):
         """Test full serialization roundtrip with multiple versions."""
         meta = SkillMeta(name="multi", description="Multi-version", version="1.0.0")
-        skill = PandaSkill(meta=meta, content="v0")
+        skill = DragonSkill(meta=meta, content="v0")
         skill.record_execution(True)
         skill.evolve("v1")
         skill.record_execution(True)
@@ -389,7 +389,7 @@ class TestSkillSerialization:
         skill.evolve("v2")
 
         data = skill.to_dict()
-        restored = PandaSkill.from_dict(data)
+        restored = DragonSkill.from_dict(data)
 
         assert restored.name == "multi"
         assert restored.content == "v2"
@@ -405,7 +405,7 @@ class TestSkillMeta:
         meta = SkillMeta(name="test", description="desc")
         assert meta.name == "test"
         assert meta.version == "1.0.0"
-        assert meta.author == "panda-agent"
+        assert meta.author == "dragon-agent"
         assert meta.status == "active"
         assert meta.execution_mode == "sequential"
         assert meta.created_at != ""
@@ -482,7 +482,7 @@ class TestSkillMatchDataclass:
 
     def test_creation(self):
         meta = SkillMeta(name="matched", description="Matched skill")
-        skill = PandaSkill(meta=meta, content="# Matched")
+        skill = DragonSkill(meta=meta, content="# Matched")
         match = SkillMatch(
             skill_name="matched",
             similarity=0.85,
@@ -496,7 +496,7 @@ class TestSkillMatchDataclass:
 
     def test_default_matched_tags(self):
         meta = SkillMeta(name="def", description="Default")
-        skill = PandaSkill(meta=meta, content="# Def")
+        skill = DragonSkill(meta=meta, content="# Def")
         match = SkillMatch(skill_name="def", similarity=0.5, skill=skill)
         assert match.matched_tags == []
 

@@ -7,11 +7,11 @@ import tempfile
 
 import pytest
 
-from panda.skill.engine import (
+from dragon.skill.engine import (
     SkillEngine, SkillPipeline, PipelineStep, PipelineResult,
 )
-from panda.skill.skill import (
-    PandaSkill, SkillMeta, SkillMatch, ExecutionMode,
+from dragon.skill.skill import (
+    DragonSkill, SkillMeta, SkillMatch, ExecutionMode,
 )
 
 

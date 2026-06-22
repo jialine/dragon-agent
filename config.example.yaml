@@ -1,0 +1,88 @@
+# Dragon Agent Configuration
+# Default: config.yaml in project root
+# Override: DRAGON_* environment variables
+
+server:
+  host: "0.0.0.0"
+  port: 8780
+  log_level: "info"
+
+router:
+  model_path: "models/qwen3-0.6b-q4_k_m.gguf"
+  n_threads: 4
+  n_ctx: 512
+  temperature: 0.1
+  max_tokens: 128
+
+dispatch:
+  global_api:
+    base_url: "https://api.sangyuye.com/v1"
+    api_key_env: "DRAGON_API_KEY"
+    model: "qwen-plus"
+    timeout_secs: 60
+    max_retries: 2
+  industries:
+    finance:
+      system_prompt: "你是一位资深金融分析师，回答专业、准确，引用数据来源。"
+    medical:
+      system_prompt: "你是一位医学顾问，回答基于循证医学，不提供诊断但可提供科普。"
+    legal:
+      system_prompt: "你是一位法律顾问，基于中国法律体系提供参考意见，注明法条出处。"
+    education:
+      system_prompt: "你是一位教育专家，帮助学生理解概念而非直接给答案。"
+    general:
+      system_prompt: "你是 Dragon Agent，一个基于多模型辩论的诚实 AI 助手。回答简洁准确。"
+    gov:
+      system_prompt: "你是一位政务顾问，回答基于《政府信息公开条例》，以服务公众为宗旨。"
+    enterprise:
+      system_prompt: "你是一位企业顾问，回答基于工商税务法规，帮助创业者合规经营。"
+
+memory:
+  persist_dir: "dragon_data/vectordb"
+  embedding_model: "BAAI/bge-small-zh-v1.5"
+  search_top_k: 5
+  search_threshold: 0.5
+
+backup:
+  endpoint: ""
+  bucket: "dragon-backups"
+  interval_hours: 6
+
+guard:
+  max_consecutive_repeats: 3
+  max_loop_rounds: 2
+  max_ineffective_retries: 3
+
+# ── Gateway: 飞书 / 微信 / Telegram / Discord 等多平台接入 ────────
+gateway:
+  enabled: false                    # 设为 true 启用网关
+  standalone: true                  # true=独立端口, false=挂载到 /gateway
+  port: 8781                        # 独立端口
+  system_prompt: ""                 # 留空使用默认诚实 AI system prompt
+
+  platforms:
+    # 飞书 (Lark) — 从 open.feishu.cn 获取
+    feishu:
+      enabled: false
+      app_id: "cli_xxxxxxxxxxxx"
+      app_secret: "xxxxxxxxxxxxxxxxxxxxxxxx"
+      verification_token: ""        # 可选
+      domain: "feishu"             # feishu 或 lark (国际版)
+
+    # 微信公众号 — 从 mp.weixin.qq.com 获取 (需已认证服务号)
+    wechat:
+      enabled: false
+      app_id: "wxXXXXXXXXXXXXXXXX"
+      app_secret: "xxxxxxxxxxxxxxxxxxxxxxxx"
+      token: "your_custom_token"    # 自定义，与公众号后台一致
+      encoding_aes_key: ""          # 可选，安全模式下需要
+
+    # Telegram Bot — 从 @BotFather 获取
+    telegram:
+      enabled: false
+      bot_token: "123456789:ABCdef..."
+
+    # Discord Bot — 从 discord.com/developers 获取
+    discord:
+      enabled: false
+      bot_token: "MTIzNDU2..."

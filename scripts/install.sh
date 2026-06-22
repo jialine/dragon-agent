@@ -1,15 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
-# Panda Agent — One-Click Installer
-# Usage: curl -fsSL https://gitee.com/jialine/panda-agent/raw/main/scripts/install.sh | bash
+# Dragon Agent — One-Click Installer
+# Usage: curl -fsSL https://gitee.com/jialine/dragon-agent/raw/main/scripts/install.sh | bash
 
-INSTALL_DIR="${PANDA_HOME:-$HOME/panda-agent}"
-REPO_URL="https://gitee.com/jialine/panda-agent.git"
-BRANCH="${PANDA_BRANCH:-main}"
+INSTALL_DIR="${DRAGON_HOME:-$HOME/dragon-agent}"
+REPO_URL="https://gitee.com/jialine/dragon-agent.git"
+BRANCH="${DRAGON_BRANCH:-main}"
 VENV_DIR="$INSTALL_DIR/.venv"
 TUI_DIR="$INSTALL_DIR/tui"
-DATA_DIR="$HOME/.panda"
+DATA_DIR="$HOME/.dragon"
 
 # ── Colors ──────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
@@ -41,7 +41,7 @@ if [ -d "$INSTALL_DIR/.git" ]; then
     git reset --hard "origin/$BRANCH"
     info "Updated to latest $BRANCH"
 else
-    step "Cloning Panda Agent..."
+    step "Cloning Dragon Agent..."
     git clone --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
     info "Cloned to $INSTALL_DIR"
 fi
@@ -80,9 +80,22 @@ info "Data dir: $DATA_DIR"
 # ── Config ───────────────────────────────────────────────────────
 if [ ! -f "$DATA_DIR/config.yaml" ]; then
     step "Creating default config..."
-    cat > "$DATA_DIR/config.yaml" << 'YAML'
-# Panda Agent Configuration
-# Run 'panda setup' for interactive configuration
+    
+    # Auto-detect AgileMind Engine API
+    DEFAULT_PROVIDER="deepseek"
+    DEFAULT_MODEL="deepseek-chat"
+    if [ -n "${AGILEMIND_API_KEY:-}" ]; then
+        DEFAULT_PROVIDER="agilemind"
+        DEFAULT_MODEL="qwen3.5-122b-a10b"
+        info "🐉 AgileMind API Key detected — set as default"
+    else
+        warn "AgileMind API Key not set — defaulting to DeepSeek cloud"
+        warn "Get your key at https://console.agilemind.ai and set AGILEMIND_API_KEY"
+    fi
+    
+    cat > "$DATA_DIR/config.yaml" << YAML
+# Dragon Agent Configuration
+# Run 'dragon setup' for interactive configuration
 
 server:
   host: "0.0.0.0"
@@ -97,15 +110,15 @@ dispatch:
   fallback_to_general: true
 
 provider:
-  default: "openai"
-  openai:
-    model: "gpt-4o"
+  default: "$DEFAULT_PROVIDER"
+  $DEFAULT_PROVIDER:
+    model: "$DEFAULT_MODEL"
 
 skills:
-  dir: "~/.panda/skills"
+  dir: "~/.dragon/skills"
 
 data:
-  dir: "~/.panda"
+  dir: "~/.dragon"
 YAML
     info "Config created at $DATA_DIR/config.yaml"
 fi
@@ -119,23 +132,23 @@ case "$SHELL" in
     *)      SHELL_RC="" ;;
 esac
 
-if [ -n "$SHELL_RC" ] && ! grep -q "panda-agent/.venv/bin/activate" "$SHELL_RC" 2>/dev/null; then
+if [ -n "$SHELL_RC" ] && ! grep -q "dragon-agent/.venv/bin/activate" "$SHELL_RC" 2>/dev/null; then
     cat >> "$SHELL_RC" << 'EOF'
 
-# Panda Agent
-export PANDA_HOME="$HOME/panda-agent"
-alias panda="$PANDA_HOME/.venv/bin/python -m panda"
+# Dragon Agent
+export DRAGON_HOME="$HOME/dragon-agent"
+alias dragon="$DRAGON_HOME/.venv/bin/python -m dragon"
 EOF
-    info "Added panda alias to $SHELL_RC"
+    info "Added dragon alias to $SHELL_RC"
 fi
 
 # ── Verify ───────────────────────────────────────────────────────
 step "Verifying installation..."
 source "$VENV_DIR/bin/activate"
-PANDA_VERSION=$(python -m panda --version 2>&1 || echo "1.2.0")
-info "Panda Agent v$PANDA_VERSION installed"
+DRAGON_VERSION=$(python -m dragon --version 2>&1 || echo "1.2.0")
+info "Dragon Agent v$DRAGON_VERSION installed"
 
-SKILL_COUNT=$(python -m panda skills list 2>/dev/null | grep -c "⚠\|✓" || echo "0")
+SKILL_COUNT=$(python -m dragon skills list 2>/dev/null | grep -c "⚠\|✓" || echo "0")
 info "$SKILL_COUNT skills available"
 
 # ── Auto Setup ────────────────────────────────────────────────────
@@ -145,33 +158,33 @@ source "$VENV_DIR/bin/activate"
 if [ -t 0 ]; then
     # Running in a real terminal — full interactive setup
     echo -e "\n${CYAN}▶ Interactive setup — follow the prompts${NC}\n"
-    python -m panda setup
+    python -m dragon setup
 else
     # Piped (curl | bash) — non-interactive, prompt user to run later
-    python -m panda setup --quick 2>/dev/null || true
+    python -m dragon setup --quick 2>/dev/null || true
     echo -e "\n${YELLOW}▶ For interactive setup, run:${NC}"
-    echo -e "${YELLOW}   source ~/panda-agent/.venv/bin/activate${NC}"
-    echo -e "${YELLOW}   panda setup${NC}"
+    echo -e "${YELLOW}   source ~/dragon-agent/.venv/bin/activate${NC}"
+    echo -e "${YELLOW}   dragon setup${NC}"
 fi
 
 # ── Done ─────────────────────────────────────────────────────────
 echo -e "\n${GREEN}══════════════════════════════════════════════${NC}"
-echo -e "${GREEN}  🐼 Panda Agent installed!${NC}"
+echo -e "${GREEN}  🐉 Dragon Agent installed!${NC}"
 echo -e "${GREEN}══════════════════════════════════════════════${NC}"
 echo ""
 echo "  Quick start:"
 echo "    source $VENV_DIR/bin/activate"
-echo "    panda chat"
+echo "    dragon chat"
 echo ""
 echo "  Or use the alias (restart shell first):"
-echo "    panda chat"
+echo "    dragon chat"
 echo ""
 echo "  Re-run setup wizard:"
-echo "    panda setup"
+echo "    dragon setup"
 echo ""
 echo "  Import Hermes skills:"
-echo "    panda skills scan hermes"
-echo "    panda skills import hermes"
+echo "    dragon skills scan hermes"
+echo "    dragon skills import hermes"
 echo ""
 echo "  Install dir: $INSTALL_DIR"
 echo "  Data dir:    $DATA_DIR"

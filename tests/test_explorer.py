@@ -1,5 +1,5 @@
 """
-Comprehensive unit tests for panda.explorer module.
+Comprehensive unit tests for dragon.explorer module.
 
 Tests cover:
   - ExploreStrategy enum
@@ -17,13 +17,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from panda.explorer import (
+from dragon.explorer import (
     ExploreStrategy,
     ExplorerConfig,
     ExplorationResult,
     ExplorerEnsemble,
 )
-from panda.dispatch import ProviderProfile
+from dragon.dispatch import ProviderProfile
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -32,7 +32,7 @@ from panda.dispatch import ProviderProfile
 
 @pytest.fixture
 def mock_dispatcher() -> MagicMock:
-    """Return a PandaDispatcher mock with register/unregister methods."""
+    """Return a DragonDispatcher mock with register/unregister methods."""
     dispatcher = MagicMock()
     dispatcher.register = MagicMock()
     dispatcher.unregister = MagicMock()

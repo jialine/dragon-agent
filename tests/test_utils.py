@@ -1,5 +1,5 @@
 """
-Tests for panda.utils — covering __init__.py exports, cost helper functions,
+Tests for dragon.utils — covering __init__.py exports, cost helper functions,
 CostOptimizer methods not already tested in test_cost.py, and singleton.
 
 Tests added for: UsageEntry, _get_default_db_path, _init_db, get_today_usage,
@@ -18,10 +18,10 @@ from unittest.mock import patch
 
 import pytest
 
-import panda.utils
-from panda.utils import __all__ as utils_all
-from panda.utils.cost import CostOptimizer, MODEL_TIERS
-from panda.utils.cost import (
+import dragon.utils
+from dragon.utils import __all__ as utils_all
+from dragon.utils.cost import CostOptimizer, MODEL_TIERS
+from dragon.utils.cost import (
     UsageEntry,
     _get_default_db_path,
     _init_db,
@@ -33,7 +33,7 @@ from panda.utils.cost import (
 )
 
 
-# ── panda.utils.__init__ exports ───────────────────────────────────────
+# ── dragon.utils.__init__ exports ───────────────────────────────────────
 
 class TestUtilsInit:
     """Test that the utils package exports the right symbols."""
@@ -45,11 +45,11 @@ class TestUtilsInit:
         assert "MODEL_TIERS" in utils_all
 
     def test_cost_optimizer_importable(self):
-        from panda.utils.cost import CostOptimizer as CO
+        from dragon.utils.cost import CostOptimizer as CO
         assert CO is CostOptimizer
 
     def test_model_tiers_importable(self):
-        from panda.utils.cost import MODEL_TIERS as MT
+        from dragon.utils.cost import MODEL_TIERS as MT
         assert MT is MODEL_TIERS
 
 
@@ -100,9 +100,9 @@ class TestGetDefaultDbPath:
         path = _get_default_db_path()
         assert path.endswith("cost.db")
 
-    def test_contains_panda_data(self):
+    def test_contains_dragon_data(self):
         path = _get_default_db_path()
-        assert "panda_data" in path
+        assert "dragon_data" in path
 
     def test_is_absolute(self):
         path = _get_default_db_path()
@@ -337,7 +337,7 @@ class TestGetCostOptimizer:
 
     def test_singleton_thread_safety(self):
         """Verify singleton is thread-safe."""
-        import panda.utils.cost as cost_module
+        import dragon.utils.cost as cost_module
         # Reset singleton for clean test
         cost_module._default_optimizer = None
 

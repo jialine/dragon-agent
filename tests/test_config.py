@@ -1,5 +1,5 @@
 """
-Unit tests for PandaConfig — defaults, YAML loading, env var overrides.
+Unit tests for DragonConfig — defaults, YAML loading, env var overrides.
 """
 import os
 import tempfile
@@ -7,39 +7,39 @@ from pathlib import Path
 
 import pytest
 import yaml
-from panda.config import (
-    PandaConfig, RouterConfig, MemoryConfig, GuardConfig, ServerConfig,
+from dragon.config import (
+    DragonConfig, RouterConfig, MemoryConfig, GuardConfig, ServerConfig,
     BackupConfig, DispatchConfig, ProviderConfig,
 )
 
 
-class TestPandaConfigDefaults:
+class TestDragonConfigDefaults:
     def test_default_router_model_path(self):
-        cfg = PandaConfig()
+        cfg = DragonConfig()
         assert cfg.router.model_path == "models/qwen3-0.6b-q4_k_m.gguf"
 
     def test_default_memory_embedding_model(self):
-        cfg = PandaConfig()
+        cfg = DragonConfig()
         assert cfg.memory.embedding_model == "BAAI/bge-small-zh-v1.5"
 
     def test_default_memory_search_top_k(self):
-        cfg = PandaConfig()
+        cfg = DragonConfig()
         assert cfg.memory.search_top_k == 5
 
     def test_default_memory_search_threshold(self):
-        cfg = PandaConfig()
+        cfg = DragonConfig()
         assert cfg.memory.search_threshold == 0.5
 
     def test_default_guard_window_size(self):
-        cfg = PandaConfig()
+        cfg = DragonConfig()
         assert cfg.guard.window_size == 50
 
     def test_default_server_port(self):
-        cfg = PandaConfig()
+        cfg = DragonConfig()
         assert cfg.server.port == 8000
 
 
-class TestPandaConfigFromYAML:
+class TestDragonConfigFromYAML:
     def test_load_from_yaml_file(self):
         yaml_content = {
             "router": {"n_threads": 2},
@@ -50,7 +50,7 @@ class TestPandaConfigFromYAML:
             tmp_path = f.name
 
         try:
-            cfg = PandaConfig.load(tmp_path)
+            cfg = DragonConfig.load(tmp_path)
             assert cfg.router.n_threads == 2
             assert cfg.server.port == 9000
             assert cfg.router.model_path == "models/qwen3-0.6b-q4_k_m.gguf"
@@ -58,30 +58,30 @@ class TestPandaConfigFromYAML:
             os.unlink(tmp_path)
 
     def test_load_missing_file_uses_defaults(self):
-        cfg = PandaConfig.load("/nonexistent/panda_config.yaml")
+        cfg = DragonConfig.load("/nonexistent/dragon_config.yaml")
         assert cfg.router.model_path == "models/qwen3-0.6b-q4_k_m.gguf"
 
 
-class TestPandaConfigEnvOverrides:
+class TestDragonConfigEnvOverrides:
     """Test env var overrides for simple (non-underscore) field names."""
 
     def setup_method(self):
         self._saved = {}
         for k in list(os.environ):
-            if k.startswith("PANDA_"):
+            if k.startswith("DRAGON_"):
                 self._saved[k] = os.environ.pop(k)
 
     def teardown_method(self):
-        # Remove any PANDA_ env vars that were set during the test
+        # Remove any DRAGON_ env vars that were set during the test
         for k in list(os.environ):
-            if k.startswith("PANDA_") and k not in self._saved:
+            if k.startswith("DRAGON_") and k not in self._saved:
                 del os.environ[k]
         for k, v in self._saved.items():
             os.environ[k] = v
 
     def test_env_override_server_port(self):
-        os.environ["PANDA_SERVER_PORT"] = "9999"
-        cfg = PandaConfig.load()
+        os.environ["DRAGON_SERVER_PORT"] = "9999"
+        cfg = DragonConfig.load()
         assert cfg.server.port == 9999
 
 
@@ -97,7 +97,7 @@ class TestRouterConfig:
 class TestMemoryConfig:
     def test_defaults(self):
         mc = MemoryConfig()
-        assert mc.persist_dir == "panda_data/vectordb"
+        assert mc.persist_dir == "dragon_data/vectordb"
         assert mc.embedding_model == "BAAI/bge-small-zh-v1.5"
         assert mc.search_top_k == 5
 
@@ -118,10 +118,10 @@ class TestBackupConfigDefaults:
     def test_defaults(self):
         bc = BackupConfig()
         assert bc.endpoint == ""
-        assert bc.access_key_env == "PANDA_BACKUP_ACCESS_KEY"
-        assert bc.secret_key_env == "PANDA_BACKUP_SECRET_KEY"
-        assert bc.bucket == "panda-backups"
-        assert bc.prefix == "panda/backups/"
+        assert bc.access_key_env == "DRAGON_BACKUP_ACCESS_KEY"
+        assert bc.secret_key_env == "DRAGON_BACKUP_SECRET_KEY"
+        assert bc.bucket == "dragon-backups"
+        assert bc.prefix == "dragon/backups/"
         assert bc.interval_hours == 6
         assert bc.keep_last == 7
 
@@ -164,7 +164,7 @@ class TestProviderConfigDefaults:
         pc = ProviderConfig()
         assert pc.provider == "openrouter"
         assert pc.model == "openai/gpt-4o-mini"
-        assert pc.api_key_env == "PANDA_GENERAL_API_KEY"
+        assert pc.api_key_env == "DRAGON_GENERAL_API_KEY"
         assert pc.base_url is None
         assert pc.system_prompt == "You are a helpful assistant."
         assert pc.timeout_secs == 60
@@ -241,11 +241,11 @@ class TestMemoryConfigCustomValues:
         assert mc.recency_weight == 0.5
 
 
-class TestPandaConfigAllDefaults:
-    """Test that all sections have correct defaults from PandaConfig."""
+class TestDragonConfigAllDefaults:
+    """Test that all sections have correct defaults from DragonConfig."""
 
     def test_all_sections_present(self):
-        cfg = PandaConfig()
+        cfg = DragonConfig()
         assert isinstance(cfg.router, RouterConfig)
         assert isinstance(cfg.dispatch, DispatchConfig)
         assert isinstance(cfg.memory, MemoryConfig)
@@ -254,7 +254,7 @@ class TestPandaConfigAllDefaults:
         assert isinstance(cfg.server, ServerConfig)
 
     def test_all_section_defaults(self):
-        cfg = PandaConfig()
+        cfg = DragonConfig()
         # router
         assert cfg.router.model_path == "models/qwen3-0.6b-q4_k_m.gguf"
         assert cfg.router.n_threads == 4
@@ -268,103 +268,103 @@ class TestPandaConfigAllDefaults:
         assert cfg.server.host == "0.0.0.0"
         assert cfg.server.port == 8000
         # backup
-        assert cfg.backup.bucket == "panda-backups"
+        assert cfg.backup.bucket == "dragon-backups"
         assert cfg.backup.interval_hours == 6
         # dispatch
         assert cfg.dispatch.industries == {}
 
 
-class TestPandaConfigMultipleEnvOverrides:
+class TestDragonConfigMultipleEnvOverrides:
     """Test multiple simultaneous env var overrides."""
 
     def setup_method(self):
         self._saved = {}
         for k in list(os.environ):
-            if k.startswith("PANDA_"):
+            if k.startswith("DRAGON_"):
                 self._saved[k] = os.environ.pop(k)
 
     def teardown_method(self):
-        # Remove any PANDA_ env vars that were set during the test
+        # Remove any DRAGON_ env vars that were set during the test
         for k in list(os.environ):
-            if k.startswith("PANDA_") and k not in self._saved:
+            if k.startswith("DRAGON_") and k not in self._saved:
                 del os.environ[k]
         for k, v in self._saved.items():
             os.environ[k] = v
 
     def test_multiple_env_overrides(self):
-        os.environ["PANDA_SERVER_PORT"] = "9999"
-        os.environ["PANDA_ROUTER_N_THREADS"] = "8"
-        os.environ["PANDA_MEMORY_SEARCH_TOP_K"] = "10"
-        cfg = PandaConfig.load()
+        os.environ["DRAGON_SERVER_PORT"] = "9999"
+        os.environ["DRAGON_ROUTER_N_THREADS"] = "8"
+        os.environ["DRAGON_MEMORY_SEARCH_TOP_K"] = "10"
+        cfg = DragonConfig.load()
         assert cfg.server.port == 9999
         assert cfg.router.n_threads == 8
         assert cfg.memory.search_top_k == 10
 
     def test_env_override_boolean_true(self):
-        os.environ["PANDA_ROUTER_FALLBACK_ON_FAILURE"] = "true"
-        cfg = PandaConfig.load()
+        os.environ["DRAGON_ROUTER_FALLBACK_ON_FAILURE"] = "true"
+        cfg = DragonConfig.load()
         assert cfg.router.fallback_on_failure is True
 
     def test_env_override_boolean_false(self):
-        os.environ["PANDA_ROUTER_FALLBACK_ON_FAILURE"] = "false"
-        cfg = PandaConfig.load()
+        os.environ["DRAGON_ROUTER_FALLBACK_ON_FAILURE"] = "false"
+        cfg = DragonConfig.load()
         assert cfg.router.fallback_on_failure is False
 
     def test_env_override_boolean_yes(self):
-        os.environ["PANDA_ROUTER_FALLBACK_ON_FAILURE"] = "yes"
-        cfg = PandaConfig.load()
+        os.environ["DRAGON_ROUTER_FALLBACK_ON_FAILURE"] = "yes"
+        cfg = DragonConfig.load()
         assert cfg.router.fallback_on_failure is True
 
     def test_env_override_float(self):
-        os.environ["PANDA_ROUTER_TEMPERATURE"] = "0.5"
-        cfg = PandaConfig.load()
+        os.environ["DRAGON_ROUTER_TEMPERATURE"] = "0.5"
+        cfg = DragonConfig.load()
         assert cfg.router.temperature == 0.5
 
     def test_env_override_guard_fields(self):
-        os.environ["PANDA_GUARD_MAX_LOOP_ROUNDS"] = "5"
-        os.environ["PANDA_GUARD_WINDOW_SIZE"] = "100"
-        cfg = PandaConfig.load()
+        os.environ["DRAGON_GUARD_MAX_LOOP_ROUNDS"] = "5"
+        os.environ["DRAGON_GUARD_WINDOW_SIZE"] = "100"
+        cfg = DragonConfig.load()
         assert cfg.guard.max_loop_rounds == 5
         assert cfg.guard.window_size == 100
 
     def test_env_override_backup_fields(self):
-        os.environ["PANDA_BACKUP_INTERVAL_HOURS"] = "12"
-        os.environ["PANDA_BACKUP_KEEP_LAST"] = "14"
-        cfg = PandaConfig.load()
+        os.environ["DRAGON_BACKUP_INTERVAL_HOURS"] = "12"
+        os.environ["DRAGON_BACKUP_KEEP_LAST"] = "14"
+        cfg = DragonConfig.load()
         assert cfg.backup.interval_hours == 12
         assert cfg.backup.keep_last == 14
 
     def test_env_override_memory_threshold(self):
-        os.environ["PANDA_MEMORY_SEARCH_THRESHOLD"] = "0.75"
-        os.environ["PANDA_MEMORY_RECENCY_WEIGHT"] = "0.25"
-        cfg = PandaConfig.load()
+        os.environ["DRAGON_MEMORY_SEARCH_THRESHOLD"] = "0.75"
+        os.environ["DRAGON_MEMORY_RECENCY_WEIGHT"] = "0.25"
+        cfg = DragonConfig.load()
         assert cfg.memory.search_threshold == 0.75
         assert cfg.memory.recency_weight == 0.25
 
 
-class TestPandaConfigSerialization:
-    """Test PandaConfig serialization roundtrip."""
+class TestDragonConfigSerialization:
+    """Test DragonConfig serialization roundtrip."""
 
     def test_to_dict_and_from_dict(self):
-        cfg = PandaConfig()
+        cfg = DragonConfig()
         cfg.router.n_threads = 2
         cfg.server.port = 9000
 
         data = cfg.model_dump()
-        restored = PandaConfig(**data)
+        restored = DragonConfig(**data)
         assert restored.router.n_threads == 2
         assert restored.server.port == 9000
 
     def test_from_dict_preserves_all_sections(self):
-        data = PandaConfig().model_dump()
-        restored = PandaConfig(**data)
+        data = DragonConfig().model_dump()
+        restored = DragonConfig(**data)
         assert restored.router.model_path == "models/qwen3-0.6b-q4_k_m.gguf"
         assert restored.memory.embedding_model == "BAAI/bge-small-zh-v1.5"
         assert restored.guard.window_size == 50
-        assert restored.backup.bucket == "panda-backups"
+        assert restored.backup.bucket == "dragon-backups"
 
 
-class TestPandaConfigValidation:
+class TestDragonConfigValidation:
     """Test config validation edge cases."""
 
     def test_invalid_model_path_type(self):
@@ -378,11 +378,11 @@ class TestPandaConfigValidation:
             RouterConfig(temperature="hot")
 
 
-class TestPandaConfigYAMLRoundtrip:
+class TestDragonConfigYAMLRoundtrip:
     """Test full config save/load roundtrip via YAML."""
 
     def test_yaml_roundtrip(self):
-        cfg = PandaConfig()
+        cfg = DragonConfig()
         cfg.router.n_threads = 6
         cfg.server.port = 8080
         cfg.memory.search_top_k = 8
@@ -392,7 +392,7 @@ class TestPandaConfigYAMLRoundtrip:
             tmp_path = f.name
 
         try:
-            restored = PandaConfig.load(tmp_path)
+            restored = DragonConfig.load(tmp_path)
             assert restored.router.n_threads == 6
             assert restored.server.port == 8080
             assert restored.memory.search_top_k == 8
@@ -401,7 +401,7 @@ class TestPandaConfigYAMLRoundtrip:
 
     def test_yaml_roundtrip_all_sections(self):
         """Roundtrip with all sections having custom values."""
-        cfg = PandaConfig(
+        cfg = DragonConfig(
             router=RouterConfig(n_threads=2, temperature=0.5),
             server=ServerConfig(port=9999, host="127.0.0.1"),
             memory=MemoryConfig(search_top_k=3, recency_weight=0.2),
@@ -414,7 +414,7 @@ class TestPandaConfigYAMLRoundtrip:
             tmp_path = f.name
 
         try:
-            restored = PandaConfig.load(tmp_path)
+            restored = DragonConfig.load(tmp_path)
             assert restored.router.n_threads == 2
             assert restored.router.temperature == 0.5
             assert restored.server.port == 9999
@@ -429,12 +429,12 @@ class TestPandaConfigYAMLRoundtrip:
             os.unlink(tmp_path)
 
 
-class TestPandaConfigMerge:
+class TestDragonConfigMerge:
     """Test config merging: base defaults + partial overrides."""
 
     def test_merge_partial_overrides(self):
         """Load from empty file, then apply env overrides for router only."""
-        base = PandaConfig()
+        base = DragonConfig()
         base.router.n_threads = 10
         # Other sections should stay at defaults
         assert base.memory.search_top_k == 5
@@ -447,7 +447,7 @@ class TestPandaConfigMerge:
             tmp_path = f.name
 
         try:
-            cfg = PandaConfig.load(tmp_path)
+            cfg = DragonConfig.load(tmp_path)
             assert cfg.router.n_threads == 3
             # Unspecified fields keep defaults
             assert cfg.router.model_path == "models/qwen3-0.6b-q4_k_m.gguf"

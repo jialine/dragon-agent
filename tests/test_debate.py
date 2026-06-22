@@ -1,5 +1,5 @@
 """
-Unit tests for panda.debate — GoalBackwardEngine and supporting types.
+Unit tests for dragon.debate — GoalBackwardEngine and supporting types.
 
 Pure unit tests: no LLM calls, no async, no network.
 Tests cover:
@@ -17,14 +17,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from panda.debate import (
+from dragon.debate import (
     ActionNode,
     DECOMPOSITION_PROMPT,
     DECOMPOSITION_SYSTEM_PROMPT,
     GoalBackwardEngine,
     GoalState,
 )
-from panda.debate.__init__ import (
+from dragon.debate.__init__ import (
     _extract_json,
     _score_plan,
     COST_SCORE_MAP,
