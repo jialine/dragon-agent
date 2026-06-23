@@ -69,6 +69,7 @@ from dragon.tool.builtins.kanban import (
     tool_kanban_delete_task,
     tool_kanban_list_boards,
 )
+from dragon.tool.builtins.image_gen import tool_image_generate, tool_image_models
 from dragon.tool.builtins.browser import (
     browser_open, browser_screenshot, browser_get_text,
     browser_click, browser_type, browser_close,
@@ -537,6 +538,24 @@ async def tool_web_download(url: str, save_path: str) -> str:
 # ────────────────────────────────────────────────────────────────────
 
 
+def _register_image_gen(registry):
+    registry.register(
+        name="image_generate",
+        description="Generate an image from a text prompt",
+        tags=["image", "generate", "ai"],
+        category="media",
+        timeout_secs=300,
+    )(tool_image_generate)
+
+    registry.register(
+        name="image_models",
+        description="List available image generation models",
+        tags=["image", "models", "list"],
+        category="media",
+        timeout_secs=10,
+    )(tool_image_models)
+
+
 def register_builtins(registry: ToolRegistry) -> None:
     """Register all built-in tools on the given registry."""
     registry.register(
@@ -835,4 +854,7 @@ def register_builtins(registry: ToolRegistry) -> None:
         timeout_secs=30,
     )(tool_email_read)
 
-    logger.info("Registered %d built-in tools", 36)
+    # ── Image Generation ───────────────────────────────────────────
+    _register_image_gen(registry)
+
+    logger.info("Registered %d built-in tools", 38)

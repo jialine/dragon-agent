@@ -113,6 +113,18 @@ class GatewayConfig(BaseModel):
     platforms: Dict[str, PlatformAuthConfig] = Field(default_factory=dict)
 
 
+class ImageGenConfig(BaseModel):
+    """Image generation configuration."""
+    backend: str = "dummy"  # "comfyui", "replicate", "dummy"
+    comfyui_url: str = "http://127.0.0.1:8188"
+    default_model: str = "sd_xl_base_1.0.safetensors"
+    default_width: int = 1024
+    default_height: int = 1024
+    default_steps: int = 20
+    output_dir: str = "dragon_data/images"
+    timeout_secs: int = 300
+
+
 class VoiceConfig(BaseModel):
     """Voice mode configuration."""
     enabled: bool = False
@@ -130,6 +142,7 @@ class DragonConfig(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
+    image_gen: ImageGenConfig = Field(default_factory=ImageGenConfig)
 
     @classmethod
     def load(cls, config_path: str = "config.yaml") -> "DragonConfig":
@@ -153,7 +166,7 @@ class DragonConfig(BaseModel):
 
 
 # Known DragonConfig section names (must match DragonConfig model fields)
-_DRAGON_SECTIONS = frozenset({"router", "dispatch", "memory", "backup", "guard", "server", "gateway", "voice"})
+_DRAGON_SECTIONS = frozenset({"router", "dispatch", "memory", "backup", "guard", "server", "gateway", "voice", "image_gen"})
 
 
 def _apply_env_overrides(data: dict, prefix: str = "DRAGON_"):
