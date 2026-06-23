@@ -6,8 +6,11 @@ Pluggable image generation with ComfyUI backend support.
 Falls back to DummyBackend when no real backend is configured.
 
 Backends:
-    - ComfyUIBackend: Connects to a local ComfyUI server (http://127.0.0.1:8188)
-    - DummyBackend: No-op placeholder returning helpful error messages
+    - StabilityAIBackend: Stability AI cloud API (SD3.5, no GPU needed)
+    - ReplicateBackend: Replicate cloud API (SDXL, Flux, pay-per-use)
+    - RunningHubBackend: RunningHub.ai cloud API (Chinese ComfyUI platform)
+    - ComfyUIBackend: Local ComfyUI server (requires NVIDIA GPU)
+    - DummyBackend: No-op placeholder (no backend configured)
 
 Tools:
     - image_generate: Generate an image from a text prompt
@@ -499,6 +502,251 @@ class ComfyUIBackend(ImageGenBackend):
 
 
 # ────────────────────────────────────────────────────────────────────
+# Cloud Backends (no GPU required)
+# ────────────────────────────────────────────────────────────────────
+
+DEFAULT_OUTPUT_DIR = os.path.join(os.path.expanduser("~"), "dragon_data", "images")
+
+
+class StabilityAIBackend(ImageGenBackend):
+    """Stability AI cloud API (no GPU needed).
+
+    Env: ``STABILITY_API_KEY`` — get from https://platform.stability.ai
+    Free tier includes 25 credits.  Supports SD3.5, SD3, Ultra, Core.
+    """
+
+    def __init__(self, api_key: str = "", base_url: str = "https://api.stability.ai"):
+        self.api_key = api_key or os.getenv("STABILITY_API_KEY", "")
+        self.base_url = base_url
+
+    async def generate(self, prompt: str, negative_prompt: str = "", width: int = 1024,
+                       height: int = 1024, steps: int = 30, seed: int = 0,
+                       model: str = "", **kw: Any) -> dict:
+        if not self.api_key:
+            return {"success": False, "error": "STABILITY_API_KEY not set"}
+
+        # Map size to aspect ratio
+        aspect_ratio = _size_to_aspect(width, height)
+        model_name = model or "sd3.5-large"
+
+        headers = {"Authorization": f"Bearer {self.api_key}", "Accept": "image/*"}
+        data = {"prompt": prompt, "output_format": "png"}
+        if negative_prompt:
+            data["negative_prompt"] = negative_prompt
+        if seed != -1:
+            data["seed"] = seed
+
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await client.post(
+                    f"{self.base_url}/v2beta/stable-image/generate/sd3",
+                    headers=headers,
+                    files={"none": ("", "")},
+                    data={**data, "aspect_ratio": aspect_ratio, "model": model_name},
+                )
+                if resp.status_code != 200:
+                    err = resp.json().get("errors", [resp.text])[0] if resp.headers.get("content-type","")=="application/json" else resp.text[:200]
+                    return {"success": False, "error": f"Stability API: {err}"}
+
+                os.makedirs(DEFAULT_OUTPUT_DIR, exist_ok=True)
+                filename = f"stability_{uuid.uuid4().hex[:8]}.png"
+                filepath = os.path.join(DEFAULT_OUTPUT_DIR, filename)
+                with open(filepath, "wb") as f:
+                    f.write(resp.content)
+
+                return {"success": True, "images": [{"path": filepath, "filename": filename,
+                        "size_bytes": len(resp.content), "url": ""}], "seed": seed}
+        except Exception as e:
+            return {"success": False, "error": f"Stability API: {e}"}
+
+    async def health_check(self) -> bool:
+        if not self.api_key:
+            return False
+        try:
+            async with httpx.AsyncClient(timeout=10) as c:
+                r = await c.get(f"{self.base_url}/v1/user/account", headers={"Authorization": f"Bearer {self.api_key}"})
+                return r.status_code == 200
+        except Exception:
+            return False
+
+    async def list_models(self) -> list:
+        return ["sd3.5-large", "sd3.5-medium", "sd3-large-turbo", "sd3-medium",
+                "stable-image-ultra", "stable-image-core"]
+
+
+class ReplicateBackend(ImageGenBackend):
+    """Replicate cloud API (pay-per-use, hundreds of models).
+
+    Env: ``REPLICATE_API_TOKEN`` — get from https://replicate.com
+    """
+
+    def __init__(self, api_token: str = "", model: str = "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b"):
+        self.api_token = api_token or os.getenv("REPLICATE_API_TOKEN", "")
+        self.model = model
+
+    async def generate(self, prompt: str, negative_prompt: str = "", width: int = 1024,
+                       height: int = 1024, steps: int = 30, seed: int = -1,
+                       model: str = "", **kw: Any) -> dict:
+        if not self.api_token:
+            return {"success": False, "error": "REPLICATE_API_TOKEN not set"}
+
+        model_name = model or self.model
+        headers = {"Authorization": f"Token {self.api_token}", "Content-Type": "application/json"}
+        resolved_seed = seed if seed != -1 else random.randint(0, 2**32 - 1)
+        body = {"version": model_name, "input": {"prompt": prompt, "negative_prompt": negative_prompt,
+                "width": width, "height": height, "num_inference_steps": steps, "seed": resolved_seed}}
+
+        try:
+            async with httpx.AsyncClient(timeout=300) as client:
+                # Submit
+                r = await client.post("https://api.replicate.com/v1/predictions", headers=headers, json=body)
+                if r.status_code != 201:
+                    return {"success": False, "error": f"Replicate: {r.text[:200]}"}
+                pred = r.json()
+
+                # Poll
+                for _ in range(60):
+                    await asyncio.sleep(2)
+                    r = await client.get(pred["urls"]["get"], headers=headers)
+                    pred = r.json()
+                    if pred["status"] == "succeeded":
+                        break
+                    if pred["status"] == "failed":
+                        return {"success": False, "error": f"Replicate failed: {pred.get('error','')}"}
+                else:
+                    return {"success": False, "error": "Replicate timeout"}
+
+                # Download
+                images = []
+                for i, url in enumerate(pred.get("output", [])):
+                    r = await client.get(url)
+                    filename = f"replicate_{uuid.uuid4().hex[:8]}.png"
+                    filepath = os.path.join(DEFAULT_OUTPUT_DIR, filename)
+                    os.makedirs(DEFAULT_OUTPUT_DIR, exist_ok=True)
+                    with open(filepath, "wb") as f:
+                        f.write(r.content)
+                    images.append({"path": filepath, "filename": filename, "size_bytes": len(r.content), "url": url})
+
+                return {"success": True, "images": images, "seed": resolved_seed}
+        except Exception as e:
+            return {"success": False, "error": f"Replicate: {e}"}
+
+    async def health_check(self) -> bool:
+        if not self.api_token:
+            return False
+        try:
+            async with httpx.AsyncClient(timeout=10) as c:
+                r = await c.get("https://api.replicate.com/v1/models", headers={"Authorization": f"Token {self.api_token}"})
+                return r.status_code == 200
+        except Exception:
+            return False
+
+    async def list_models(self) -> list:
+        return ["stability-ai/sdxl", "black-forest-labs/flux-schnell", "black-forest-labs/flux-dev",
+                "stability-ai/stable-diffusion-3.5-large"]
+
+
+class RunningHubBackend(ImageGenBackend):
+    """RunningHub.ai cloud API — Chinese ComfyUI cloud platform.
+
+    Env: ``RUNNINGHUB_API_KEY`` — get from https://www.runninghub.ai
+    Uses ComfyUI-compatible API endpoint.
+    """
+
+    def __init__(self, api_key: str = "", base_url: str = "https://www.runninghub.ai"):
+        self.api_key = api_key or os.getenv("RUNNINGHUB_API_KEY", "")
+        self.base_url = base_url
+
+    async def generate(self, prompt: str, negative_prompt: str = "", width: int = 1024,
+                       height: int = 1024, steps: int = 20, seed: int = -1,
+                       model: str = "", **kw: Any) -> dict:
+        if not self.api_key:
+            return {"success": False, "error": "RUNNINGHUB_API_KEY not set"}
+
+        resolved_seed = seed if seed != -1 else random.randint(0, 2**32 - 1)
+
+        # RunningHub uses ComfyUI-compatible API, submit a simple txt2img workflow
+        workflow = {
+            "3": {"class_type": "KSampler", "inputs": {"seed": resolved_seed, "steps": steps,
+                  "cfg": 7, "sampler_name": "euler", "scheduler": "normal", "denoise": 1,
+                  "model": ["4", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["5", 0]}},
+            "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": model or "sd_xl_base_1.0.safetensors"}},
+            "5": {"class_type": "EmptyLatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}},
+            "6": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["4", 1]}},
+            "7": {"class_type": "CLIPTextEncode", "inputs": {"text": negative_prompt, "clip": ["4", 1]}},
+            "8": {"class_type": "VAEDecode", "inputs": {"samples": ["3", 0], "vae": ["4", 2]}},
+            "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": "dragon_gen", "images": ["8", 0]}},
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=300) as client:
+                headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+                r = await client.post(f"{self.base_url}/api/prompt", headers=headers, json={"prompt": workflow})
+                if r.status_code != 200:
+                    return {"success": False, "error": f"RunningHub: {r.text[:200]}"}
+                data = r.json()
+                prompt_id = data.get("prompt_id", "")
+
+                # Poll
+                for _ in range(60):
+                    await asyncio.sleep(3)
+                    r = await client.get(f"{self.base_url}/api/history/{prompt_id}", headers=headers)
+                    if r.status_code == 200:
+                        history = r.json()
+                        if prompt_id in history:
+                            outputs = history[prompt_id].get("outputs", {})
+                            if outputs:
+                                break
+                else:
+                    return {"success": False, "error": "RunningHub timeout"}
+
+                # Download outputs
+                images = []
+                for node_id, items in outputs.items():
+                    for item in items:
+                        img_url = item.get("url") or item.get("filename", "")
+                        if img_url.startswith("http"):
+                            r = await client.get(img_url)
+                            filename = f"runninghub_{uuid.uuid4().hex[:8]}.png"
+                            filepath = os.path.join(DEFAULT_OUTPUT_DIR, filename)
+                            os.makedirs(DEFAULT_OUTPUT_DIR, exist_ok=True)
+                            with open(filepath, "wb") as f:
+                                f.write(r.content)
+                            images.append({"path": filepath, "filename": filename, "size_bytes": len(r.content), "url": img_url})
+
+                return {"success": len(images) > 0, "images": images, "prompt_id": prompt_id, "seed": resolved_seed}
+        except Exception as e:
+            return {"success": False, "error": f"RunningHub: {e}"}
+
+    async def health_check(self) -> bool:
+        if not self.api_key:
+            return False
+        try:
+            async with httpx.AsyncClient(timeout=10) as c:
+                r = await c.get(f"{self.base_url}/api/system_stats", headers={"Authorization": f"Bearer {self.api_key}"})
+                return r.status_code == 200
+        except Exception:
+            return False
+
+    async def list_models(self) -> list:
+        return ["sd_xl_base_1.0.safetensors", "sd3.5_large.safetensors", "flux1-dev.safetensors"]
+
+
+def _size_to_aspect(width: int, height: int) -> str:
+    """Convert pixel dimensions to Stability AI aspect ratio string."""
+    ratio = width / height
+    best = "1:1"
+    best_diff = abs(ratio - 1)
+    for name, target in [("16:9", 16/9), ("9:16", 9/16), ("4:3", 4/3), ("3:4", 3/4),
+                          ("3:2", 3/2), ("2:3", 2/3), ("21:9", 21/9)]:
+        diff = abs(ratio - target)
+        if diff < best_diff:
+            best_diff = diff
+            best = name
+    return best
+
+
+# ────────────────────────────────────────────────────────────────────
 # Global backend registry
 # ────────────────────────────────────────────────────────────────────
 
@@ -528,17 +776,31 @@ def get_backend() -> ImageGenBackend:
 def _create_backend_from_env() -> ImageGenBackend:
     """Auto-detect backend from environment variables.
 
-    Checks:
-    - ``COMFYUI_URL`` → ComfyUIBackend
-    - otherwise → DummyBackend
+    Priority: RUNNINGHUB > STABILITY > REPLICATE > COMFYUI > DUMMY
     """
+    # RunningHub (Chinese cloud, best for domestic users)
+    if os.getenv("RUNNINGHUB_API_KEY"):
+        logger.info("Auto-configuring RunningHubBackend")
+        return RunningHubBackend()
+
+    # Stability AI (global cloud)
+    if os.getenv("STABILITY_API_KEY"):
+        logger.info("Auto-configuring StabilityAIBackend")
+        return StabilityAIBackend()
+
+    # Replicate (global cloud, many models)
+    if os.getenv("REPLICATE_API_TOKEN"):
+        logger.info("Auto-configuring ReplicateBackend")
+        return ReplicateBackend()
+
+    # ComfyUI (local GPU)
     comfy_url = os.getenv("COMFYUI_URL", "")
     if comfy_url:
         timeout = int(os.getenv("COMFYUI_TIMEOUT", str(DEFAULT_TIMEOUT)))
         logger.info("Auto-configuring ComfyUIBackend at %s", comfy_url)
         return ComfyUIBackend(base_url=comfy_url, timeout=timeout)
 
-    logger.info("No COMFYUI_URL set; using DummyBackend")
+    logger.info("No image gen backend env vars set; using DummyBackend")
     return DummyBackend()
 
 
@@ -581,7 +843,8 @@ async def tool_image_models() -> str:
             "models": [],
             "hint": (
                 "No image generation backend configured. "
-                "Set COMFYUI_URL to connect to a ComfyUI server."
+                "Set COMFYUI_URL / STABILITY_API_KEY / REPLICATE_API_TOKEN / RUNNINGHUB_API_KEY "
+                "to enable image generation."
             ),
         })
 
