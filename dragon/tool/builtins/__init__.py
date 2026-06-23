@@ -86,6 +86,9 @@ from dragon.tool.builtins.feishu_docs import (
 from dragon.tool.builtins.youtube import tool_youtube_transcript, tool_youtube_summarize
 from dragon.tool.builtins.spotify import tool_spotify_search, tool_spotify_now_playing
 from dragon.tool.builtins.gif_search import tool_gif_search, tool_gif_trending
+from dragon.tool.builtins.notion import tool_notion_search, tool_notion_read_page, tool_notion_create_page
+from dragon.tool.builtins.linear import tool_linear_list_issues, tool_linear_create_issue
+from dragon.tool.builtins.airtable import tool_airtable_list_records, tool_airtable_create_record
 from dragon.tool.builtins.google_workspace import (
     tool_gmail_send,
     tool_gmail_search,
@@ -677,6 +680,71 @@ def _register_gif(registry):
     )(tool_gif_trending)
 
 
+def _register_notion(registry):
+    """Register Notion tools (search, read, create pages)."""
+    registry.register(
+        name="notion_search",
+        description="Search Notion pages by title or content. Requires NOTION_API_KEY.",
+        tags=["notion", "search", "pages", "productivity"],
+        category="productivity",
+        timeout_secs=30,
+    )(tool_notion_search)
+
+    registry.register(
+        name="notion_read_page",
+        description="Read a Notion page as plain text by page ID. Requires NOTION_API_KEY.",
+        tags=["notion", "read", "pages", "productivity"],
+        category="productivity",
+        timeout_secs=30,
+    )(tool_notion_read_page)
+
+    registry.register(
+        name="notion_create_page",
+        description="Create a new Notion page with title and optional content. Requires NOTION_API_KEY.",
+        tags=["notion", "create", "pages", "productivity"],
+        category="productivity",
+        timeout_secs=30,
+    )(tool_notion_create_page)
+
+
+def _register_linear(registry):
+    """Register Linear tools (list, create issues)."""
+    registry.register(
+        name="linear_list_issues",
+        description="List Linear issues with optional team filter. Requires LINEAR_API_KEY.",
+        tags=["linear", "issues", "list", "project-management"],
+        category="productivity",
+        timeout_secs=30,
+    )(tool_linear_list_issues)
+
+    registry.register(
+        name="linear_create_issue",
+        description="Create a new Linear issue with title, description, and optional team. Requires LINEAR_API_KEY.",
+        tags=["linear", "issues", "create", "project-management"],
+        category="productivity",
+        timeout_secs=30,
+    )(tool_linear_create_issue)
+
+
+def _register_airtable(registry):
+    """Register Airtable tools (list, create records)."""
+    registry.register(
+        name="airtable_list_records",
+        description="List records from an Airtable table by base ID and table name. Requires AIRTABLE_API_KEY.",
+        tags=["airtable", "records", "list", "database"],
+        category="productivity",
+        timeout_secs=30,
+    )(tool_airtable_list_records)
+
+    registry.register(
+        name="airtable_create_record",
+        description="Create a new record in an Airtable table with JSON fields. Requires AIRTABLE_API_KEY.",
+        tags=["airtable", "records", "create", "database"],
+        category="productivity",
+        timeout_secs=30,
+    )(tool_airtable_create_record)
+
+
 def register_builtins(registry: ToolRegistry) -> None:
     """Register all built-in tools on the given registry."""
     registry.register(
@@ -1006,5 +1074,14 @@ def register_builtins(registry: ToolRegistry) -> None:
 
     # ── GIF Search (Tenor) ───────────────────────────────────────
     _register_gif(registry)
+
+    # ── Notion ───────────────────────────────────────────────────
+    _register_notion(registry)
+
+    # ── Linear ──────────────────────────────────────────────────
+    _register_linear(registry)
+
+    # ── Airtable ────────────────────────────────────────────────
+    _register_airtable(registry)
 
     logger.info("Registered %d built-in tools", len(registry._tools))
