@@ -77,8 +77,14 @@ from dragon.tool.builtins.browser import (
 from dragon.tool.builtins.maps import (
     tool_geocode, tool_reverse_geocode, tool_get_route, tool_search_poi,
 )
+from dragon.tool.builtins.obsidian import (
+    tool_obsidian_read, tool_obsidian_search, tool_obsidian_create,
+)
+from dragon.tool.builtins.feishu_docs import (
+    tool_feishu_read_doc, tool_feishu_list_docs, tool_feishu_create_doc,
+)
+from dragon.tool.builtins.youtube import tool_youtube_transcript, tool_youtube_summarize
 from dragon.web_providers import WebSearchRouter
-
 
 logger = logging.getLogger("dragon.tool.builtins")
 
@@ -467,6 +473,33 @@ async def tool_web_download(url: str, save_path: str) -> str:
 # ────────────────────────────────────────────────────────────────────
 
 
+def _register_feishu_docs(registry):
+    """Register Feishu document tools (read, list, create)."""
+    registry.register(
+        name="feishu_read_doc",
+        description="Read a Feishu/Lark document as plain text. Provide the doc_token from the document URL.",
+        tags=["feishu", "document", "read"],
+        category="productivity",
+        timeout_secs=30,
+    )(tool_feishu_read_doc)
+
+    registry.register(
+        name="feishu_list_docs",
+        description="List recent Feishu documents with names, tokens, and URLs.",
+        tags=["feishu", "document", "list"],
+        category="productivity",
+        timeout_secs=30,
+    )(tool_feishu_list_docs)
+
+    registry.register(
+        name="feishu_create_doc",
+        description="Create a new Feishu document with optional initial text content.",
+        tags=["feishu", "document", "create"],
+        category="productivity",
+        timeout_secs=30,
+    )(tool_feishu_create_doc)
+
+
 def _register_image_gen(registry):
     registry.register(
         name="image_generate",
@@ -517,6 +550,50 @@ def _register_maps(registry):
         category="maps",
         timeout_secs=15,
     )(tool_search_poi)
+
+
+def _register_youtube(registry):
+    registry.register(
+        name="youtube_transcript",
+        description="Get transcript/subtitles from a YouTube video. Returns timed segments with text, start time, and duration.",
+        tags=["youtube", "transcript", "subtitles", "video"],
+        category="media",
+        timeout_secs=30,
+    )(tool_youtube_transcript)
+
+    registry.register(
+        name="youtube_summarize",
+        description="Get a YouTube video transcript as a plain-text summary with timestamps, ready for AI summarization.",
+        tags=["youtube", "summarize", "transcript", "video"],
+        category="media",
+        timeout_secs=30,
+    )(tool_youtube_summarize)
+
+
+def _register_obsidian(registry):
+    registry.register(
+        name="obsidian_read",
+        description="Read an Obsidian note from a local vault (Markdown file). Returns title, content, word count, and metadata.",
+        tags=["obsidian", "notes", "read", "markdown"],
+        category="productivity",
+        timeout_secs=15,
+    )(tool_obsidian_read)
+
+    registry.register(
+        name="obsidian_search",
+        description="Search Obsidian notes by keyword or regex. Results are ranked by match count with snippets.",
+        tags=["obsidian", "search", "notes", "markdown"],
+        category="productivity",
+        timeout_secs=30,
+    )(tool_obsidian_search)
+
+    registry.register(
+        name="obsidian_create",
+        description="Create a new Obsidian note with YAML frontmatter (date, tags). Supports vault subfolders.",
+        tags=["obsidian", "create", "notes", "markdown"],
+        category="productivity",
+        timeout_secs=10,
+    )(tool_obsidian_create)
 
 
 def register_builtins(registry: ToolRegistry) -> None:
@@ -830,5 +907,11 @@ def register_builtins(registry: ToolRegistry) -> None:
 
     # ── Maps / Geolocation ─────────────────────────────────────────
     _register_maps(registry)
+
+    # ── YouTube ────────────────────────────────────────────────────
+    _register_youtube(registry)
+
+    # ── Obsidian ──────────────────────────────────────────────────
+    _register_obsidian(registry)
 
     logger.info("Registered %d built-in tools", len(registry._tools))
