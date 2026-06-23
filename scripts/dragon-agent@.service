@@ -1,0 +1,29 @@
+[Unit]
+Description=Dragon Agent — Multi-Industry AI Agent
+Documentation=https://gitee.com/jialine/dragon-agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/dragon-agent
+Environment="PATH=/home/%i/dragon-agent/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=-/home/%i/dragon-agent/.env
+ExecStart=/home/%i/dragon-agent/.venv/bin/python -m dragon.main
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dragon-agent
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/%i/dragon-agent/dragon_data
+ReadOnlyPaths=/home/%i/dragon-agent/config.yaml
+
+[Install]
+WantedBy=multi-user.target

@@ -13,6 +13,7 @@ import json
 import asyncio
 import base64
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import List, Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException
@@ -44,6 +45,18 @@ from dragon.gateway.telegram import TelegramAdapter
 from dragon.gateway.discord import DiscordAdapter
 
 logger = logging.getLogger("dragon.api")
+
+
+def _read_version() -> str:
+    """Read version from VERSION file, fallback to '1.0.0'."""
+    try:
+        vf = Path(__file__).parent.parent / "VERSION"
+        if vf.exists():
+            return vf.read_text().strip()
+    except Exception:
+        pass
+    return "1.0.0"
+
 
 # ── Globals ──────────────────────────────────────────────
 router: Optional[DragonRouter] = None
@@ -297,7 +310,7 @@ async def lifespan(app: FastAPI):
         router.shutdown()
 
 
-app = FastAPI(title="Dragon Agent", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Dragon Agent", version=_read_version(), lifespan=lifespan)
 from dragon.monitoring import router as monitoring_router
 app.include_router(monitoring_router)
 

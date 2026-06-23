@@ -3,7 +3,11 @@
 
 # ── Provider (Default model) ──────────────────────────────────
 provider:
-  default: "agilemind"            # agilemind / deepseek / openai / ...
+  default: "andl"                 # andl / agilemind / deepseek / openai / ...
+  andl:
+    model: "Qwen3.5-122B-A10B"    # 本地 ANDL MoE 推理集群
+    base_url: "http://192.168.0.21:8080/v1"
+    api_key: "not-needed"
   agilemind:
     model: "qwen3.5-122b-a10b"    # qwen3.5-122b-a10b / qwen3.6-35b-a3b
   # deepseek:
