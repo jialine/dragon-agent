@@ -908,6 +908,9 @@ def register_builtins(registry: ToolRegistry) -> None:
     # ── Maps / Geolocation ─────────────────────────────────────────
     _register_maps(registry)
 
+    # ── Feishu Documents ────────────────────────────────────────────
+    _register_feishu_docs(registry)
+
     # ── YouTube ────────────────────────────────────────────────────
     _register_youtube(registry)
 
