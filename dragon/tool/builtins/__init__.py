@@ -84,6 +84,8 @@ from dragon.tool.builtins.feishu_docs import (
     tool_feishu_read_doc, tool_feishu_list_docs, tool_feishu_create_doc,
 )
 from dragon.tool.builtins.youtube import tool_youtube_transcript, tool_youtube_summarize
+from dragon.tool.builtins.spotify import tool_spotify_search, tool_spotify_now_playing
+from dragon.tool.builtins.gif_search import tool_gif_search, tool_gif_trending
 from dragon.tool.builtins.google_workspace import (
     tool_gmail_send,
     tool_gmail_search,
@@ -637,6 +639,44 @@ def _register_google(registry):
     )(tool_google_calendar_list)
 
 
+def _register_spotify(registry):
+    """Register Spotify music tools (search, now playing)."""
+    registry.register(
+        name="spotify_search",
+        description="Search Spotify for tracks, albums, artists, or playlists. Requires SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET.",
+        tags=["spotify", "music", "search", "audio"],
+        category="media",
+        timeout_secs=15,
+    )(tool_spotify_search)
+
+    registry.register(
+        name="spotify_now_playing",
+        description="Get the currently playing track on Spotify. Requires SPOTIFY_REFRESH_TOKEN for user authorization.",
+        tags=["spotify", "music", "playback", "now-playing"],
+        category="media",
+        timeout_secs=15,
+    )(tool_spotify_now_playing)
+
+
+def _register_gif(registry):
+    """Register GIF search tools (Tenor API)."""
+    registry.register(
+        name="gif_search",
+        description="Search for GIFs via the Tenor API. Requires TENOR_API_KEY.",
+        tags=["gif", "tenor", "search", "media"],
+        category="media",
+        timeout_secs=15,
+    )(tool_gif_search)
+
+    registry.register(
+        name="gif_trending",
+        description="Get trending GIFs from Tenor. Requires TENOR_API_KEY.",
+        tags=["gif", "tenor", "trending", "media"],
+        category="media",
+        timeout_secs=15,
+    )(tool_gif_trending)
+
+
 def register_builtins(registry: ToolRegistry) -> None:
     """Register all built-in tools on the given registry."""
     registry.register(
@@ -960,5 +1000,11 @@ def register_builtins(registry: ToolRegistry) -> None:
 
     # ── Google Workspace (Gmail + Drive + Calendar) ───────────────
     _register_google(registry)
+
+    # ── Spotify ──────────────────────────────────────────────────
+    _register_spotify(registry)
+
+    # ── GIF Search (Tenor) ───────────────────────────────────────
+    _register_gif(registry)
 
     logger.info("Registered %d built-in tools", len(registry._tools))
