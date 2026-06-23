@@ -193,5 +193,38 @@ def test_web_tools_registered():
     tool_names = [t["name"] for t in registry.list_tools()]
 
     assert "web_search" in tool_names
+    assert "web_providers" in tool_names
     assert "web_fetch" in tool_names
     assert "web_download" in tool_names
+
+
+# ── Multi-provider web search ──────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_web_providers_returns_list():
+    """tool_web_providers should return a JSON list of providers."""
+    from dragon.tool.builtins import tool_web_providers
+    result = json.loads(await tool_web_providers())
+    assert "providers" in result
+    assert isinstance(result["providers"], list)
+    # DuckDuckGo should always be available
+    provider_names = [p["name"] for p in result["providers"]]
+    assert "duckduckgo" in provider_names
+
+
+@pytest.mark.asyncio
+async def test_web_search_invalid_provider():
+    """Requesting a non-existent provider should return an error."""
+    from dragon.tool.builtins import tool_web_search
+    result = json.loads(await tool_web_search("test", provider="nonexistent"))
+    assert "error" in result
+    assert "available" in result
+
+
+@pytest.mark.asyncio
+async def test_web_search_returns_provider_field():
+    """Successful search result should include the provider field."""
+    from dragon.tool.builtins import tool_web_search
+    result = json.loads(await tool_web_search("some query", max_results=1))
+    # Even without network, response should have the provider field
+    assert "provider" in result

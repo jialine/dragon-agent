@@ -139,12 +139,15 @@ __all__.extend([
 from dragon.factcheck import FactChecker, FactClaim, VerificationResult, ClaimType, VerificationStatus
 from dragon.consensus import ConsensusBuilder, ConsensusResult, SourceTracker
 from dragon.web_search import WebSearcher, SearchResult
+from dragon.web_providers import WebSearchRouter, WebSearchResult as ProviderSearchResult, SearchProvider, BraveSearchProvider, SearXNGSProvider, DuckDuckGoProvider
 from dragon.hallmetrics import HallucinationTracker, HallucinationReport
 
 __all__.extend([
     "FactChecker", "FactClaim", "VerificationResult", "ClaimType", "VerificationStatus",
     "ConsensusBuilder", "ConsensusResult", "SourceTracker",
     "WebSearcher", "SearchResult",
+    "WebSearchRouter", "ProviderSearchResult", "SearchProvider",
+    "BraveSearchProvider", "SearXNGSProvider", "DuckDuckGoProvider",
     "HallucinationTracker", "HallucinationReport",
 ])
 
