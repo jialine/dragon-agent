@@ -132,6 +132,9 @@ class FeishuAdapter(PlatformAdapter):
         # Dedup
         self._seen_message_ids: Dict[str, float] = {}  # msg_id → seen_at
 
+        # Voice mode
+        self.voice_enabled: bool = False
+
         logger.info(
             "Feishu adapter ready (domain=%s, mode=%s)",
             domain, self.connection_mode,
@@ -301,8 +304,27 @@ class FeishuAdapter(PlatformAdapter):
 
         if self._message_handler:
             try:
+                # Check for voice commands
+                voice_cmd_response = self._check_voice_command(message.content)
+                if voice_cmd_response:
+                    # Send command response directly
+                    reply = PlatformReply(
+                        platform="feishu",
+                        chat_id=message.chat_id,
+                        content=voice_cmd_response,
+                        reply_to_message_id=message.message_id,
+                    )
+                    await self.send_message(reply)
+                    return
+                
+                # Normal message handling
                 reply = await self._message_handler(message)
                 await self.send_message(reply)
+                
+                # If voice is enabled, synthesize and send audio
+                if self.voice_enabled and reply and reply.content:
+                    await self._send_voice_reply(message.chat_id, reply.content, reply.reply_to_message_id)
+                    
             except Exception as exc:
                 logger.exception("[Feishu] Message handler error: %s", exc)
         else:
@@ -311,6 +333,75 @@ class FeishuAdapter(PlatformAdapter):
                 "call adapter.register_handler()! Message from %s dropped.",
                 message.user_id,
             )
+
+    # ── Voice Commands ────────────────────────────────────────────
+
+    def _check_voice_command(self, text: str) -> Optional[str]:
+        """Check if message is a voice mode command. Returns response text or None."""
+        text_lower = text.strip().lower()
+        if text_lower in ("/voice on", "/voice off", "/语音 on", "/语音 off", "/语音 开", "/语音 关"):
+            if "off" in text_lower or "关" in text_lower:
+                self.voice_enabled = False
+                return "🔇 语音模式已关闭"
+            else:
+                self.voice_enabled = True
+                return "🔊 语音模式已开启，回复将附带语音"
+        return None
+
+    # ── Voice Synthesis ───────────────────────────────────────────
+
+    async def _send_voice_reply(self, chat_id: str, text: str, reply_to_msg_id: str = ""):
+        """Synthesize text to speech and send as audio message."""
+        import tempfile
+        import os as _os
+        
+        try:
+            from dragon.voice_engine import VoiceEngine
+            
+            # Truncate long text for voice (max ~500 chars for reasonable audio length)
+            voice_text = text[:500] if len(text) > 500 else text
+            
+            engine = VoiceEngine(voice="zh-CN-XiaoxiaoNeural")
+            await engine.start()
+            engine.consume(voice_text)
+            await engine.flush()
+            
+            audio_item = await engine.next_audio()
+            if audio_item is None:
+                logger.warning("[Feishu] Voice synthesis produced no audio")
+                await engine.stop()
+                return
+            
+            _, audio_bytes = audio_item
+            await engine.stop()
+            
+            if not audio_bytes or len(audio_bytes) < 100:
+                return
+            
+            # Save to temp file
+            tmp_path = _os.path.join(tempfile.gettempdir(), f"dragon_voice_{int(time.time())}.mp3")
+            with open(tmp_path, "wb") as f:
+                f.write(audio_bytes)
+            
+            # Send as audio message
+            success = await self.send_audio_message(
+                chat_id=chat_id,
+                audio_path=tmp_path,
+                reply_to_message_id=reply_to_msg_id,
+                duration_ms=0,  # Feishu will calculate
+            )
+            
+            # Cleanup
+            try:
+                _os.remove(tmp_path)
+            except OSError:
+                pass
+            
+            if not success:
+                logger.warning("[Feishu] Failed to send voice reply")
+                
+        except Exception as e:
+            logger.exception("[Feishu] Voice synthesis failed: %s", e)
 
     async def _parse_ws_event(self, event: Any) -> Optional[PlatformMessage]:
         """Parse a Lark SDK WebSocket event into PlatformMessage."""
@@ -476,6 +567,84 @@ class FeishuAdapter(PlatformAdapter):
         except Exception as e:
             logger.exception("[Feishu] Failed to send message: %s", e)
 
+        return False
+
+    # ── Send Audio Message ────────────────────────────────────────
+
+    async def send_audio_message(
+        self, 
+        chat_id: str, 
+        audio_path: str, 
+        reply_to_message_id: str = "",
+        duration_ms: int = 0,
+    ) -> bool:
+        """Send an audio (voice) message via Feishu HTTP API.
+        
+        Returns True on success, False on failure.
+        """
+        token = await self._get_tenant_access_token()
+        if not token:
+            logger.error("[Feishu] Failed to get token for audio message")
+            return False
+        
+        import os as _os
+        if not _os.path.exists(audio_path):
+            logger.error("[Feishu] Audio file not found: %s", audio_path)
+            return False
+        
+        # Upload the audio file
+        file_key = await self.upload_media(audio_path)
+        if not file_key:
+            logger.error("[Feishu] Failed to upload audio file")
+            return False
+        
+        file_name = _os.path.basename(audio_path)
+        
+        # Send as audio message (Feishu supports audio msg_type)
+        content = json.dumps({
+            "file_key": file_key,
+            "file_name": file_name,
+            "duration": duration_ms,
+        })
+        
+        if reply_to_message_id:
+            url = f"{self.api_base}/im/v1/messages/{reply_to_message_id}/reply"
+            body = {"content": content, "msg_type": "audio"}
+        else:
+            url = f"{self.api_base}/im/v1/messages"
+            body = {
+                "receive_id": chat_id,
+                "content": content,
+                "msg_type": "audio",
+            }
+        
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(url, headers=headers, json=body)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("code") == 0:
+                        logger.info("[Feishu] Audio message sent: %s", audio_path)
+                        return True
+                    # Fall back to file message type
+                    body["msg_type"] = "file"
+                    resp2 = await client.post(url, headers=headers, json=body)
+                    if resp2.status_code == 200:
+                        data2 = resp2.json()
+                        if data2.get("code") == 0:
+                            logger.info("[Feishu] Audio sent as file: %s", audio_path)
+                            return True
+                    logger.error("[Feishu] Audio API error: %s", data.get("msg"))
+                else:
+                    logger.error("[Feishu] Audio HTTP %d", resp.status_code)
+        except Exception as e:
+            logger.exception("[Feishu] Failed to send audio: %s", e)
+        
         return False
 
     # ── Media Upload ──────────────────────────────────────────────
