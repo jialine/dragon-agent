@@ -74,9 +74,16 @@ from dragon.tool.builtins.browser import (
     browser_open, browser_screenshot, browser_get_text,
     browser_click, browser_type, browser_close,
 )
+from dragon.tool.builtins.maps import (
+    tool_geocode, tool_reverse_geocode, tool_get_route, tool_search_poi,
+)
+from dragon.web_providers import WebSearchRouter
 
 
 logger = logging.getLogger("dragon.tool.builtins")
+
+# ── Web Search Router (shared instance) ─────────────────────────────
+_web_search_router = WebSearchRouter()
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -259,148 +266,70 @@ async def tool_http_get(
 # ────────────────────────────────────────────────────────────────────
 
 
-async def tool_web_search(query: str, max_results: int = 10) -> str:
-    """Search the web via DuckDuckGo HTML (no API key required).
+async def tool_web_search(query: str, max_results: int = 10, provider: str = "") -> str:
+    """Search the web via multiple providers (Brave, SearXNG, DuckDuckGo).
+
+    Supports Brave Search (set BRAVE_API_KEY), SearXNG (set SEARXNG_URL),
+    or DuckDuckGo HTML scraping (always available, no key needed).
 
     Args:
         query: Search query string.
         max_results: Maximum number of results to return (default: 10).
+        provider: Optional provider name to force a specific backend
+            ('brave', 'searxng', 'duckduckgo'). Leave empty for auto-fallback.
 
     Returns:
-        JSON with query, results list (title, url, snippet), and total count.
+        JSON with query, provider used, results list (title, url, snippet),
+        and total count.
     """
     if not query or not query.strip():
         return json.dumps({"error": "Query cannot be empty"})
 
     query = query.strip()
-    results: List[Dict[str, str]] = []
+
+    # Validate explicit provider choice
+    if provider:
+        available = _web_search_router.list_providers()
+        available_names = [p["name"] for p in available]
+        if provider not in available_names:
+            return json.dumps({
+                "error": f"Provider '{provider}' is not available",
+                "available": available,
+            })
 
     try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(15.0),
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                ),
-            },
-            follow_redirects=True,
-        ) as client:
+        used_provider, results = await _web_search_router.search(
+            query, max_results=max_results, provider=provider or None
+        )
 
-            # Try DuckDuckGo HTML search (POST)
-            resp = await client.post(
-                "https://html.duckduckgo.com/html/",
-                data={"q": query},
-            )
-
-            if resp.status_code == 200:
-                results = _parse_duckduckgo_html(resp.text, max_results)
-
-            # If DuckDuckGo HTML didn't return results, fall back to regex
-            # parsing of the lite version
-            if not results:
-                resp2 = await client.get(
-                    "https://lite.duckduckgo.com/lite/",
-                    params={"q": query},
-                )
-                if resp2.status_code == 200:
-                    results = _parse_duckduckgo_lite(resp2.text, max_results)
-
+        return json.dumps({
+            "query": query,
+            "provider": used_provider,
+            "results": [
+                {"title": r.title, "url": r.url, "snippet": r.snippet}
+                for r in results
+            ],
+            "total": len(results),
+        })
     except Exception as e:
         logger.warning("Web search failed for query '%s': %s", query, e)
         return json.dumps({
             "query": query,
+            "provider": "error",
             "results": [],
             "total": 0,
             "error": str(e),
         })
 
-    return json.dumps({
-        "query": query,
-        "results": results,
-        "total": len(results),
-    })
 
+async def tool_web_providers() -> str:
+    """List available web search providers and their status.
 
-def _parse_duckduckgo_html(html: str, max_results: int) -> List[Dict[str, str]]:
-    """Extract results from DuckDuckGo HTML response using regex."""
-    results: List[Dict[str, str]] = []
-
-    # Pattern for result links: <a class="result__a" href="URL">Title</a>
-    link_pattern = re.compile(
-        r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
-        re.DOTALL,
-    )
-    # Pattern for snippets: <a class="result__snippet">Snippet</a>
-    snippet_pattern = re.compile(
-        r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>',
-        re.DOTALL,
-    )
-
-    links = link_pattern.findall(html)
-    snippets = snippet_pattern.findall(html)
-
-    for i, (url, title) in enumerate(links):
-        if len(results) >= max_results:
-            break
-        title_clean = re.sub(r"<[^>]+>", "", title).strip()
-        snippet = ""
-        if i < len(snippets):
-            snippet = re.sub(r"<[^>]+>", "", snippets[i]).strip()
-
-        if title_clean and url.startswith("http"):
-            results.append({
-                "title": title_clean,
-                "url": url,
-                "snippet": snippet,
-            })
-
-    return results
-
-
-def _parse_duckduckgo_lite(html: str, max_results: int) -> List[Dict[str, str]]:
-    """Extract results from DuckDuckGo Lite HTML (fallback)."""
-    results: List[Dict[str, str]] = []
-
-    # Lite uses table rows with links and descriptions
-    # Pattern: <a href="URL">Title</a> ... <td class="result-snippet">Snippet</td>
-    row_pattern = re.compile(
-        r'<a[^>]*href="(https?://[^"]+)"[^>]*>(.*?)</a>',
-        re.DOTALL,
-    )
-    snippet_pattern = re.compile(
-        r'<td[^>]*class="result-snippet"[^>]*>(.*?)</td>',
-        re.DOTALL,
-    )
-
-    links = row_pattern.findall(html)
-    snippets = snippet_pattern.findall(html)
-
-    seen_urls: set = set()
-    for i, (url, title) in enumerate(links):
-        if len(results) >= max_results:
-            break
-        # Skip non-result links
-        if "duckduckgo.com" in url or url in seen_urls:
-            continue
-        seen_urls.add(url)
-
-        title_clean = re.sub(r"<[^>]+>", "", title).strip()
-        snippet = ""
-        for j in range(i, min(i + 2, len(snippets))):
-            s = re.sub(r"<[^>]+>", "", snippets[j]).strip()
-            if s and s != title_clean:
-                snippet = s
-                break
-
-        if title_clean and url.startswith("http"):
-            results.append({
-                "title": title_clean,
-                "url": url,
-                "snippet": snippet,
-            })
-
-    return results
+    Returns:
+        JSON with a list of provider metadata dicts (name, available).
+    """
+    available = _web_search_router.list_providers()
+    return json.dumps({"providers": available})
 
 
 async def tool_web_fetch(url: str) -> str:
@@ -556,6 +485,40 @@ def _register_image_gen(registry):
     )(tool_image_models)
 
 
+def _register_maps(registry):
+    registry.register(
+        name="geocode",
+        description="Convert an address or place name to latitude/longitude coordinates using OpenStreetMap Nominatim.",
+        tags=["maps", "geocode", "coordinates", "location"],
+        category="maps",
+        timeout_secs=15,
+    )(tool_geocode)
+
+    registry.register(
+        name="reverse_geocode",
+        description="Convert latitude/longitude coordinates to a human-readable address.",
+        tags=["maps", "geocode", "reverse", "location"],
+        category="maps",
+        timeout_secs=15,
+    )(tool_reverse_geocode)
+
+    registry.register(
+        name="get_route",
+        description="Get a route with turn-by-turn directions between two points using OSRM. Supports car, bike, and foot modes.",
+        tags=["maps", "route", "directions", "navigation"],
+        category="maps",
+        timeout_secs=30,
+    )(tool_get_route)
+
+    registry.register(
+        name="search_poi",
+        description="Search for points of interest (restaurants, hospitals, hotels, etc.) near a location using OpenStreetMap.",
+        tags=["maps", "poi", "search", "places"],
+        category="maps",
+        timeout_secs=15,
+    )(tool_search_poi)
+
+
 def register_builtins(registry: ToolRegistry) -> None:
     """Register all built-in tools on the given registry."""
     registry.register(
@@ -601,11 +564,19 @@ def register_builtins(registry: ToolRegistry) -> None:
     # ── Web Search / Fetch / Download ─────────────────────────────
     registry.register(
         name="web_search",
-        description="Search the web via DuckDuckGo HTML (no API key required). Returns title, url, and snippet.",
-        tags=["web", "search", "duckduckgo"],
+        description="Search the web via multiple providers (Brave, SearXNG, DuckDuckGo). Returns title, url, snippet, and provider used.",
+        tags=["web", "search", "brave", "searxng", "duckduckgo"],
         category="web",
         timeout_secs=30,
     )(tool_web_search)
+
+    registry.register(
+        name="web_providers",
+        description="List available web search providers (Brave, SearXNG, DuckDuckGo) and their status.",
+        tags=["web", "search", "providers", "status"],
+        category="web",
+        timeout_secs=10,
+    )(tool_web_providers)
 
     registry.register(
         name="web_fetch",
@@ -857,4 +828,7 @@ def register_builtins(registry: ToolRegistry) -> None:
     # ── Image Generation ───────────────────────────────────────────
     _register_image_gen(registry)
 
-    logger.info("Registered %d built-in tools", 38)
+    # ── Maps / Geolocation ─────────────────────────────────────────
+    _register_maps(registry)
+
+    logger.info("Registered %d built-in tools", len(registry._tools))
