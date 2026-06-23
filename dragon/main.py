@@ -298,6 +298,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Dragon Agent", version="1.0.0", lifespan=lifespan)
+from dragon.monitoring import router as monitoring_router
+app.include_router(monitoring_router)
 
 
 # ── Request/Response Models ──────────────────────────────

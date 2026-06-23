@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  dragon:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      - DRAGON_API_KEY=${DRAGON_API_KEY:-}
+    volumes:
+      - ./dragon_data:/app/dragon_data
+    restart: unless-stopped
