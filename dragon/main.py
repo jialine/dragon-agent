@@ -11,6 +11,7 @@ import time
 import logging
 import json
 import asyncio
+import base64
 from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Any
 
@@ -321,6 +322,13 @@ class ChatResponse(BaseModel):
     content: str
     usage: Optional[Dict[str, int]] = None
     latency_ms: int
+
+
+class VoiceChatRequest(BaseModel):
+    messages: List[Message]
+    session_id: Optional[str] = None
+    voice: str = "zh-CN-XiaoxiaoNeural"
+    speed: float = 1.0
 
 
 class HonestChatResponse(BaseModel):
@@ -686,6 +694,93 @@ async def chat_stream(request: ChatRequest):
             yield f"data: {json.dumps({'content': chunk.content, 'finish': chunk.finish_reason})}\n\n"
             if chunk.usage:
                 yield f"data: {json.dumps({'usage': chunk.usage})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"X-Industry": classification.industry},
+    )
+
+
+# ── Voice Chat ──────────────────────────────────────────────
+
+
+@app.post("/v1/chat/voice")
+async def chat_voice(request: VoiceChatRequest):
+    """Voice streaming chat: SSE with text + base64 audio chunks."""
+    if not router or not dispatcher:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+
+    user_msg = next(
+        (m.content for m in reversed(request.messages) if m.role == "user"),
+        "",
+    )
+
+    classification = await router.classify(user_msg)
+    dispatch_messages = [
+        {"role": m.role, "content": m.content}
+        for m in request.messages
+    ]
+
+    from dragon.voice_engine import VoiceEngine
+    import base64
+
+    async def generate():
+        engine = VoiceEngine(voice=request.voice, speed=request.speed)
+        await engine.start()
+
+        # Start LLM stream
+        stream = dispatcher.dispatch_stream(
+            industry=classification.industry,
+            messages=dispatch_messages,
+            temperature=0.7,
+            max_tokens=2048,
+        )
+
+        # Send metadata
+        yield f"data: {json.dumps({'type': 'meta', 'industry': classification.industry, 'voice': request.voice})}\n\n"
+
+        text_buffer = ""
+
+        async for chunk in stream:
+            if not chunk.content:
+                continue
+
+            text_buffer += chunk.content
+
+            # Feed to voice engine
+            engine.consume(chunk.content)
+
+            # Try to get ready audio
+            try:
+                audio_item = engine.audio_queue.get_nowait()
+                if audio_item:
+                    sentence_text, audio_bytes = audio_item
+                    audio_b64 = base64.b64encode(audio_bytes).decode()
+                    yield f"data: {json.dumps({'type': 'audio', 'text': sentence_text, 'audio_base64': audio_b64})}\n\n"
+            except asyncio.QueueEmpty:
+                pass
+
+            # Yield text chunk
+            yield f"data: {json.dumps({'type': 'text', 'content': chunk.content})}\n\n"
+
+            if chunk.finish_reason:
+                break
+
+        # Flush remaining
+        await engine.flush()
+
+        # Drain remaining audio
+        while True:
+            item = await engine.next_audio()
+            if item is None:
+                break
+            sentence_text, audio_bytes = item
+            audio_b64 = base64.b64encode(audio_bytes).decode()
+            yield f"data: {json.dumps({'type': 'audio', 'text': sentence_text, 'audio_base64': audio_b64})}\n\n"
+
+        await engine.stop()
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(

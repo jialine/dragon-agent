@@ -113,6 +113,14 @@ class GatewayConfig(BaseModel):
     platforms: Dict[str, PlatformAuthConfig] = Field(default_factory=dict)
 
 
+class VoiceConfig(BaseModel):
+    """Voice mode configuration."""
+    enabled: bool = False
+    default_voice: str = "zh-CN-XiaoxiaoNeural"
+    speed: float = 1.0
+    auto_play: bool = False  # Auto-play voice responses
+
+
 class DragonConfig(BaseModel):
     router: RouterConfig = Field(default_factory=RouterConfig)
     dispatch: DispatchConfig = Field(default_factory=DispatchConfig)
@@ -121,6 +129,7 @@ class DragonConfig(BaseModel):
     guard: GuardConfig = Field(default_factory=GuardConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
+    voice: VoiceConfig = Field(default_factory=VoiceConfig)
 
     @classmethod
     def load(cls, config_path: str = "config.yaml") -> "DragonConfig":
@@ -144,7 +153,7 @@ class DragonConfig(BaseModel):
 
 
 # Known DragonConfig section names (must match DragonConfig model fields)
-_DRAGON_SECTIONS = frozenset({"router", "dispatch", "memory", "backup", "guard", "server", "gateway"})
+_DRAGON_SECTIONS = frozenset({"router", "dispatch", "memory", "backup", "guard", "server", "gateway", "voice"})
 
 
 def _apply_env_overrides(data: dict, prefix: str = "DRAGON_"):
