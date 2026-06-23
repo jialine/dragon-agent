@@ -84,6 +84,12 @@ from dragon.tool.builtins.feishu_docs import (
     tool_feishu_read_doc, tool_feishu_list_docs, tool_feishu_create_doc,
 )
 from dragon.tool.builtins.youtube import tool_youtube_transcript, tool_youtube_summarize
+from dragon.tool.builtins.google_workspace import (
+    tool_gmail_send,
+    tool_gmail_search,
+    tool_google_drive_search,
+    tool_google_calendar_list,
+)
 from dragon.web_providers import WebSearchRouter
 
 logger = logging.getLogger("dragon.tool.builtins")
@@ -596,6 +602,41 @@ def _register_obsidian(registry):
     )(tool_obsidian_create)
 
 
+def _register_google(registry):
+    """Register Google Workspace tools (Gmail + Drive + Calendar)."""
+    registry.register(
+        name="gmail_send",
+        description="Send email via Gmail SMTP. Requires GMAIL_USER and GMAIL_APP_PASSWORD env vars.",
+        tags=["google", "gmail", "email", "send"],
+        category="email",
+        timeout_secs=30,
+    )(tool_gmail_send)
+
+    registry.register(
+        name="gmail_search",
+        description="Search Gmail inbox via IMAP. Returns subject, from, date for matching emails.",
+        tags=["google", "gmail", "email", "search"],
+        category="email",
+        timeout_secs=30,
+    )(tool_gmail_search)
+
+    registry.register(
+        name="google_drive_search",
+        description="Search Google Drive files by name. Requires GOOGLE_DRIVE_API_KEY env var.",
+        tags=["google", "drive", "search", "files"],
+        category="productivity",
+        timeout_secs=15,
+    )(tool_google_drive_search)
+
+    registry.register(
+        name="google_calendar_list",
+        description="List upcoming Google Calendar events. Requires GOOGLE_CALENDAR_API_KEY env var.",
+        tags=["google", "calendar", "events", "schedule"],
+        category="productivity",
+        timeout_secs=15,
+    )(tool_google_calendar_list)
+
+
 def register_builtins(registry: ToolRegistry) -> None:
     """Register all built-in tools on the given registry."""
     registry.register(
@@ -916,5 +957,8 @@ def register_builtins(registry: ToolRegistry) -> None:
 
     # ── Obsidian ──────────────────────────────────────────────────
     _register_obsidian(registry)
+
+    # ── Google Workspace (Gmail + Drive + Calendar) ───────────────
+    _register_google(registry)
 
     logger.info("Registered %d built-in tools", len(registry._tools))
