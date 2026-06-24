@@ -35,11 +35,23 @@ dependencies = [
     "python-dotenv>=1.0",
     "tenacity>=8.0",
     "networkx>=3.0",
+    "sqlalchemy>=2.0",
+    "aiosqlite>=0.20",
+    "numpy>=1.26",
+    "bcrypt>=4.0",
+    "PyJWT>=2.0",
+    "requests>=2.31",
+    "psutil>=6.0",
+    "llama-cpp-python>=0.3.8",
 ]
 
 [project.optional-dependencies]
 compressor = [
     "tiktoken>=0.5",
+]
+knowledge = [
+    "chromadb>=0.5.0",
+    "sentence-transformers>=3.3.0",
 ]
 feishu = [
     "lark-oapi>=1.5.3",
