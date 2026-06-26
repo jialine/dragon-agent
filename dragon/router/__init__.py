@@ -150,6 +150,19 @@ JSON 格式：
 
 请输出 JSON："""
 
+# Qwen2.5 chat template for formatting the full prompt
+QWEN25_CHAT_TEMPLATE = (
+    "<|im_start|>system\n{system_prompt}<|im_end|>\n"
+    "<|im_start|>user\n{query}<|im_end|>\n"
+    "<|im_start|>assistant\n"
+)
+
+
+def _build_prompt(query: str) -> str:
+    """Build a Qwen2.5-compatible classification prompt."""
+    system = CLASSIFICATION_PROMPT
+    return QWEN25_CHAT_TEMPLATE.format(system_prompt=system, query=query)
+
 # ---------------------------------------------------------------------------
 # JSON extraction helpers
 # ---------------------------------------------------------------------------
@@ -162,15 +175,19 @@ _VALID_DIFFICULTIES = frozenset({"simple", "medium", "complex"})
 def _extract_json(text: str) -> Optional[dict]:
     """Try to pull a JSON object out of model output.
 
-    Handles cases where the model wraps JSON in ``` fences or prefixes it
-    with chatter.
+    Handles cases where the model:
+    - wraps JSON in ``` fences
+    - prefixes JSON with chatter
+    - outputs bare text (e.g. "finance") — small models often skip JSON entirely
     """
     if not text:
         return None
 
+    stripped = text.strip()
+
     # 1. Try direct parse
     try:
-        return json.loads(text.strip())
+        return json.loads(stripped)
     except json.JSONDecodeError:
         pass
 
@@ -181,6 +198,13 @@ def _extract_json(text: str) -> Optional[dict]:
             return json.loads(match.group(0))
         except json.JSONDecodeError:
             pass
+
+    # 3. Bare-text fallback: small models often output just "finance" or
+    #    "medical" instead of valid JSON.  If the output is a known industry
+    #    keyword, treat it as a valid classification.
+    bare = stripped.strip('"').strip("'").lower()
+    if bare in _VALID_INDUSTRIES:
+        return {"industry": bare, "confidence": 0.5, "difficulty": "simple"}
 
     return None
 
@@ -462,7 +486,7 @@ class DragonRouter:
         if llm is None:
             return RouteResult.fallback_general("模型实例已释放。")
 
-        prompt = CLASSIFICATION_PROMPT.format(query=query)
+        prompt = _build_prompt(query)
 
         try:
             output = llm(
@@ -511,6 +535,169 @@ class DragonRouter:
             reason=sanitised["reason"],
             fallback=False,
         )
+
+
+# ---------------------------------------------------------------------------
+# RemoteRouter — OpenAI-compatible API router (fast, no local model needed)
+# ---------------------------------------------------------------------------
+
+
+class RemoteRouter:
+    """Industry router that calls a remote OpenAI-compatible API.
+
+    Use this when you have a GPU server available — classification takes
+    <1 second instead of 30-70s on CPU.
+
+    Typical usage::
+
+        router = RemoteRouter(
+            base_url="http://192.168.0.21:8080/v1",
+            model="Qwen3.5-122B-A10B",
+        )
+        await router.initialize()   # no-op (no model to load)
+
+        result: RouteResult = await router.classify("什么是K线图？")
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        model: str = "Qwen3.5-122B-A10B",
+        *,
+        api_key: str = "not-needed",
+        timeout: float = 15.0,
+        temperature: float = 0.1,
+        max_tokens: int = 256,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._model = model
+        self._api_key = api_key
+        self._timeout = timeout
+        self._temperature = temperature
+        self._max_tokens = max_tokens
+
+        self._status: RouterStatus = RouterStatus.LOADING
+        self._lock = threading.Lock()
+        self._client: Optional[object] = None  # httpx.AsyncClient
+
+        self._metrics = RouterMetrics()
+        self._metrics_lock = threading.Lock()
+
+        logger.info(
+            "RemoteRouter created (base_url=%s, model=%s)",
+            self._base_url,
+            self._model,
+        )
+
+    async def initialize(self) -> None:
+        """Create HTTP client (no model to load)."""
+        import httpx
+
+        self._client = httpx.AsyncClient(
+            base_url=self._base_url,
+            timeout=httpx.Timeout(self._timeout),
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+        with self._lock:
+            self._status = RouterStatus.LOADED
+        logger.info("RemoteRouter ready (base_url=%s)", self._base_url)
+
+    async def shutdown(self) -> None:
+        """Close HTTP client."""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+        with self._lock:
+            self._status = RouterStatus.FAILED
+
+    async def classify(self, query: str) -> RouteResult:
+        """Classify via remote API."""
+        with self._lock:
+            status = self._status
+
+        if status is RouterStatus.LOADING:
+            return RouteResult.warming()
+        if status is RouterStatus.FAILED:
+            return RouteResult.fallback_general("远程路由不可用。")
+
+        t0 = time.perf_counter()
+        try:
+            result = await self._classify_remote(query)
+        except Exception as exc:
+            logger.exception("Remote classification failed for query=%r", query[:80])
+            result = RouteResult.fallback_general(f"远程分类异常: {exc}")
+
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        with self._metrics_lock:
+            self._metrics.total_calls += 1
+            self._metrics.total_latency_ms += elapsed_ms
+            if result.fallback:
+                self._metrics.fallback_count += 1
+
+        return result
+
+    async def _classify_remote(self, query: str) -> RouteResult:
+        """Call the remote LLM API for classification."""
+        import json as _json
+
+        prompt = _build_prompt(query)
+
+        payload = {
+            "model": self._model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": self._max_tokens,
+            "temperature": self._temperature,
+            "stop": ["<|im_end|>", "<|endoftext|>"],
+        }
+
+        assert self._client is not None
+        response = await self._client.post("/chat/completions", json=payload)
+        response.raise_for_status()
+        data = response.json()
+
+        text = ""
+        choices = data.get("choices", [])
+        if choices:
+            text = choices[0].get("message", {}).get("content", "")
+
+        logger.debug("Remote raw output: %s", text[:256])
+
+        parsed = _extract_json(text)
+        if parsed is None:
+            logger.warning(
+                "Failed to extract JSON from remote output for query=%r. "
+                "Raw (truncated): %r",
+                query[:80],
+                text[:200],
+            )
+            return RouteResult.fallback_general("远程模型输出无法解析。")
+
+        sanitised = _sanitise_parsed(parsed)
+        return RouteResult(
+            industry=sanitised["industry"],
+            confidence=sanitised["confidence"],
+            difficulty=sanitised["difficulty"],
+            difficulty_score=sanitised["difficulty_score"],
+            reason=sanitised["reason"],
+            fallback=False,
+        )
+
+    @property
+    def status(self) -> RouterStatus:
+        with self._lock:
+            return self._status
+
+    @property
+    def metrics(self) -> RouterMetrics:
+        with self._metrics_lock:
+            return RouterMetrics(
+                total_calls=self._metrics.total_calls,
+                fallback_count=self._metrics.fallback_count,
+                total_latency_ms=self._metrics.total_latency_ms,
+            )
 
 
 # ---------------------------------------------------------------------------

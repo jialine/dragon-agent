@@ -1,0 +1,54 @@
+# workflows/general.yaml — 通用工作流
+# 最简工作流：plan → llm 回答
+
+name: 通用工作流
+industry: general
+version: "1.0"
+timeout_secs: 60
+
+toolbox:
+  tools:
+    - web_search
+  skills: []
+
+plan:
+  prompt: |
+    分析用户问题，制定回答方案。
+
+    可用工具：{available_tools}
+    可用技能：{available_skills}
+
+    用户问题：{query}
+
+    输出JSON格式的执行方案（只输出JSON，不要其他内容）：
+    {{
+      "approach": "用一段中文简述回答思路",
+      "need_search": true/false,
+      "selected_tools": ["工具名"],
+      "selected_skills": [],
+      "sub_questions": [],
+      "risk_level": "low"
+    }}
+
+steps:
+  - id: search
+    name: 搜索相关信息
+    type: tool
+    condition: "plan.need_search == true"
+    tools_from: plan.selected_tools
+    input: "{_query}"
+    on_failure: skip
+
+  - id: respond
+    name: 生成回答
+    type: llm
+    prompt: |
+      回答用户问题。
+
+      方案思路：{plan.approach}
+      搜索结果：{search}
+
+      用户问题：{_query}
+
+      请用中文回答。
+    on_failure: abort

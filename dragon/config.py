@@ -17,12 +17,15 @@ from dotenv import load_dotenv
 
 
 class RouterConfig(BaseModel):
-    model_path: str = "models/qwen3-0.6b-q4_k_m.gguf"
+    model_path: str = "models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"
     n_threads: int = 4
     n_ctx: int = 512
     temperature: float = 0.1
     max_tokens: int = 128
     fallback_on_failure: bool = True
+    # Remote router (OpenAI-compatible API) — when set, overrides local GGUF
+    remote_url: str = ""
+    remote_model: str = "Qwen3.5-122B-A10B-Q4_K_M.gguf"
 
 
 class GlobalApiConfig(BaseModel):
