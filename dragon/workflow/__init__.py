@@ -244,6 +244,7 @@ class WorkflowEngine:
         industry: str,
         query: str,
         route_result: Any,  # RouteResult from dragon.router
+        dispatcher: Any = None,   # DragonDispatcher for LLM calls
         callbacks: WorkflowCallbacks = None,
     ) -> WorkflowResult:
         """
@@ -253,6 +254,7 @@ class WorkflowEngine:
             industry:     Router 分类结果中的行业
             query:        用户原始查询
             route_result: Router 返回的 RouteResult
+            dispatcher:   调度器，用于 LLM 步骤和 plan 步骤
             callbacks:    进度回调
         """
         from .runner import run_workflow
@@ -266,6 +268,7 @@ class WorkflowEngine:
             workflow=wf,
             query=query,
             route_result=route_result,
+            dispatcher=dispatcher,
             plan_executor=execute_plan,
             step_executor=step_executor,
             callbacks=callbacks or WorkflowCallbacks(),

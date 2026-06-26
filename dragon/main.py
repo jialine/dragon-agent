@@ -21,7 +21,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from dragon.config import DragonConfig
-from dragon.router import DragonRouter, RouteResult, RouterStatus as _ignore_RouterStatus
+from dragon.router import DragonRouter, RemoteRouter, RouteResult, RouterStatus as _ignore_RouterStatus
 from dragon.dispatch import DragonDispatcher, ProviderProfile, DispatchResult as _ignore_DispatchResult
 from dragon.guard import AntiLoopGuard, LoopAction as _ignore_LoopAction
 from dragon.interrupt import get_interrupt_manager, TaskInterrupted, InterruptManager
@@ -30,6 +30,7 @@ from dragon.consult import ExpertConsultation, ConsultationAssessment, Consultat
 from dragon.skill import SkillEngine
 from dragon.tool import ToolRegistry
 from dragon.tool.builtins import register_builtins
+from dragon.tool.builtins import skills as _skills_module
 
 from dragon.jury import JuryDebate, JuryVerdict
 from dragon.factcheck import FactChecker, ClaimExtractor
@@ -58,9 +59,12 @@ def _read_version() -> str:
     return "1.0.0"
 
 
+from dragon.workflow import WorkflowEngine, WorkflowCallbacks
+
 # ── Globals ──────────────────────────────────────────────
 router: Optional[DragonRouter] = None
 dispatcher: Optional[DragonDispatcher] = None
+workflow_engine: Optional[WorkflowEngine] = None
 guard: Optional[AntiLoopGuard] = None
 config: Optional[DragonConfig] = None
 skill_engine: Optional[SkillEngine] = None
@@ -142,11 +146,10 @@ async def _start_gateway(cfg) -> bool:
     gateway_server = GatewayServer(
         provider_registry=pr,
         session_store=ss,
+        tool_registry=tool_registry,
+        skill_engine=skill_engine,
         pairing_store=pairing,
-        system_prompt=gw.system_prompt or (
-            "你是 Dragon Agent，一个诚实 AI 助手。\n"
-            "基于多模型辩论和事实核查提供可信回答。"
-        ),
+        system_prompt=gw.system_prompt or "",
     )
 
     # Platform adapter mapping
@@ -229,13 +232,20 @@ async def lifespan(app: FastAPI):
     config = DragonConfig.load()
     logger.info("Loading Dragon Agent...")
 
-    # Router
-    router = DragonRouter(
-        model_path=config.router.model_path,
-        n_threads=config.router.n_threads,
-        n_ctx=config.router.n_ctx,
-    )
-    await router.initialize()
+    # Router — use remote API if configured, otherwise local GGUF
+    if config.router.remote_url:
+        router = RemoteRouter(
+            base_url=config.router.remote_url,
+            model=config.router.remote_model,
+        )
+        logger.info("Using remote router: %s (model=%s)", config.router.remote_url, config.router.remote_model)
+    else:
+        router = DragonRouter(
+            model_path=config.router.model_path,
+            n_threads=config.router.n_threads,
+            n_ctx=config.router.n_ctx,
+        )
+    await router.initialize()  # type: ignore[union-attr]
     logger.info("Router status: %s", router.status)
 
     # Dispatcher — all industries share global_api endpoint
@@ -252,6 +262,14 @@ async def lifespan(app: FastAPI):
             timeout=ga.timeout_secs,
             max_retries=ga.max_retries,
         ))
+
+    # Workflow Engine — plan-driven step execution
+    global workflow_engine
+    workflows_dir = Path(__file__).parent.parent / "workflows"
+    workflow_engine = WorkflowEngine(workflows_dir=str(workflows_dir))
+    # Pre-load general workflow to verify YAML is valid
+    wf = workflow_engine.load("general")
+    logger.info("Workflow engine ready: %s, workflow=%s", workflows_dir, wf.name)
 
     # Guard (use default values — config.guard fields may be outdated)
     guard = AntiLoopGuard()
@@ -278,6 +296,10 @@ async def lifespan(app: FastAPI):
     # Tool Registry
     tool_registry = ToolRegistry()
     register_builtins(tool_registry)
+
+    # Wire skill tools to skill engine
+    _skills_module.set_skill_engine(skill_engine)
+    logger.info("Skill tools wired to engine")
 
     # Wire skill executor to dispatcher
     skill_engine.register_executor(
@@ -390,7 +412,7 @@ async def health():
 
 @app.post("/v1/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """Full conversation: classify → dispatch."""
+    """Full conversation: classify → workflow (plan + execute)."""
     if not router or not dispatcher:
         raise HTTPException(status_code=503, detail="Agent not initialized")
 
@@ -411,24 +433,44 @@ async def chat(request: ChatRequest):
         classification.difficulty,
     )
 
-    # Step 2: Convert messages for dispatch
-    dispatch_messages = [
-        {"role": m.role, "content": m.content}
-        for m in request.messages
-    ]
-
-    # Step 3: Dispatch
-    result = await dispatcher.dispatch(
-        industry=classification.industry,
-        messages=dispatch_messages,
-        stream=False,
-        temperature=request.temperature,
-        max_tokens=request.max_tokens,
-    )
+    # Step 2: Run workflow (plan → tool/skill/llm steps)
+    if workflow_engine:
+        wf_result = await workflow_engine.run(
+            industry=classification.industry,
+            query=user_msg,
+            route_result=classification,
+            dispatcher=dispatcher,
+        )
+        content = wf_result.final_response
+        model_used = "workflow"
+        provider_used = classification.industry
+        usage_info = {"total_tokens": 0, "prompt_tokens": 0, "completion_tokens": 0}
+        logger.info(
+            "Workflow result: status=%s steps=%d plan=%s",
+            wf_result.status, len(wf_result.steps),
+            wf_result.plan.get("approach", "?")[:60] if wf_result.plan else "?",
+        )
+    else:
+        # Fallback: direct dispatch
+        dispatch_messages = [
+            {"role": m.role, "content": m.content}
+            for m in request.messages
+        ]
+        result = await dispatcher.dispatch(
+            industry=classification.industry,
+            messages=dispatch_messages,
+            stream=False,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+        )
+        content = result.content
+        model_used = result.model
+        provider_used = result.provider
+        usage_info = result.usage
 
     latency_ms = int((time.monotonic() - start) * 1000)
 
-    # Step 4: Record in guard
+    # Step 3: Record in guard
     if guard:
         guard.record(
             action_type="MODEL_RESPONSE",
@@ -441,10 +483,10 @@ async def chat(request: ChatRequest):
         industry=classification.industry,
         confidence=classification.confidence,
         difficulty=classification.difficulty,
-        model=result.model,
-        provider=result.provider,
-        content=result.content,
-        usage=result.usage,
+        model=model_used,
+        provider=provider_used,
+        content=content,
+        usage=usage_info,
         latency_ms=latency_ms,
     )
 

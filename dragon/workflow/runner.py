@@ -32,6 +32,7 @@ async def run_workflow(
     workflow: WorkflowDefinition,
     query: str,
     route_result: Any,
+    dispatcher: Any,
     plan_executor,
     step_executor,
     callbacks: WorkflowCallbacks,
@@ -52,6 +53,7 @@ async def run_workflow(
     context: Dict[str, Any] = {
         "_query": query,
         "_industry": workflow.industry,
+        "_dispatcher": dispatcher,   # Pass dispatcher to steps
     }
 
     total_steps = 1 + len(workflow.steps)  # plan + steps

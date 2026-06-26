@@ -96,13 +96,15 @@ async def execute_plan(
 
 async def _call_llm(prompt: str, dispatcher: Any, route_result: Any) -> str:
     """调用 LLM 获取 plan 输出"""
-    # Try the dispatcher first
+    # Use the dispatcher
     if dispatcher is not None:
         try:
             result = await dispatcher.dispatch(
                 industry="general",
-                user_message=prompt,
-                system_prompt="你是一个任务方案制定者。只输出JSON，不要其他内容。",
+                messages=[
+                    {"role": "system", "content": "你是一个任务方案制定者。只输出JSON，不要其他内容。"},
+                    {"role": "user", "content": prompt},
+                ],
                 stream=False,
             )
             return result.content

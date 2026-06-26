@@ -84,32 +84,17 @@ class StepExecutor:
 
         logger.debug("LLM step '%s': prompt=%s", step.id, prompt[:200])
 
-        # Use the Dragon dispatcher to call LLM
-        from dragon.dispatch import Dispatcher
-        from dragon.dispatch import DispatchResult
-
-        # Get dispatcher singleton from context or create
-        dispatcher: Optional[Dispatcher] = context.get("_dispatcher")
+        # Use dispatcher from context (set by main.py)
+        dispatcher = context.get("_dispatcher")
         if dispatcher is None:
-            # Create a minimal dispatcher
-            dispatcher = Dispatcher()
-            # Load config if available
-            try:
-                from dragon.config import load_config
-                cfg = load_config()
-            except Exception:
-                cfg = None
+            logger.error("No dispatcher in context — LLM step '%s' cannot run", step.id)
+            raise RuntimeError("LLM step requires dispatcher in context")
 
-            if cfg:
-                await dispatcher.initialize(cfg.dispatch)
-
-        result: DispatchResult = await dispatcher.dispatch(
+        result = await dispatcher.dispatch(
             industry="general",
-            user_message=prompt,
-            system_prompt="",
+            messages=[{"role": "user", "content": prompt}],
             stream=False,
         )
-
         return result.content
 
     # ------------------------------------------------------------------

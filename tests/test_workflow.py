@@ -215,6 +215,7 @@ async def _run_test_workflow(query, callbacks=None):
         workflow=workflow,
         query=query,
         route_result=MockRoute(),
+        dispatcher=None,  # Mock — no real dispatcher needed
         plan_executor=mock_plan_executor,
         step_executor=MockStepExecutor(),
         callbacks=callbacks or TestCallbacks(),
