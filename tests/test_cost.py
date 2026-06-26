@@ -162,7 +162,7 @@ class TestCostOptimizer:
 
     def test_record_usage_tier0_no_cost(self):
         opt = CostOptimizer(daily_budget=1.0, db_path=self.db_path)
-        cost = opt.record_usage("qwen3-0.6b", tokens_in=1000000, tokens_out=500000)
+        cost = opt.record_usage("qwen2-1.5b", tokens_in=1000000, tokens_out=500000)
         assert cost == 0.0
         assert opt.budget_remaining == 1.0
 

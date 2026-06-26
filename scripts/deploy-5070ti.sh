@@ -1,10 +1,10 @@
 #!/bin/bash
-# Dragon Agent — Deploy to 5070 Ti (192.168.0.22)
+# Dragon Agent — Deploy to 5070 Ti (192.168.0.100)
 # Run from local machine that has the code
 
 set -e
 
-TARGET="jialine@192.168.0.22"
+TARGET="jialine@192.168.0.100"
 SSH_OPTS="-o StrictHostKeyChecking=no"
 DRAGON_DIR="/home/jialine/code/dragon-agent"
 VENV_DIR="$DRAGON_DIR/.venv"

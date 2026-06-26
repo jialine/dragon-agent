@@ -548,7 +548,7 @@ def _cmd_config_init(args):
     print("按 Enter 使用默认值。\n")
 
     # Model path
-    default_model = "models/qwen3-0.6b-q4_k_m.gguf"
+    default_model = "models/qwen2-1.5b-q4_k_m.gguf"
     model_path = input(f"模型路径 (model path) [{default_model}]: ").strip()
     if not model_path:
         model_path = default_model
@@ -1079,7 +1079,7 @@ def _cmd_profile_edit(args, pm):
             "# Dragon Agent Configuration\n"
             f"# Profile: {profile_name}\n"
             "router:\n"
-            "  model_path: models/qwen3-0.6b-q4_k_m.gguf\n"
+            "  model_path: models/qwen2-1.5b-q4_k_m.gguf\n"
             "  n_threads: 4\n"
             "server:\n"
             "  host: 0.0.0.0\n"

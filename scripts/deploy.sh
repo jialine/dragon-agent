@@ -12,7 +12,7 @@
 #   2. Create/activate virtual environment
 #   3. Install all dependencies
 #   4. Generate config.yaml if missing
-#   5. Download router model (Qwen3-0.6B GGUF) if missing
+#   5. Download router model (Qwen2-1.5B GGUF) if missing
 #   6. Start the API server
 # =============================================================================
 
@@ -23,8 +23,8 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 VENV_DIR="$PROJECT_ROOT/.venv"
 CONFIG_FILE="$PROJECT_ROOT/config.yaml"
 MODEL_DIR="$PROJECT_ROOT/models"
-ROUTER_MODEL="$MODEL_DIR/qwen3-0.6b-q4_k_m.gguf"
-ROUTER_MODEL_URL="https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/qwen3-0.6b-q4_k_m.gguf"
+ROUTER_MODEL="$MODEL_DIR/qwen2-1.5b-q4_k_m.gguf"
+ROUTER_MODEL_URL="https://huggingface.co/Qwen/Qwen2-1.5B-Instruct-GGUF/resolve/main/qwen2-1.5b-q4_k_m.gguf"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -162,7 +162,7 @@ if $generate_config; then
     DEFAULT_MODEL="deepseek-chat"
     if [ -n "${AGILEMIND_API_KEY:-}" ]; then
         DEFAULT_PROVIDER="agilemind"
-        DEFAULT_MODEL="qwen3.5-122b-a10b"
+        DEFAULT_MODEL="qwen2-1.5b"
         echo -e "${GREEN}🐉${NC} AgileMind API Key detected — set as default"
     else
         echo -e "${YELLOW}⚠${NC} AgileMind API Key not set — defaulting to DeepSeek cloud"
@@ -173,7 +173,7 @@ if $generate_config; then
 # See dragon/config.py for all options
 
 router:
-  model_path: "models/qwen3-0.6b-q4_k_m.gguf"
+  model_path: "models/qwen2-1.5b-q4_k_m.gguf"
   n_threads: 4
   n_ctx: 512
   temperature: 0.1
@@ -221,7 +221,7 @@ if [ -f "$ROUTER_MODEL" ]; then
     ok "Router model found: $ROUTER_MODEL"
 else
     warn "Router model not found"
-    if confirm "Download Qwen3-0.6B Q4_K_M GGUF (~400MB)?"; then
+    if confirm "Download Qwen2-1.5B Q4_K_M GGUF (~900MB)?"; then
         mkdir -p "$MODEL_DIR"
         echo "Downloading from HuggingFace..."
         if command -v wget &>/dev/null; then

@@ -228,7 +228,7 @@ class MemoryGraph:
 
         # Upsert entities
         mem.upsert_entity("e1", name="Qwen3", type="technology",
-                          properties={"version": "0.6B"})
+                          properties={"version": "1.5B"})
         mem.add_relation("e1", "e2", "depends_on", {"since": "2025"})
 
         # Get context for prompt injection

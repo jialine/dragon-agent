@@ -86,7 +86,7 @@ if [ ! -f "$DATA_DIR/config.yaml" ]; then
     DEFAULT_MODEL="deepseek-chat"
     if [ -n "${AGILEMIND_API_KEY:-}" ]; then
         DEFAULT_PROVIDER="agilemind"
-        DEFAULT_MODEL="qwen3.5-122b-a10b"
+        DEFAULT_MODEL="qwen2-1.5b"
         info "🐉 AgileMind API Key detected — set as default"
     else
         warn "AgileMind API Key not set — defaulting to DeepSeek cloud"
@@ -102,7 +102,7 @@ server:
   port: 8000
 
 router:
-  model_path: "models/qwen3-0.6b-q4_k_m.gguf"
+  model_path: "models/qwen2-1.5b-q4_k_m.gguf"
 
 dispatch:
   timeout_secs: 60

@@ -27,7 +27,7 @@
 | Setup | 647 | ✅ | Rich 交互式配置向导 + model picker |
 | Backup | 510 | ✅ | S3/OSS 云端备份 |
 | TUI | 704 | ✅ | Ink/React 终端 UI |
-| Router | 551 | ✅ | 0.8B 本地分类模型 |
+| Router | 551 | ✅ | 1.5B 本地模型 |
 
 **关键差异化模块**：「Jury」(多模型陪审团) 和「Debate」(多模型辩论) — 市场上极少 Agent 产品具备此能力。
 
@@ -51,7 +51,7 @@ Dragon Agent (免费 Editor)
        ↓ 深度绑定
 AgileMind Engine API (Token 付费)
        ↓ 
-122B MoE 推理集群 (自有硬件)
+Qwen2-1.5B MoE 推理集群 (自有硬件)
 ```
 
 **两层收入：**
@@ -110,7 +110,7 @@ AgileMind Engine API (Token 付费)
 | 维度 | Dragon Agent | Dify | Coze/扣子 | Kimi |
 |------|:--:|:--:|:--:|:--:|
 | 开源 | ✅ Apache 2.0 | ✅ | ❌ | ❌ |
-| 自托管 API | ✅ 自家 122B | ❌ 依赖第三方 | ❌ | ❌ |
+| 自托管 API | ✅ 自家 Qwen2-1.5B | ❌ 依赖第三方 | ❌ | ❌ |
 | 多模型陪审团 | ✅ Jury+Debate | ❌ | ❌ | ❌ |
 | 技能自进化 | ✅ | ❌ | 有限 | ❌ |
 | 多平台 Gateway | ✅ 11平台 | ❌ | 有限 | ❌ |
@@ -121,7 +121,7 @@ AgileMind Engine API (Token 付费)
 ### 3.3 差异化优势
 
 1. **Jury + Debate 多模型协同** — 市场上独一无二
-2. **自托管 122B API** — 不依赖 OpenAI/Anthropic，成本可控
+2. **自托管 Qwen2-1.5B API** — 不依赖 OpenAI/Anthropic，成本可控
 3. **消费级硬件方案** — 1/50 成本，可规模化复制
 4. **技能自进化** — UGC 生态，长期护城河
 5. **11 平台 Gateway** — 企业入口全覆盖
@@ -142,7 +142,7 @@ AgileMind Engine API (Token 付费)
 
 | 风险 | 详情 | 缓解 |
 |------|------|------|
-| **API 依赖** | 122B 是唯一自有模型 | 集成 DeepSeek fallback |
+| **API 依赖** | Qwen2-1.5B 是唯一自有模型 | 集成 DeepSeek fallback |
 | **人才** | Agent/ML 全栈稀缺 | 开源社区贡献 |
 | **网络** | USB 2.5G 网卡稳定性 | 已修复 (RX Buffer + 禁用挂起) |
 

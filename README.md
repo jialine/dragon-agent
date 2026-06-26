@@ -2,10 +2,10 @@
 
 **Self-Evolving AI Agent Framework** — CLI + TUI + multi-platform gateway.
 
-Dragon Agent is the To-C Editor for **AgileMind Engine** (灵思引擎), a high-performance token API platform powered by a 122B MoE model running on consumer-grade GPU clusters. Features persistent memory, skill system, scheduled jobs, and multi-platform messaging (Feishu, Telegram, Discord, WeChat).
+Dragon Agent is the **AgileMind Engine** (灵思引擎) To-C Editor, powered by a local **Qwen2-1.5B** model for routing and inference. Features persistent memory, skill system, scheduled jobs, and multi-platform messaging (Feishu, Telegram, Discord, WeChat).
 
 > **Business Model**: Dragon Agent (Editor) → AgileMind API (SaaS) → Sell Tokens  
-> **Architecture**: 0.8B Router (local) + AgileMind 122B (default) + Cloud API fallback
+> **Architecture**: Qwen2-1.5B (local) + AgileMind API (default) + Cloud API fallback
 
 ---
 

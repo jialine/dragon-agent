@@ -16,7 +16,7 @@ from dragon.config import (
 class TestDragonConfigDefaults:
     def test_default_router_model_path(self):
         cfg = DragonConfig()
-        assert cfg.router.model_path == "models/qwen3-0.6b-q4_k_m.gguf"
+        assert cfg.router.model_path == "models/qwen2-1.5b-q4_k_m.gguf"
 
     def test_default_memory_embedding_model(self):
         cfg = DragonConfig()
@@ -53,13 +53,13 @@ class TestDragonConfigFromYAML:
             cfg = DragonConfig.load(tmp_path)
             assert cfg.router.n_threads == 2
             assert cfg.server.port == 9000
-            assert cfg.router.model_path == "models/qwen3-0.6b-q4_k_m.gguf"
+            assert cfg.router.model_path == "models/qwen2-1.5b-q4_k_m.gguf"
         finally:
             os.unlink(tmp_path)
 
     def test_load_missing_file_uses_defaults(self):
         cfg = DragonConfig.load("/nonexistent/dragon_config.yaml")
-        assert cfg.router.model_path == "models/qwen3-0.6b-q4_k_m.gguf"
+        assert cfg.router.model_path == "models/qwen2-1.5b-q4_k_m.gguf"
 
 
 class TestDragonConfigEnvOverrides:
@@ -88,7 +88,7 @@ class TestDragonConfigEnvOverrides:
 class TestRouterConfig:
     def test_defaults(self):
         rc = RouterConfig()
-        assert rc.model_path == "models/qwen3-0.6b-q4_k_m.gguf"
+        assert rc.model_path == "models/qwen2-1.5b-q4_k_m.gguf"
         assert rc.n_threads == 4
         assert rc.n_ctx == 512
         assert rc.temperature == 0.1
@@ -256,7 +256,7 @@ class TestDragonConfigAllDefaults:
     def test_all_section_defaults(self):
         cfg = DragonConfig()
         # router
-        assert cfg.router.model_path == "models/qwen3-0.6b-q4_k_m.gguf"
+        assert cfg.router.model_path == "models/qwen2-1.5b-q4_k_m.gguf"
         assert cfg.router.n_threads == 4
         # memory
         assert cfg.memory.search_top_k == 5
@@ -358,7 +358,7 @@ class TestDragonConfigSerialization:
     def test_from_dict_preserves_all_sections(self):
         data = DragonConfig().model_dump()
         restored = DragonConfig(**data)
-        assert restored.router.model_path == "models/qwen3-0.6b-q4_k_m.gguf"
+        assert restored.router.model_path == "models/qwen2-1.5b-q4_k_m.gguf"
         assert restored.memory.embedding_model == "BAAI/bge-small-zh-v1.5"
         assert restored.guard.window_size == 50
         assert restored.backup.bucket == "dragon-backups"
@@ -450,7 +450,7 @@ class TestDragonConfigMerge:
             cfg = DragonConfig.load(tmp_path)
             assert cfg.router.n_threads == 3
             # Unspecified fields keep defaults
-            assert cfg.router.model_path == "models/qwen3-0.6b-q4_k_m.gguf"
+            assert cfg.router.model_path == "models/qwen2-1.5b-q4_k_m.gguf"
             assert cfg.memory.embedding_model == "BAAI/bge-small-zh-v1.5"
             assert cfg.server.port == 8000
         finally:

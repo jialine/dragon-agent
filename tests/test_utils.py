@@ -404,8 +404,8 @@ class TestTierLookupEdgeCases:
         tier = _find_tier_for_model("qwen3-14b")
         assert tier == "tier2_medium"
 
-    def test_qwen3_06b_local(self):
-        tier = _find_tier_for_model("qwen3-0.6b")
+    def test_qwen2_1_5b_local(self):
+        tier = _find_tier_for_model("qwen2-1.5b")
         assert tier == "tier0_local"
 
 

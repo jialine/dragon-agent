@@ -497,9 +497,9 @@ class TestFindTier:
         """qwen3-8b → tier1_small."""
         assert ExpertConsultation._find_tier("qwen3-8b") == "tier1_small"
 
-    def test_qwen3_06b_tier0(self):
-        """qwen3-0.6b → tier0_local."""
-        assert ExpertConsultation._find_tier("qwen3-0.6b") == "tier0_local"
+    def test_qwen2_1_5b_tier0(self):
+        """qwen2-1.5b → tier0_local."""
+        assert ExpertConsultation._find_tier("qwen2-1.5b") == "tier0_local"
 
     def test_unknown_model_returns_none(self):
         """Unknown model → None."""

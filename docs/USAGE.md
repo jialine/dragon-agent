@@ -42,7 +42,7 @@ provider:
   agilemind:
     api_key: "${AGILEMIND_API_KEY}"
     api_url: "https://api.agilemind.ai/v1"
-    model: "122b-moe"
+    model: "qwen2-1.5b"
 
 # Feishu 网关
 gateway:

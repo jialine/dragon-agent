@@ -5,11 +5,11 @@
 provider:
   default: "andl"                 # andl / agilemind / deepseek / openai / ...
   andl:
-    model: "Qwen3.5-122B-A10B"    # 本地 ANDL MoE 推理集群
-    base_url: "http://192.168.0.21:8080/v1"
+    model: "Qwen2-1.5B"           # 本地 Qwen2-1.5B 推理
+    base_url: "http://192.168.0.100:8080/v1"
     api_key: "not-needed"
   agilemind:
-    model: "qwen3.5-122b-a10b"    # qwen3.5-122b-a10b / qwen3.6-35b-a3b
+    model: "qwen2-1.5b"           # qwen2-1.5b / qwen3.6-35b-a3b
   # deepseek:
   #   model: "deepseek-chat"
   # openai:
@@ -22,7 +22,7 @@ provider:
 
 # ── Router (本地小模型，行业分类) ────────────────────────────────
 router:
-  model_path: "models/qwen3-0.6b-q4_k_m.gguf"
+  model_path: "models/qwen2-1.5b-q4_k_m.gguf"
   n_threads: 4
   n_ctx: 512
   temperature: 0.1

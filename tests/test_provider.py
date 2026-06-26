@@ -881,10 +881,10 @@ class TestOllamaProvider:
     def test_does_not_override_explicit_base_url(self):
         config = ProviderConfig(
             provider="ollama",
-            base_url="http://192.168.1.50:11434/v1",
+            base_url="http://192.168.0.100:11434/v1",
         )
         provider = OllamaProvider(config)
-        assert config.base_url == "http://192.168.1.50:11434/v1"
+        assert config.base_url == "http://192.168.0.100:11434/v1"
 
     def test_sets_default_model(self):
         config = ProviderConfig(provider="ollama")

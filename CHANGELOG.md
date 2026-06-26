@@ -11,7 +11,7 @@ All notable changes to Dragon Agent will be documented in this file.
 ### ✨ Features
 
 #### Core Intelligence
-- **DragonRouter**: 0.8B local model for intent classification and industry routing
+- **DragonRouter**: 1.5B local model for intent classification and industry routing
 - **DragonDispatcher**: Multi-industry model dispatch with fallback
 - **JuryDebate**: Multi-model debate system with consensus building
 - **FactChecker**: Claim extraction and fact verification

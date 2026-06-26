@@ -18,7 +18,7 @@
 │                     Core Engine                              │
 │  ┌──────────┬──────────┬──────────┬──────────┬────────────┐ │
 │  │  Router  │  Jury    │  Fact    │Consensus │ HallMetrics│ │
-│  │ (0.8B)   │ (debate) │ Checker  │ Builder  │ (幻觉追踪) │ │
+│  │ (1.5B)   │ (debate) │ Checker  │ Builder  │ (幻觉追踪) │ │
 │  ├──────────┼──────────┼──────────┼──────────┼────────────┤ │
 │  │ Session  │  Skill   │  Tool    │  Memory  │  Config    │ │
 │  │ Manager  │  Engine  │ Registry │ (Chroma) │  Manager   │ │
@@ -104,7 +104,7 @@ dragon-agent/
 │   ├── config.py                  # 配置管理 (222 LOC)
 │   ├── session.py                 # 会话管理 [SQLite] (467 LOC)
 │   │
-│   ├── router/                    # 路由模型 (0.8B GGUF)
+│   ├── router/                    # 路由模型 (1.5B GGUF)
 │   │   └── __init__.py            # 行业分类 (551 LOC)
 │   │
 │   ├── jury/                      # 陪审辩论引擎
@@ -189,10 +189,10 @@ dragon-agent/
 
 ## 4. 关键设计决策
 
-### 4.1 为什么 0.8B 本地路由 + 122B 云端推理？
+### 4.1 为什么 Qwen2-1.5B 本地模型 + 云端 API？
 
 - **隐私**: 路由在本地完成，用户问题不出本机
-- **速度**: 0.8B 分类 <200ms，不影响体验
+- **速度**: 1.5B 分类 <300ms，不影响体验
 - **成本**: 避免每次请求都送完整上下文给大模型
 - **兜底**: AgileMind 不可用时自动 fallback
 

@@ -42,7 +42,7 @@ CONFIG_FILE = Path.home() / ".dragon" / "config.yaml"
 
 PROVIDERS = [
     {"id": "agilemind", "env": "AGILEMIND_API_KEY", "label": "灵思引擎 (AgileMind)", "models": [
-        {"name": "qwen3.5-122b-a10b", "desc": "122B MoE, 256K context, 33 tok/s, 消费级显卡集群",  "ctx": "256K", "tier": "self-hosted"},
+        {"name": "qwen2-1.5b", "desc": "1.5B dense, 32K context, 消费级显卡",  "ctx": "256K", "tier": "self-hosted"},
         {"name": "qwen3.6-35b-a3b",   "desc": "35B MoE, 128K context, 18 tok/s, 单卡可运行",      "ctx": "128K", "tier": "self-hosted"},
     ], "url": "https://console.agilemind.ai", "base_url_env": "AGILEMIND_API_URL", "base_url_default": "https://api.agilemind.ai/v1"},
     {"id": "openai",    "env": "OPENAI_API_KEY",    "label": "OpenAI",          "models": [
@@ -411,7 +411,7 @@ def setup_doctor():
         checks.append(("Disk", "unknown", "?"))
 
     # Model file
-    model_path = _load_config().get("router", {}).get("model_path", "models/qwen3-0.6b-q4_k_m.gguf")
+    model_path = _load_config().get("router", {}).get("model_path", "models/qwen2-1.5b-q4_k_m.gguf")
     model_exists = Path(model_path).exists()
     checks.append(("Router Model", model_path, "✓" if model_exists else "○"))
 
@@ -455,7 +455,7 @@ def run_setup(section="", feishu_only=False, providers_only=False, quick=False):
             agilemind_url = _check_agilemind()
             has_agilemind = bool(agilemind_url and os.getenv("AGILEMIND_API_KEY"))
             default_provider = "agilemind" if has_agilemind else "deepseek"
-            default_model = "qwen3.5-122b-a10b" if has_agilemind else "deepseek-chat"
+            default_model = "qwen2-1.5b" if has_agilemind else "deepseek-chat"
             _save_config({
                 "provider": {"default": default_provider, default_provider: {"model": default_model}},
                 "server": {"host": "0.0.0.0", "port": 8000},

@@ -206,7 +206,7 @@ class ProfileManager:
                 "# Dragon Agent Configuration\n"
                 f"# Profile: {name}\n"
                 "router:\n"
-                "  model_path: models/qwen3-0.6b-q4_k_m.gguf\n"
+                "  model_path: models/qwen2-1.5b-q4_k_m.gguf\n"
                 "  n_threads: 4\n"
                 "server:\n"
                 "  host: 0.0.0.0\n"

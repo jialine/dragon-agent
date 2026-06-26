@@ -8,7 +8,7 @@ server:
   log_level: "info"
 
 router:
-  model_path: "models/qwen3-0.6b-q4_k_m.gguf"
+  model_path: "models/qwen2-1.5b-q4_k_m.gguf"
   n_threads: 4
   n_ctx: 512
   temperature: 0.1

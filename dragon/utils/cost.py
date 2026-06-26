@@ -40,7 +40,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 MODEL_TIERS: Dict[str, Dict[str, Any]] = {
     "tier0_local": {
         "label": "Local (free)",
-        "models": ["qwen3-0.6b"],
+        "models": ["qwen2-1.5b"],
         "price_per_1M_in": 0.0,
         "price_per_1M_out": 0.0,
         "notes": "Runs locally, no API cost",

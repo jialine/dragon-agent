@@ -13,7 +13,7 @@
 #   - Dragon Agent source code
 #   - Python virtual environment (portable)
 #   - Router model (optional, ~400MB)
-#   - Pre-configured config.yaml for Dragon 122B API
+#   - Pre-configured config.yaml for Qwen2-1.5B API
 #   - Launcher scripts (Linux/Mac/Windows)
 # =============================================================================
 set -euo pipefail
@@ -36,7 +36,7 @@ for arg in "$@"; do
         --output=*)   OUTPUT_DIR="${arg#*=}" ;;
         --help|-h)
             echo "Usage: bash scripts/make-usb.sh [--with-model] [--output=/path/to/usb]"
-            echo "  --with-model   Include router model (Qwen3-0.6B, ~400MB)"
+            echo "  --with-model   Include router model (Qwen2-1.5B, ~900MB)"
             echo "  --output=DIR   Output directory (default: build/usb-package)"
             exit 0
             ;;
@@ -60,17 +60,17 @@ info "Source copied"
 # ── Step 3: Router Model ─────────────────────────────────────────────────
 step "Router model..."
 if $WITH_MODEL; then
-    if [ -f "$PROJECT_ROOT/models/qwen3-0.6b-q4_k_m.gguf" ]; then
-        cp "$PROJECT_ROOT/models/qwen3-0.6b-q4_k_m.gguf" "$OUTPUT_DIR/models/"
+    if [ -f "$PROJECT_ROOT/models/qwen2-1.5b-q4_k_m.gguf" ]; then
+        cp "$PROJECT_ROOT/models/qwen2-1.5b-q4_k_m.gguf" "$OUTPUT_DIR/models/"
         info "Router model included (pre-existing)"
     else
         warn "Router model not found locally — downloading..."
         mkdir -p "$OUTPUT_DIR/models"
-        MODEL_URL="https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/qwen3-0.6b-q4_k_m.gguf"
+        MODEL_URL="https://huggingface.co/Qwen/Qwen2-1.5B-Instruct-GGUF/resolve/main/qwen2-1.5b-q4_k_m.gguf"
         if command -v wget &>/dev/null; then
-            wget -q --show-progress -O "$OUTPUT_DIR/models/qwen3-0.6b-q4_k_m.gguf" "$MODEL_URL"
+            wget -q --show-progress -O "$OUTPUT_DIR/models/qwen2-1.5b-q4_k_m.gguf" "$MODEL_URL"
         else
-            curl -#L -o "$OUTPUT_DIR/models/qwen3-0.6b-q4_k_m.gguf" "$MODEL_URL"
+            curl -#L -o "$OUTPUT_DIR/models/qwen2-1.5b-q4_k_m.gguf" "$MODEL_URL"
         fi
         info "Router model downloaded"
     fi
@@ -92,10 +92,10 @@ cat > "$OUTPUT_DIR/src/config.yaml" << YAML
 provider:
   default: "agilemind"
   agilemind:
-    model: "qwen3.5-122b-a10b"
+    model: "qwen2-1.5b"
 
 router:
-  model_path: "models/qwen3-0.6b-q4_k_m.gguf"
+  model_path: "models/qwen2-1.5b-q4_k_m.gguf"
   n_threads: 4
   n_ctx: 512
   temperature: 0.1
@@ -130,7 +130,7 @@ backup:
   bucket: "dragon-backups"
   interval_hours: 6
 YAML
-info "Config pre-configured for Dragon 122B API"
+info "Config pre-configured for Qwen2-1.5B API"
 
 # ── Step 5: Launcher scripts ─────────────────────────────────────────────
 step "Creating launcher scripts..."
@@ -303,7 +303,7 @@ echo "    Linux/Mac: bash run.sh"
 echo "    Windows:   双击 run.bat"
 echo ""
 echo "  Features:"
-echo "    ✓ Auto-detect Dragon 122B server"
+echo "    ✓ Auto-detect Qwen2-1.5B server"
 echo "    ✓ Pre-configured config.yaml"
 echo "    ✓ Auto-venv setup on first run"
 echo "    ✓ Interactive setup wizard"

@@ -19,7 +19,7 @@
 │  Dragon Agent (Editor)                    │
 │                                           │
 │  ┌──────────────────────────────────┐    │
-│  │ 内置 Router (0.8B 本地小模型)      │    │
+│  │ 内置 Router (1.5B 本地模型)      │    │
 │  │  └─ 意图识别 → 行业分类            │    │
 │  └──────────┬───────────────────────┘    │
 │             │                             │
@@ -36,7 +36,7 @@
 │  │  └─ HallMetrics (幻觉率追踪)       │    │
 │  └──────────────────────────────────┘    │
 │                                           │
-│  后端模型: AgileMind 122B MoE (默认)       │
+│  后端模型: Qwen2-1.5B (默认)       │
 │  Fallback: DeepSeek / OpenAI / Anthropic  │
 │  记忆: ChromaDB + 向量检索                 │
 │  工具: 20+ 集成 (Hermes 对齐)              │
@@ -159,8 +159,8 @@ Feishu, Telegram, Discord, WeChat, WeCom, DingTalk, Slack, WhatsApp, Signal, Mat
 
 | 层 | 技术 | 说明 |
 |----|------|------|
-| 路由模型 | Qwen3-0.6B GGUF | 本地推理，<400MB |
-| 后端 LLM | AgileMind 122B MoE | 33 tok/s, 256K ctx |
+| 路由模型 | Qwen2-1.5B GGUF | 本地推理，<1GB |
+| 后端 LLM | Qwen2-1.5B | 33 tok/s, 256K ctx |
 | 向量库 | ChromaDB + bge-small-zh | 语义检索 |
 | 嵌入模型 | bge-small-zh-v1.5 | 中文优化, ~100MB |
 | 会话存储 | SQLite (WAL) | 零配置 |

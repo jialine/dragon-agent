@@ -1,7 +1,7 @@
 """
 Dragon Router — 智能路由模块
 
-Uses a local Qwen3-0.6B (GGUF, Q4_K_M) model via llama-cpp-python to classify
+Uses a local Qwen2-1.5B (GGUF, Q4_K_M) model via llama-cpp-python to classify
 user queries by industry (finance, medical, legal, education, general) and
 difficulty (simple, medium, complex). Designed for async use — classification
 runs in a thread pool so it never blocks the event loop.
@@ -9,7 +9,7 @@ runs in a thread pool so it never blocks the event loop.
 Architecture:
     ┌──────────────┐     ┌──────────────────┐     ┌──────────────┐
     │  classify()  │────▶│ ThreadPoolExecutor│────▶│  llama.cpp   │
-    │   (async)    │     │  (non-blocking)   │     │  Qwen3-0.6B  │
+    │   (async)    │     │  (non-blocking)   │     │  Qwen2-1.5B  │
     └──────────────┘     └──────────────────┘     └──────────────┘
 """
 
@@ -254,11 +254,11 @@ def _sanitise_parsed(parsed: dict) -> Optional[dict]:
 
 
 class DragonRouter:
-    """Industry-aware query router backed by a local Qwen3-0.6B model.
+    """Industry-aware query router backed by a local Qwen2-1.5B model.
 
     Typical usage::
 
-        router = DragonRouter(model_path="/models/qwen3-0.6b-q4_k_m.gguf")
+        router = DragonRouter(model_path="/models/qwen2-1.5b-q4_k_m.gguf")
         await router.initialize()        # non-blocking — model loads in thread
 
         result: RouteResult = await router.classify("什么是K线图？")
@@ -285,7 +285,7 @@ class DragonRouter:
     ) -> None:
         """
         Args:
-            model_path:   Absolute or relative path to the Qwen3 GGUF file.
+            model_path:   Absolute or relative path to the Qwen2 GGUF file.
             n_ctx:        Context window size (tokens).
             n_threads:    CPU threads for inference.
             n_gpu_layers: Number of layers to offload to GPU (0 = CPU-only).
@@ -552,8 +552,8 @@ class RemoteRouter:
     Typical usage::
 
         router = RemoteRouter(
-            base_url="http://192.168.0.21:8080/v1",
-            model="Qwen3.5-122B-A10B",
+            base_url="http://192.168.0.100:8080/v1",
+            model="Qwen2-1.5B",
         )
         await router.initialize()   # no-op (no model to load)
 
@@ -563,7 +563,7 @@ class RemoteRouter:
     def __init__(
         self,
         base_url: str,
-        model: str = "Qwen3.5-122B-A10B",
+        model: str = "Qwen2-1.5B",
         *,
         api_key: str = "not-needed",
         timeout: float = 15.0,
