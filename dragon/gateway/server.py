@@ -50,6 +50,7 @@ class MessageProcessor:
     - Context management (compression)
     - Provider call
     - Response formatting
+    - Voice mode (optional text-to-speech)
     """
 
     def __init__(
@@ -60,6 +61,7 @@ class MessageProcessor:
         skill_engine: Any = None,
         compression_config: Any = None,
         pairing_store: Any = None,
+        voice_engine: Any = None,
         max_tool_iterations: int = 5,
     ) -> None:
         self.provider_registry = provider_registry
@@ -67,6 +69,7 @@ class MessageProcessor:
         self.tool_registry = tool_registry
         self.skill_engine = skill_engine
         self.pairing_store = pairing_store
+        self.voice_engine = voice_engine
         self.max_tool_iterations = max_tool_iterations
 
         if compression_config:
@@ -81,6 +84,7 @@ class MessageProcessor:
         self,
         message: PlatformMessage,
         system_prompt: str = "",
+        output_mode: str = "text",
     ) -> PlatformReply:
         """Process a message and return a reply.
 
@@ -91,6 +95,9 @@ class MessageProcessor:
         4. Call provider
         5. Save response to session
         6. Return formatted reply
+
+        When output_mode="voice", the reply text is also synthesized
+        via VoiceEngine.stream() and attached as audio_chunks.
         """
         start = time.monotonic()
 
@@ -250,11 +257,26 @@ class MessageProcessor:
             self.session_store.add_message(session.id, "user", message.content)
             self.session_store.add_message(session.id, "assistant", reply_text)
 
+        # 7. Voice synthesis (if enabled)
+        audio_chunks = []
+        if output_mode == "voice" and self.voice_engine and reply_text:
+            try:
+                async for sentence, mp3_bytes in self.voice_engine.stream(reply_text):
+                    audio_chunks.append((sentence, mp3_bytes))
+                    logger.debug(
+                        "VoiceEngine synthesized sentence: %s (%d bytes)",
+                        sentence[:40], len(mp3_bytes),
+                    )
+            except Exception:
+                logger.exception("Voice synthesis failed for reply")
+
         return PlatformReply(
             content=reply_text,
             chat_id=message.chat_id,
             thread_id=message.thread_id,
             reply_to_message_id=message.message_id,
+            audio_chunks=audio_chunks,
+            output_mode=output_mode,
         )
 
     def _parse_tool_calls(self, content: str) -> List[Dict[str, Any]]:
@@ -313,6 +335,7 @@ class GatewayServer:
         tool_registry: Any = None,
         skill_engine: Any = None,
         pairing_store: Any = None,
+        voice_engine: Any = None,
         system_prompt: str = "",
     ) -> None:
         self.app = FastAPI(title="Dragon Gateway", version="1.0.0")
@@ -323,6 +346,7 @@ class GatewayServer:
             tool_registry=tool_registry,
             skill_engine=skill_engine,
             pairing_store=pairing_store,
+            voice_engine=voice_engine,
         )
         self._skill_engine = skill_engine
         self.system_prompt = system_prompt or self._build_system_prompt()

@@ -14,12 +14,21 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from typing import Tuple, Optional
+from typing import AsyncGenerator, AsyncIterable, List, Tuple, Optional, Union
 
 logger = logging.getLogger("dragon.voice_engine")
 
 # Default Chinese neural voice via Microsoft Edge TTS
 DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"
+
+# Sentence-ending punctuation for boundary detection
+# Requires at least one character before the boundary (no empty sentences)
+_SENTENCE_BOUNDARY_RE = re.compile(r'^(.+?[。！？.!?\n])\s*(.*)$', re.DOTALL)
+
+# Maximum buffer length before forcing a split at a soft boundary
+_MAX_BUFFER_LENGTH = 300
+# Soft boundaries for forced splitting (commas, semicolons, etc.)
+_SOFT_BOUNDARY_RE = re.compile(r'^(.{50,}?[,，;；:：])\s*(.*)$', re.DOTALL)
 
 
 class VoiceEngine:
@@ -27,6 +36,10 @@ class VoiceEngine:
 
     从 LLM 流式输出中逐块接收文本，自动检测句子边界，
     并在后台异步合成语音片段。
+
+    支持两种使用模式：
+    1. consume() + next_audio() — 后台队列模式，适合长时间流式输入。
+    2. stream() — 异步生成器模式，一次性传入文本，逐句合成并 yield。
 
     Attributes:
         voice: edge-tts 语音标识符。
@@ -41,6 +54,128 @@ class VoiceEngine:
         self.audio_queue: asyncio.Queue[Tuple[str, bytes] | None] = asyncio.Queue()
         self._running = False
         self._task: asyncio.Task | None = None
+
+    # ── Streaming API (async generator) ──────────────────────────────
+
+    async def stream(
+        self,
+        text: Union[str, AsyncIterable[str]],
+    ) -> AsyncGenerator[Tuple[str, bytes], None]:
+        """句子级流式语音合成 — 异步生成器。
+
+        将文本按 。！？\\n 等边界拆分为句子，逐句合成 MP3 音频，
+        每完成一句就 yield 一个 (句子文本, MP3 bytes) 元组。
+
+        支持两种输入模式：
+        - str: 完整文本，内部分句后逐句合成。
+        - AsyncIterable[str]: 流式文本块，会先缓冲直到检测到句子边界。
+
+        对于无标点的超长文本，会在 300 字符附近强制断句。
+
+        Args:
+            text: 待合成的文本（字符串）或文本块异步迭代器。
+
+        Yields:
+            (sentence_text, mp3_bytes) 元组。
+        """
+        buffer = ""
+
+        if isinstance(text, str):
+            # String mode: split into sentences and synthesize
+            async for item in self._stream_from_string(text):
+                yield item
+            return
+
+        # AsyncIterable mode: buffer chunks until boundaries
+        async for chunk in text:
+            if not chunk:
+                continue
+            buffer += chunk
+
+            # Extract complete sentences
+            while True:
+                sentence, buffer = self._extract_sentence(buffer)
+                if sentence is None:
+                    break
+                audio = await self._synthesize(sentence)
+                if audio:
+                    yield (sentence, audio)
+
+        # Flush remaining buffer
+        remaining = buffer.strip()
+        if remaining:
+            audio = await self._synthesize(remaining)
+            if audio:
+                yield (remaining, audio)
+
+    async def _stream_from_string(
+        self, text: str,
+    ) -> AsyncGenerator[Tuple[str, bytes], None]:
+        """从完整字符串中分句合成。
+
+        使用 sentence-level streaming：拆分 → 逐句合成 → yield。
+        """
+        remaining = text
+        while remaining:
+            sentence, remaining = self._extract_sentence(remaining)
+            if sentence is None:
+                # No boundary found, synthesize the rest
+                rest = remaining.strip()
+                if rest:
+                    audio = await self._synthesize(rest)
+                    if audio:
+                        yield (rest, audio)
+                return
+            audio = await self._synthesize(sentence)
+            if audio:
+                yield (sentence, audio)
+
+    def _extract_sentence(self, buffer: str) -> Tuple[Optional[str], str]:
+        """从缓冲区提取一个完整句子。
+
+        优先级：
+        1. 匹配句子结束标点（。！？.!?\\n）
+        2. 若缓冲区超过 _MAX_BUFFER_LENGTH，尝试在软边界处断句
+        3. 都不匹配则返回 (None, buffer)，等待更多输入
+
+        Args:
+            buffer: 当前文本缓冲区。
+
+        Returns:
+            (sentence, remaining) — sentence 为完整句子或 None。
+        """
+        # Try sentence-ending punctuation first
+        match = _SENTENCE_BOUNDARY_RE.match(buffer)
+        if match:
+            sentence = match.group(1).strip()
+            remaining = match.group(2)
+            if sentence:
+                return (sentence, remaining)
+            # Empty sentence after boundary — skip the boundary char
+            return (None, remaining)
+
+        # If buffer is too long without any boundary, force a split
+        if len(buffer) > _MAX_BUFFER_LENGTH:
+            soft_match = _SOFT_BOUNDARY_RE.match(buffer)
+            if soft_match:
+                sentence = soft_match.group(1).strip()
+                remaining = soft_match.group(2)
+                if sentence:
+                    logger.debug(
+                        "Forced sentence split at soft boundary "
+                        "(buffer length=%d)", len(buffer),
+                    )
+                    return (sentence, remaining)
+            # Last resort: split at _MAX_BUFFER_LENGTH
+            logger.debug(
+                "Forced sentence split at hard boundary "
+                "(buffer length=%d, no soft boundary found)", len(buffer),
+            )
+            sentence = buffer[:_MAX_BUFFER_LENGTH].strip()
+            remaining = buffer[_MAX_BUFFER_LENGTH:]
+            return (sentence, remaining)
+
+        return (None, buffer)
 
     # ── Public API ──────────────────────────────────────────────────
 
@@ -111,21 +246,18 @@ class VoiceEngine:
         匹配中文句号/感叹号/问号、英文标点及换行符作为句子边界。
         检测到完整句子后，更新内部 buffer 为剩余文本。
 
+        现在委托给 _extract_sentence()，支持超长文本强制断句。
+
         Args:
             buffer: 当前缓冲区内容（实际上不使用此参数，直接操作 self.buffer）。
 
         Returns:
             完整句子文本；若无完整句子则返回 None。
         """
-        # 匹配以句子结束标点结尾的文本
-        match = re.match(r'^(.*?[。！？.!?\n])\s*(.*)$', self.buffer, re.DOTALL)
-        if match:
-            sentence = match.group(1).strip()
-            remaining = match.group(2)
-            if sentence:
-                # 将剩余文本保留在 buffer 中
-                self.buffer = remaining
-                return sentence
+        sentence, remaining = self._extract_sentence(self.buffer)
+        if sentence is not None:
+            self.buffer = remaining
+            return sentence
         return None
 
     # ── Background Synthesis Loop ───────────────────────────────────

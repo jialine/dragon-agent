@@ -68,6 +68,8 @@ class PlatformReply:
     reply_to_message_id: str = ""
     media_paths: List[str] = field(default_factory=list)  # local file paths for attachments
     buttons: List[Dict[str, Any]] = field(default_factory=list)
+    audio_chunks: List[Tuple[str, bytes]] = field(default_factory=list)  # (sentence, mp3_bytes) for voice mode
+    output_mode: str = "text"  # "text" or "voice"
 
     def format_for_telegram(self) -> str:
         """Truncate long messages for Telegram's 4096 char limit."""

@@ -1,0 +1,114 @@
+# workflows/research.yaml — 研究工作流
+# 典型模式: 制定计划 → 搜索资料 → 条件分支 → 深度分析 → 生成报告
+
+name: 研究工作流
+description: >
+  深度研究任务的标准执行流程。
+  适用于：行业趋势分析、技术调研、市场研究等需要多轮搜索和分析的任务。
+
+steps:
+  # ── Step 1: 制定研究计划 ──
+  - id: plan
+    type: llm_call
+    config:
+      system: |
+        你是一个资深研究分析师。你需要为用户的研究问题制定一个清晰的执行计划。
+        输出结构化的 JSON，包含：approach（研究方法）、search_queries（搜索查询列表）、
+        analysis_angles（分析角度）、expected_sections（报告章节）。
+        只输出 JSON，不要其他内容。
+      prompt: |
+        研究问题：{query}
+
+        请制定研究计划。输出格式：
+        {
+          "approach": "研究方法概述",
+          "search_queries": ["搜索查询1", "搜索查询2"],
+          "analysis_angles": ["分析角度1", "分析角度2"],
+          "expected_sections": ["章节1", "章节2"],
+          "need_deep_analysis": true/false,
+          "confidence": "high/medium/low"
+        }
+      temperature: 0.3
+      max_tokens: 800
+
+  # ── Step 2: 执行搜索 ──
+  - id: search
+    type: tool_call
+    config:
+      tool: web_search
+      input: "{query}"
+      on_error: skip
+
+  # ── Step 3: 条件分支 — 是否需要深度分析 ──
+  - id: depth_check
+    type: conditional
+    config:
+      expression: "{plan.success} == True"
+      then: deep_analysis
+      else: quick_summary
+
+  # ── Step 4a: 深度分析 ──
+  - id: deep_analysis
+    type: llm_call
+    config:
+      system: |
+        你是一个深度研究分析师。基于搜索资料进行全面、深入的分析。
+        确保分析有数据支撑、逻辑严密、结论明确。
+      prompt: |
+        研究问题：{query}
+        研究计划：{plan.output}
+        搜索结果：{search.output}
+
+        请从以下角度进行深度分析：
+        1. 现状分析 — 当前状态和关键数据
+        2. 趋势判断 — 发展走向和驱动因素
+        3. 竞争格局 — 主要参与者和差异化
+        4. 机会与风险 — 潜在机会和需要注意的风险
+        5. 结论与建议 — 综合判断和行动建议
+
+        请用中文撰写，结构清晰，数据引用时注明来源。
+      temperature: 0.5
+      max_tokens: 2000
+
+  # ── Step 4b: 快速摘要 ──
+  - id: quick_summary
+    type: llm_call
+    config:
+      system: 你是一个高效的信息摘要者。用简洁的语言概括关键信息。
+      prompt: |
+        研究问题：{query}
+        搜索资料：{search.output}
+
+        请用3-5个要点简要概括，每个要点不超过两句话。
+      temperature: 0.3
+      max_tokens: 500
+
+  # ── Step 5: 生成最终报告 ──
+  - id: final
+    type: llm_call
+    config:
+      system: |
+        你是一个专业的研究报告撰写者。整合所有分析，生成一份结构化、
+        可读性强的最终研究报告。
+      prompt: |
+        # 研究报告
+
+        ## 研究问题
+        {query}
+
+        ## 研究计划
+        {plan.output}
+
+        ## 深度分析
+        {deep_analysis.output}
+
+        ## 补充摘要
+        {quick_summary.output}
+
+        请基于以上内容，整合生成最终研究报告。要求：
+        1. 有清晰的标题层级
+        2. 数据引用准确
+        3. 结论明确，有可操作建议
+        4. 使用中文撰写
+      temperature: 0.4
+      max_tokens: 3000

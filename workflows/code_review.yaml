@@ -1,0 +1,219 @@
+# workflows/code_review.yaml — 代码审查工作流
+# 典型模式: 静态分析 → 逻辑审查 → 安全扫描 → 性能评估 → 汇总报告
+
+name: 代码审查工作流
+description: >
+  自动化代码审查流程。
+  包含：代码风格检查、逻辑分析、安全漏洞扫描、性能评估、综合评分。
+
+steps:
+  # ── Step 1: 代码风格与结构分析 ──
+  - id: style_review
+    type: llm_call
+    config:
+      system: >
+        你是一个资深代码审查员，专注于代码风格和结构质量。
+        审查要点：
+        - 命名规范（变量、函数、类名是否清晰有意义）
+        - 代码组织（模块划分、文件结构是否合理）
+        - 注释质量（关键逻辑是否有注释，注释是否准确）
+        - 代码复杂度（是否有过长的函数、过深的嵌套）
+        - 遵循语言最佳实践
+      prompt: >
+        请审查以下代码的风格和结构：
+
+        ```
+        {code}
+        ```
+
+        如果提供了 diff，重点关注变更部分：
+        {diff}
+
+        请输出 JSON 格式的审查结果：
+        {
+          "overall_score": 1-10,
+          "issues": [
+            {"severity": "info/warning/error", "line": "行号", "message": "问题描述", "suggestion": "改进建议"}
+          ],
+          "strengths": ["优点1", "优点2"],
+          "summary": "总体评价"
+        }
+        只输出 JSON。
+      temperature: 0.2
+      max_tokens: 1500
+
+  # ── Step 2: 逻辑正确性审查 ──
+  - id: logic_review
+    type: llm_call
+    config:
+      system: >
+        你是一个资深软件工程师，专注于代码逻辑正确性审查。
+        审查要点：
+        - 边界条件处理（空值、越界、除零等）
+        - 错误处理（异常捕获是否完整、错误信息是否清晰）
+        - 并发安全（是否有竞态条件、死锁风险）
+        - 数据一致性（状态管理是否正确）
+        - 算法正确性（逻辑是否按预期工作）
+      prompt: >
+        请审查以下代码的逻辑正确性：
+
+        ```
+        {code}
+        ```
+
+        已完成的风格审查结果：{style_review.output}
+
+        请输出 JSON：
+        {
+          "overall_score": 1-10,
+          "issues": [
+            {"severity": "info/warning/error", "line": "行号", "message": "问题描述", "suggestion": "修复建议", "category": "边界条件/错误处理/并发/一致性/算法"}
+          ],
+          "strengths": ["逻辑优点"],
+          "summary": "逻辑质量总评"
+        }
+        只输出 JSON。
+      temperature: 0.2
+      max_tokens: 1500
+
+  # ── Step 3: 安全性扫描 ──
+  - id: security_review
+    type: llm_call
+    config:
+      system: >
+        你是一个应用安全专家，专注于代码安全漏洞扫描。
+        检查项：
+        - 注入漏洞（SQL注入、命令注入、XSS等）
+        - 敏感信息泄露（硬编码密钥、日志打印敏感数据）
+        - 权限与认证（授权检查是否完整）
+        - 输入验证（用户输入是否充分校验和清理）
+        - 依赖安全（是否有已知漏洞的依赖）
+        - 加密使用（加密算法选择、密钥管理）
+      prompt: >
+        请对以下代码进行安全审查：
+
+        ```
+        {code}
+        ```
+
+        语言/框架上下文：{language}
+
+        请输出 JSON：
+        {
+          "overall_score": 1-10,
+          "vulnerabilities": [
+            {"severity": "low/medium/high/critical", "type": "漏洞类型", "line": "行号", "description": "漏洞描述", "remediation": "修复方案", "cwe": "CWE编号"}
+          ],
+          "safe_practices": ["已遵循的安全实践"],
+          "summary": "安全总评"
+        }
+        只输出 JSON。
+      temperature: 0.1
+      max_tokens: 1500
+
+  # ── Step 4: 性能评估 ──
+  - id: perf_review
+    type: llm_call
+    config:
+      system: >
+        你是一个性能优化专家。审查代码的性能特征。
+        关注点：
+        - 算法复杂度（时间/空间）
+        - I/O 效率（数据库查询、网络请求、文件操作）
+        - 内存使用（是否有内存泄漏风险、大对象创建）
+        - 缓存策略（是否可以缓存重复计算）
+        - 并发/并行机会
+      prompt: >
+        请评估以下代码的性能：
+
+        ```
+        {code}
+        ```
+
+        请输出 JSON：
+        {
+          "overall_score": 1-10,
+          "bottlenecks": [
+            {"severity": "info/warning/critical", "location": "位置描述", "issue": "性能问题", "impact": "影响评估", "suggestion": "优化建议"}
+          ],
+          "complexity": {"time": "O(?)", "space": "O(?)"},
+          "summary": "性能总评"
+        }
+        只输出 JSON。
+      temperature: 0.2
+      max_tokens: 1000
+
+  # ── Step 5: 条件 — 是否需要深度安全审查 ──
+  - id: security_triage
+    type: conditional
+    config:
+      expression: "{security_review.output} contains 'critical'"
+      then: deep_security
+      else: summarize
+
+  # ── Step 6a: 深度安全审查 ──
+  - id: deep_security
+    type: llm_call
+    config:
+      system: >
+        你是资深安全架构师。对发现的高危漏洞进行深度分析和修复指导。
+      prompt: >
+        安全扫描发现以下高危问题：{security_review.output}
+
+        请提供：
+        1. 每个高危漏洞的详细利用场景
+        2. 分步骤的修复方案
+        3. 修复后的验证方法
+        4. 预防类似问题的长期建议
+      temperature: 0.2
+      max_tokens: 1000
+
+  # ── Step 6b/7: 汇总最终报告 ──
+  - id: summarize
+    type: llm_call
+    config:
+      system: >
+        你是代码审查汇总专家。综合所有审查维度，生成最终审查报告。
+        报告应包含：
+        - 总体评分和摘要
+        - 按严重程度分类的问题列表
+        - 改进优先级建议
+        - 合并后的代码改进清单
+      prompt: >
+        # 代码审查最终报告
+
+        ## 审查代码
+        ```
+        {code}
+        ```
+
+        ## 各维度审查结果
+
+        ### 风格与结构
+        {style_review.output}
+
+        ### 逻辑正确性
+        {logic_review.output}
+
+        ### 安全性
+        {security_review.output}
+
+        ### 性能
+        {perf_review.output}
+
+        ### 深度安全分析
+        {deep_security.output}
+
+        ## 综合报告要求
+
+        请生成格式化的最终报告：
+        1. **总体评分**（加权平均）
+        2. **严重问题**（error/critical 级别，含修复建议）
+        3. **改进建议**（warning 级别）
+        4. **优化建议**（info 级别）
+        5. **审核结论**：通过 / 有条件通过 / 需要修改
+        6. **改进清单**（可操作的逐项任务列表）
+
+        使用中文，Markdown 格式。
+      temperature: 0.3
+      max_tokens: 3000
