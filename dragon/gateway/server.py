@@ -33,6 +33,14 @@ from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from dragon.gateway.base import PlatformAdapter, PlatformMessage, PlatformReply
+from dragon.monitoring import (
+    record_request,
+    record_latency,
+    record_token_consumption,
+    record_tool_call,
+    record_session_created,
+    record_error,
+)
 
 logger = logging.getLogger("dragon.gateway.server")
 
@@ -85,6 +93,8 @@ class MessageProcessor:
         message: PlatformMessage,
         system_prompt: str = "",
         output_mode: str = "text",
+        industry: str = "unknown",
+        difficulty: str = "unknown",
     ) -> PlatformReply:
         """Process a message and return a reply.
 
@@ -100,6 +110,9 @@ class MessageProcessor:
         via VoiceEngine.stream() and attached as audio_chunks.
         """
         start = time.monotonic()
+
+        # Record request with industry/difficulty labels
+        record_request(industry=industry, difficulty=difficulty)
 
         # 0. Pairing check --- gate unapproved users
         if self.pairing_store and message.user_id and message.user_id != "__system__":
@@ -136,6 +149,7 @@ class MessageProcessor:
                     title=message.content[:50],
                     platform=message.platform,
                 )
+                record_session_created()
 
         # 2. Build message history
         history = []
@@ -191,6 +205,12 @@ class MessageProcessor:
                         max_tokens=2048,
                     )
                     response_text = result.content
+
+                    # Record token consumption
+                    if hasattr(result, 'usage') and result.usage:
+                        total_tokens = result.usage.get("total_tokens", 0)
+                        model = getattr(result, "model", "unknown")
+                        record_token_consumption(model=model, tokens=total_tokens)
                 else:
                     response_text = (
                         "[Dragon Agent 未配置 Provider]\n\n"
@@ -199,6 +219,7 @@ class MessageProcessor:
                     break
             except Exception as e:
                 logger.exception("Provider call failed")
+                record_error(error_type="provider_call_failed")
                 reply_text = f"抱歉，处理您的消息时出错: {e}"
                 break
 
@@ -224,6 +245,9 @@ class MessageProcessor:
                         output = str(tool_result.output) if tool_result.success else tool_result.error
                     except Exception as e:
                         output = f"Tool error: {e}"
+
+                    # Record tool call metric
+                    record_tool_call(tool_name=tc["name"])
 
                     tool_outputs.append({
                         "tool": tc["name"],
@@ -269,6 +293,10 @@ class MessageProcessor:
                     )
             except Exception:
                 logger.exception("Voice synthesis failed for reply")
+
+        # Record request latency
+        elapsed = time.monotonic() - start
+        record_latency(elapsed)
 
         return PlatformReply(
             content=reply_text,

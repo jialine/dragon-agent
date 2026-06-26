@@ -8,6 +8,14 @@ what's currently playing (requires user authorization).
 Tools:
     - spotify_search: Search tracks/albums/artists on Spotify
     - spotify_now_playing: Get the currently playing track
+    - spotify_play: Start/resume playback
+    - spotify_pause: Pause playback
+    - spotify_skip: Skip to next track
+    - spotify_previous: Go to previous track
+    - spotify_queue: Add track to queue
+    - spotify_devices: List available devices
+    - spotify_volume: Set playback volume
+    - spotify_playlists: List user's playlists
 
 APIs:
     - Spotify Web API: https://developer.spotify.com/documentation/web-api
@@ -412,3 +420,254 @@ async def tool_spotify_now_playing() -> str:
         "is_playing": data.get("is_playing", False),
         "url": item.get("external_urls", {}).get("spotify", ""),
     })
+
+
+# ── Playback Controls ─────────────────────────────────────────────────
+
+async def _spotify_put(path: str, body: dict = None) -> dict:
+    """Helper for Spotify PUT requests with user auth."""
+    token = await _get_user_token()
+    if not token:
+        return {"error": "Spotify user credentials not configured"}
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
+            kwargs = {"headers": {"Authorization": f"Bearer {token}"}}
+            if body:
+                kwargs["json"] = body
+            resp = await client.put(f"{SPOTIFY_API_BASE}{path}", **kwargs)
+            if resp.status_code == 401:
+                refresh_token = os.environ.get("SPOTIFY_REFRESH_TOKEN", "").strip()
+                _token_cache.pop(f"user_{refresh_token[:8]}", None)
+                token = await _get_user_token()
+                if token:
+                    kwargs["headers"] = {"Authorization": f"Bearer {token}"}
+                    resp = await client.put(f"{SPOTIFY_API_BASE}{path}", **kwargs)
+            if resp.status_code in (200, 202, 204):
+                return {"success": True, "status": resp.status_code}
+            return {"error": f"HTTP {resp.status_code}", "detail": resp.text[:300]}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {str(e)}"}
+
+
+async def _spotify_post(path: str, body: dict = None) -> dict:
+    """Helper for Spotify POST requests with user auth."""
+    token = await _get_user_token()
+    if not token:
+        return {"error": "Spotify user credentials not configured"}
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
+            kwargs = {"headers": {"Authorization": f"Bearer {token}"}}
+            if body:
+                kwargs["json"] = body
+            resp = await client.post(f"{SPOTIFY_API_BASE}{path}", **kwargs)
+            if resp.status_code == 401:
+                refresh_token = os.environ.get("SPOTIFY_REFRESH_TOKEN", "").strip()
+                _token_cache.pop(f"user_{refresh_token[:8]}", None)
+                token = await _get_user_token()
+                if token:
+                    kwargs["headers"] = {"Authorization": f"Bearer {token}"}
+                    resp = await client.post(f"{SPOTIFY_API_BASE}{path}", **kwargs)
+            if resp.status_code in (200, 201, 202, 204):
+                try:
+                    return {"success": True, "data": resp.json()}
+                except Exception:
+                    return {"success": True}
+            return {"error": f"HTTP {resp.status_code}", "detail": resp.text[:300]}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {str(e)}"}
+
+
+async def tool_spotify_play(
+    uri: str = "",
+    context_uri: str = "",
+    device_id: str = "",
+) -> str:
+    """Start or resume Spotify playback.
+
+    Args:
+        uri: Track URI to play (e.g. spotify:track:xxx). If empty, resumes.
+        context_uri: Album/playlist URI to play (e.g. spotify:album:xxx).
+        device_id: Target device ID. If empty, uses active device.
+
+    Returns:
+        JSON with success status or error details.
+    """
+    body = {}
+    if uri:
+        body["uris"] = [uri]
+    if context_uri:
+        body["context_uri"] = context_uri
+    path = "/me/player/play"
+    if device_id:
+        path += f"?device_id={device_id}"
+    result = await _spotify_put(path, body if body else None)
+    return json.dumps(result)
+
+
+async def tool_spotify_pause(device_id: str = "") -> str:
+    """Pause Spotify playback.
+
+    Args:
+        device_id: Target device ID. If empty, uses active device.
+
+    Returns:
+        JSON with success status.
+    """
+    path = "/me/player/pause"
+    if device_id:
+        path += f"?device_id={device_id}"
+    result = await _spotify_put(path)
+    return json.dumps(result)
+
+
+async def tool_spotify_skip(device_id: str = "") -> str:
+    """Skip to the next track.
+
+    Args:
+        device_id: Target device ID.
+
+    Returns:
+        JSON with success status.
+    """
+    path = "/me/player/next"
+    if device_id:
+        path += f"?device_id={device_id}"
+    result = await _spotify_post(path)
+    return json.dumps(result)
+
+
+async def tool_spotify_previous(device_id: str = "") -> str:
+    """Go back to the previous track.
+
+    Args:
+        device_id: Target device ID.
+
+    Returns:
+        JSON with success status.
+    """
+    path = "/me/player/previous"
+    if device_id:
+        path += f"?device_id={device_id}"
+    result = await _spotify_post(path)
+    return json.dumps(result)
+
+
+async def tool_spotify_queue(uri: str, device_id: str = "") -> str:
+    """Add a track to the Spotify playback queue.
+
+    Args:
+        uri: Track URI to queue (e.g. spotify:track:xxx).
+        device_id: Target device ID.
+
+    Returns:
+        JSON with success status.
+    """
+    path = f"/me/player/queue?uri={uri}"
+    if device_id:
+        path += f"&device_id={device_id}"
+    result = await _spotify_post(path)
+    return json.dumps(result)
+
+
+async def tool_spotify_devices() -> str:
+    """List available Spotify devices.
+
+    Returns:
+        JSON with list of devices (id, name, type, is_active, volume).
+    """
+    token = await _get_user_token()
+    if not token:
+        return json.dumps({"error": "Spotify user credentials not configured"})
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
+            resp = await client.get(
+                f"{SPOTIFY_API_BASE}/me/player/devices",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if resp.status_code == 401:
+                refresh_token = os.environ.get("SPOTIFY_REFRESH_TOKEN", "").strip()
+                _token_cache.pop(f"user_{refresh_token[:8]}", None)
+                token = await _get_user_token()
+                if token:
+                    resp = await client.get(
+                        f"{SPOTIFY_API_BASE}/me/player/devices",
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+            if resp.status_code != 200:
+                return json.dumps({"error": f"HTTP {resp.status_code}"})
+            data = resp.json()
+            devices = []
+            for d in data.get("devices", []):
+                devices.append({
+                    "id": d.get("id", ""),
+                    "name": d.get("name", ""),
+                    "type": d.get("type", ""),
+                    "is_active": d.get("is_active", False),
+                    "volume": d.get("volume_percent", 0),
+                })
+            return json.dumps({"devices": devices, "total": len(devices)})
+    except Exception as e:
+        return json.dumps({"error": f"{type(e).__name__}: {str(e)}"})
+
+
+async def tool_spotify_volume(volume: int, device_id: str = "") -> str:
+    """Set Spotify playback volume.
+
+    Args:
+        volume: Volume 0-100.
+        device_id: Target device ID.
+
+    Returns:
+        JSON with success status.
+    """
+    volume = max(0, min(100, volume))
+    path = f"/me/player/volume?volume_percent={volume}"
+    if device_id:
+        path += f"&device_id={device_id}"
+    result = await _spotify_put(path)
+    return json.dumps(result)
+
+
+async def tool_spotify_playlists(limit: int = 20) -> str:
+    """List the current user's Spotify playlists.
+
+    Args:
+        limit: Maximum number of playlists to return (default 20, max 50).
+
+    Returns:
+        JSON with list of playlists.
+    """
+    token = await _get_user_token()
+    if not token:
+        return json.dumps({"error": "Spotify user credentials not configured"})
+    try:
+        limit = max(1, min(50, limit))
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
+            resp = await client.get(
+                f"{SPOTIFY_API_BASE}/me/playlists?limit={limit}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if resp.status_code == 401:
+                refresh_token = os.environ.get("SPOTIFY_REFRESH_TOKEN", "").strip()
+                _token_cache.pop(f"user_{refresh_token[:8]}", None)
+                token = await _get_user_token()
+                if token:
+                    resp = await client.get(
+                        f"{SPOTIFY_API_BASE}/me/playlists?limit={limit}",
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+            if resp.status_code != 200:
+                return json.dumps({"error": f"HTTP {resp.status_code}"})
+            data = resp.json()
+            playlists = []
+            for p in data.get("items", []):
+                playlists.append({
+                    "id": p.get("id", ""),
+                    "name": p.get("name", ""),
+                    "owner": p.get("owner", {}).get("display_name", ""),
+                    "tracks_total": p.get("tracks", {}).get("total", 0),
+                    "uri": p.get("uri", ""),
+                })
+            return json.dumps({"playlists": playlists, "total": len(playlists)})
+    except Exception as e:
+        return json.dumps({"error": f"{type(e).__name__}: {str(e)}"})

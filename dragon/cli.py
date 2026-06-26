@@ -112,6 +112,22 @@ def main():
     tl_p.add_argument("--query", "-q", help="Search query")
     tl_p.add_argument("--args", "-a", help="JSON arguments for tool call")
 
+    # ── workflow ──────────────────────────────────────────────────
+    wf_p = sub.add_parser("workflow", help="Manage and execute workflows")
+    wf_sub = wf_p.add_subparsers(dest="wf_action", help="Workflow actions")
+
+    # dragon workflow run <file>
+    wf_run = wf_sub.add_parser("run", help="Execute a workflow YAML file")
+    wf_run.add_argument("file", help="Path to workflow YAML file")
+    wf_run.add_argument("--context", "-c", help="JSON context to pass to the workflow (e.g., '{\"query\": \"...\"}')")
+
+    # dragon workflow list
+    wf_sub.add_parser("list", help="List available workflows in workflows/ directory")
+
+    # dragon workflow validate <file>
+    wf_val = wf_sub.add_parser("validate", help="Validate a workflow YAML file syntax and structure")
+    wf_val.add_argument("file", help="Path to workflow YAML file")
+
     # ── sessions ──────────────────────────────────────────────────
     sess_p = sub.add_parser("sessions", help="Manage sessions")
     sess_p.add_argument("action", nargs="?", default="list",
@@ -188,6 +204,7 @@ def main():
         "tui": cmd_tui,
         "setup": cmd_setup,
         "model": cmd_model,
+        "workflow": cmd_workflow,
     }
 
     handler = handlers.get(args.command)
@@ -1285,6 +1302,281 @@ def cmd_setup(args):
         providers_only=args.providers,
         quick=args.quick,
     )
+
+
+def cmd_workflow(args):
+    """Manage and execute workflows."""
+    wf_action = getattr(args, "wf_action", None)
+
+    if wf_action == "run":
+        _cmd_workflow_run(args)
+    elif wf_action == "list":
+        _cmd_workflow_list()
+    elif wf_action == "validate":
+        _cmd_workflow_validate(args)
+    else:
+        print("Usage: dragon workflow {run|list|validate} [...]")
+        print("  dragon workflow run <file>       — 执行工作流")
+        print("  dragon workflow list              — 列出可用工作流")
+        print("  dragon workflow validate <file>   — 验证工作流 YAML 语法和结构")
+
+
+def _cmd_workflow_run(args):
+    """Execute a workflow YAML file."""
+    import asyncio
+    import json as _json
+
+    file_path = args.file
+    if not Path(file_path).exists():
+        print(f"✗ 文件不存在: {file_path}")
+        return
+
+    # Parse context
+    context = {}
+    if args.context:
+        try:
+            context = _json.loads(args.context)
+        except _json.JSONDecodeError as e:
+            print(f"✗ Context JSON 解析失败: {e}")
+            return
+
+    async def _run():
+        try:
+            from dragon.workflow.engine import WorkflowEngine
+
+            engine = WorkflowEngine()
+            result = await engine.run_file(file_path, context=context)
+
+            # Print results
+            print(f"\n{'='*60}")
+            print(f"  工作流: {result.name}")
+            print(f"  状态:   {result.status.value}")
+            print(f"  耗时:   {result.total_elapsed_ms:.0f}ms")
+            print(f"{'='*60}\n")
+
+            for i, sr in enumerate(result.steps, 1):
+                icon = "✓" if sr.success and not sr.skipped else ("○" if sr.skipped else "✗")
+                extra = ""
+                if sr.skipped:
+                    extra = " (已跳过)"
+                if sr.error:
+                    extra = f" (错误: {sr.error})"
+                output_preview = str(sr.output)[:120] if sr.output else "(无输出)"
+                print(f"  [{i}] {icon} {sr.step_id} [{sr.step_type.value}] {extra}")
+                if sr.success and not sr.skipped:
+                    print(f"      输出: {output_preview}")
+                print(f"      耗时: {sr.elapsed_ms:.0f}ms")
+
+            if result.status.value == "failed":
+                print(f"\n✗ 工作流执行失败: {result.error}")
+            else:
+                print(f"\n✓ 工作流执行完成")
+                if result.final_output:
+                    print(f"\n最终输出:\n{str(result.final_output)[:500]}")
+
+        except FileNotFoundError as e:
+            print(f"✗ {e}")
+        except Exception as e:
+            print(f"✗ 执行失败: {e}")
+
+    asyncio.run(_run())
+
+
+def _cmd_workflow_list():
+    """List available workflows in the workflows/ directory."""
+    workflows_dir = Path("workflows")
+
+    if not workflows_dir.exists() or not workflows_dir.is_dir():
+        print(f"✗ workflows/ 目录不存在")
+        return
+
+    yaml_files = sorted(workflows_dir.glob("*.yaml"))
+    yml_files = sorted(workflows_dir.glob("*.yml"))
+    all_files = yaml_files + yml_files
+
+    if not all_files:
+        print("workflows/ 目录中没有工作流文件")
+        return
+
+    print(f"可用工作流 ({len(all_files)}):\n")
+    for f in all_files:
+        try:
+            import yaml as _yaml
+            raw = _yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+            name = raw.get("name", f.stem)
+            desc = raw.get("description", "(无描述)")[:80]
+            steps = raw.get("steps", [])
+            step_count = len(steps)
+            print(f"  • {name}")
+            print(f"    文件: {f.name}")
+            print(f"    步骤数: {step_count}")
+            print(f"    描述: {desc}")
+            print()
+        except Exception:
+            print(f"  • {f.stem}")
+            print(f"    文件: {f.name}")
+            print(f"    (无法解析 YAML)")
+            print()
+
+
+def _cmd_workflow_validate(args):
+    """Validate a workflow YAML file syntax and step structure."""
+    import yaml as _yaml
+
+    file_path = args.file
+    if not Path(file_path).exists():
+        print(f"✗ 文件不存在: {file_path}")
+        return
+
+    errors = []
+    warnings = []
+    raw = {}
+
+    # ── 1. Check file extension ──
+    if not str(file_path).endswith((".yaml", ".yml")):
+        warnings.append("文件扩展名不是 .yaml / .yml")
+
+    # ── 2. Parse YAML syntax ──
+    try:
+        raw = _yaml.safe_load(Path(file_path).read_text(encoding="utf-8"))
+    except _yaml.YAMLError as e:
+        errors.append(f"YAML 语法错误: {e}")
+    except Exception as e:
+        errors.append(f"文件读取错误: {e}")
+
+    if errors:
+        _print_validate_result(file_path, errors, warnings)
+        return
+
+    if raw is None:
+        errors.append("YAML 文件为空")
+        _print_validate_result(file_path, errors, warnings)
+        return
+
+    # ── 3. Validate top-level fields ──
+    if not isinstance(raw, dict):
+        errors.append("YAML 根节点必须是字典 (mapping)")
+        _print_validate_result(file_path, errors, warnings)
+        return
+
+    # Check required fields
+    if "name" not in raw:
+        warnings.append("缺少 'name' 字段（将使用文件名）")
+
+    if "steps" not in raw:
+        errors.append("缺少 'steps' 字段")
+        _print_validate_result(file_path, errors, warnings)
+        return
+
+    steps = raw.get("steps", [])
+    if not isinstance(steps, list):
+        errors.append("'steps' 必须是列表 (sequence)")
+        _print_validate_result(file_path, errors, warnings)
+        return
+
+    if len(steps) == 0:
+        warnings.append("工作流没有任何步骤")
+
+    # ── 4. Validate each step ──
+    valid_types = {"llm_call", "tool_call", "conditional", "loop", "sub_workflow"}
+    step_ids = set()
+
+    for i, step in enumerate(steps):
+        prefix = f"步骤 [{i}]"
+
+        if not isinstance(step, dict):
+            errors.append(f"{prefix}: 不是字典格式")
+            continue
+
+        # Check step id
+        sid = step.get("id")
+        if not sid:
+            errors.append(f"{prefix}: 缺少 'id' 字段")
+        elif sid in step_ids:
+            errors.append(f"{prefix}: 重复的步骤 ID '{sid}'")
+        else:
+            step_ids.add(sid)
+
+        # Check step type
+        stype = step.get("type", "llm_call")
+        if stype not in valid_types:
+            errors.append(f"{prefix} ({sid or '?'}): 无效的步骤类型 '{stype}'，有效类型: {', '.join(sorted(valid_types))}")
+
+        # Check config
+        config = step.get("config", {})
+        if not isinstance(config, dict):
+            errors.append(f"{prefix} ({sid or '?'}): 'config' 必须是字典")
+            continue
+
+        # Type-specific validation
+        if stype == "llm_call":
+            if "prompt" not in config:
+                errors.append(f"{prefix} ({sid or '?'}): llm_call 缺少 'prompt' 配置")
+        elif stype == "tool_call":
+            if "tool" not in config:
+                errors.append(f"{prefix} ({sid or '?'}): tool_call 缺少 'tool' 配置")
+        elif stype == "conditional":
+            if "expression" not in config:
+                warnings.append(f"{prefix} ({sid or '?'}): conditional 缺少 'expression' 配置")
+            # Check that then/else targets exist (best-effort)
+            for key in ("then", "else"):
+                target = config.get(key)
+                if target and isinstance(target, str) and target not in step_ids:
+                    # Will be checked later when all IDs are collected
+                    pass
+        elif stype == "loop":
+            if "array" not in config and "items" not in config:
+                errors.append(f"{prefix} ({sid or '?'}): loop 缺少 'array' 或 'items' 配置")
+            if "sub_steps" not in config:
+                errors.append(f"{prefix} ({sid or '?'}): loop 缺少 'sub_steps' 配置")
+        elif stype == "sub_workflow":
+            if "workflow" not in config:
+                errors.append(f"{prefix} ({sid or '?'}): sub_workflow 缺少 'workflow' 配置")
+
+    # Check conditional targets reference existing steps
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        if step.get("type") == "conditional":
+            config = step.get("config", {})
+            sid = step.get("id", "?")
+            for key in ("then", "else"):
+                target = config.get(key)
+                if target and isinstance(target, str) and target not in step_ids:
+                    errors.append(f"步骤 '{sid}': {key} 目标 '{target}' 不存在于步骤列表中")
+
+    # ── 5. Try parsing via WorkflowDefinition ──
+    try:
+        from dragon.workflow import WorkflowDefinition
+        wf = WorkflowDefinition.from_dict(raw)
+        # Successfully parsed
+    except Exception as e:
+        errors.append(f"WorkflowDefinition 解析失败: {e}")
+
+    _print_validate_result(file_path, errors, warnings)
+
+
+def _print_validate_result(file_path, errors, warnings):
+    """Helper: print validation results in a consistent format."""
+    print(f"\n验证工作流: {file_path}")
+    print("=" * 50)
+
+    if not errors and not warnings:
+        print("✓ 工作流验证通过！")
+        return
+
+    if errors:
+        print(f"\n✗ 发现 {len(errors)} 个错误:")
+        for e in errors:
+            print(f"  ✗ {e}")
+
+    if warnings:
+        print(f"\n⚠ 发现 {len(warnings)} 个警告:")
+        for w in warnings:
+            print(f"  ⚠ {w}")
+
+    if not errors:
+        print(f"\n✓ 语法检查通过（有警告但不影响使用）")
 
 
 if __name__ == "__main__":

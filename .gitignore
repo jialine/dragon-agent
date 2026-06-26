@@ -37,3 +37,8 @@ Thumbs.db
 # Temp
 *.tmp
 *.bak
+models/
+*.png
+scripts/feishu_onboard.py
+scripts/generate_qr.py
+scripts/uninstall.sh

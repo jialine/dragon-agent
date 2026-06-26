@@ -84,7 +84,7 @@ from dragon.tool.builtins.feishu_docs import (
     tool_feishu_read_doc, tool_feishu_list_docs, tool_feishu_create_doc,
 )
 from dragon.tool.builtins.youtube import tool_youtube_transcript, tool_youtube_summarize
-from dragon.tool.builtins.spotify import tool_spotify_search, tool_spotify_now_playing
+from dragon.tool.builtins.spotify import tool_spotify_search, tool_spotify_now_playing, tool_spotify_play, tool_spotify_pause, tool_spotify_skip, tool_spotify_previous, tool_spotify_queue, tool_spotify_devices, tool_spotify_volume, tool_spotify_playlists
 from dragon.tool.builtins.gif_search import tool_gif_search, tool_gif_trending
 from dragon.tool.builtins.notion import tool_notion_search, tool_notion_read_page, tool_notion_create_page
 from dragon.tool.builtins.linear import tool_linear_list_issues, tool_linear_create_issue
@@ -644,7 +644,7 @@ def _register_google(registry):
 
 
 def _register_spotify(registry):
-    """Register Spotify music tools (search, now playing)."""
+    """Register Spotify music tools (search, playback, devices, playlists)."""
     registry.register(
         name="spotify_search",
         description="Search Spotify for tracks, albums, artists, or playlists. Requires SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET.",
@@ -660,6 +660,70 @@ def _register_spotify(registry):
         category="media",
         timeout_secs=15,
     )(tool_spotify_now_playing)
+
+    registry.register(
+        name="spotify_play",
+        description="Start or resume Spotify playback. Optionally specify a track URI, context URI, or device ID.",
+        tags=["spotify", "music", "playback"],
+        category="media",
+        timeout_secs=10,
+    )(tool_spotify_play)
+
+    registry.register(
+        name="spotify_pause",
+        description="Pause Spotify playback.",
+        tags=["spotify", "music", "playback"],
+        category="media",
+        timeout_secs=10,
+    )(tool_spotify_pause)
+
+    registry.register(
+        name="spotify_skip",
+        description="Skip to the next track on Spotify.",
+        tags=["spotify", "music", "playback"],
+        category="media",
+        timeout_secs=10,
+    )(tool_spotify_skip)
+
+    registry.register(
+        name="spotify_previous",
+        description="Go back to the previous track on Spotify.",
+        tags=["spotify", "music", "playback"],
+        category="media",
+        timeout_secs=10,
+    )(tool_spotify_previous)
+
+    registry.register(
+        name="spotify_queue",
+        description="Add a track to the Spotify playback queue.",
+        tags=["spotify", "music", "queue"],
+        category="media",
+        timeout_secs=10,
+    )(tool_spotify_queue)
+
+    registry.register(
+        name="spotify_devices",
+        description="List available Spotify devices (name, type, volume, active status).",
+        tags=["spotify", "music", "devices"],
+        category="media",
+        timeout_secs=10,
+    )(tool_spotify_devices)
+
+    registry.register(
+        name="spotify_volume",
+        description="Set Spotify playback volume (0-100).",
+        tags=["spotify", "music", "playback", "volume"],
+        category="media",
+        timeout_secs=10,
+    )(tool_spotify_volume)
+
+    registry.register(
+        name="spotify_playlists",
+        description="List the current user's Spotify playlists.",
+        tags=["spotify", "music", "playlists"],
+        category="media",
+        timeout_secs=10,
+    )(tool_spotify_playlists)
 
 
 def _register_gif(registry):
