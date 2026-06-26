@@ -59,7 +59,7 @@ def _read_version() -> str:
     return "1.0.0"
 
 
-from dragon.workflow import WorkflowEngine, WorkflowCallbacks
+from dragon.workflow import WorkflowEngine
 
 # ── Globals ──────────────────────────────────────────────
 router: Optional[DragonRouter] = None
