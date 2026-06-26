@@ -1,0 +1,257 @@
+# workflows/drama.yaml — 短剧生成工作流
+# 借鉴 MoneyPrinterTurbo 的 pipeline 哲学：输入主题 → AI 全流程生成 → 输出成品
+# 适配短剧（短视频剧情）：角色→剧情→场景→剧本→视觉→包装
+
+name: 短剧生成工作流
+industry: entertainment
+version: "1.0"
+timeout_secs: 300
+
+toolbox:
+  tools:
+    - web_search
+  skills:
+    - jury_debate
+
+plan:
+  prompt: |
+    你是一个短剧创作策划人。分析用户需求，制定完整的短剧生成方案。
+
+    用户需求：{query}
+
+    输出 JSON（只输出 JSON）：
+    {{
+      "genre": "短剧类型（甜宠/悬疑/搞笑/职场/家庭/古装/科幻/青春/其他）",
+      "style": "风格描述（轻松/紧张/温馨/暗黑/喜剧/正剧）",
+      "target_audience": "目标观众",
+      "episode_count": 每集数量（默认1集，用户指定则使用用户指定的），
+      "duration_per_episode": "每集时长（默认1-3分钟短视频）",
+      "approach": "一段中文简述创作策略",
+      "need_characters": true,
+      "need_debate": true/false（剧情复杂时启用多视角讨论）,
+      "need_visual": true/false（用户是否想要分镜/视觉描述）,
+      "need_multiple_versions": true/false（用户是否要多个版本选优）,
+      "selected_tools": ["需要的外部工具"],
+      "selected_skills": ["需要的技能"],
+      "key_conflict": "核心冲突一句话",
+      "tone_notes": "语调和节奏备注"
+    }}
+
+steps:
+  # 步骤 1：角色设计
+  - id: character_design
+    name: 角色设计
+    condition: "plan.need_characters == true"
+    type: llm
+    prompt: |
+      你是一个角色设计师。为以下短剧设计角色。
+
+      剧集类型：{plan.genre}
+      风格：{plan.style}
+      核心冲突：{plan.key_conflict}
+      创作策略：{plan.approach}
+
+      请为每个角色设计（至少2个角色，最多6个）：
+      1. 姓名 + 年龄 + 职业
+      2. 外貌特征（3-5个关键词）
+      3. 性格特点（优势 + 缺陷）
+      4. 口头禅 / 标志性动作
+      5. 角色动机和目标
+      6. 与其他角色的关系
+
+      格式要求：
+      ## 角色1：<姓名>
+      - **年龄/职业**：...
+      - **外貌**：...
+      - **性格**：...
+      - **标志**：...
+      - **动机**：...
+      - **关系**：...
+
+      按重要程度排序，主角在前。
+    on_failure: abort
+
+  # 步骤 2：多视角讨论（复杂剧情时启用）
+  - id: plot_debate
+    name: 剧情讨论
+    condition: "plan.need_debate == true"
+    type: skill
+    skills_from: plan.selected_skills
+    context:
+      genre: "{plan.genre}"
+      style: "{plan.style}"
+      conflict: "{plan.key_conflict}"
+      characters: "{character_design}"
+    on_failure: skip
+
+  # 步骤 3：剧情大纲
+  - id: plot_outline
+    name: 剧情大纲
+    type: llm
+    prompt: |
+      你是一个短剧编剧。根据以下信息，写出完整的剧情大纲。
+
+      剧集类型：{plan.genre}
+      风格：{plan.style}
+      核心冲突：{plan.key_conflict}
+      角色设计：
+      {character_design}
+
+      剧情讨论（如有）：{plot_debate}
+
+      大纲结构：
+      1. **开篇钩子**（前10秒抓住观众）- 具体画面/台词
+      2. **第一幕：建立**（人物出场 + 冲突引入）
+      3. **第二幕：对抗**（冲突升级 + 转折点）
+      4. **第三幕：高潮**（冲突爆发 + 情感顶点）
+      5. **结尾**（收束 + 留钩子/反转/开放式）
+
+      每部分写100-200字，要有具体的场景画面感。
+      如果用户要求多集，写出每集的核心冲突点。
+    on_failure: abort
+
+  # 步骤 4：场景分解
+  - id: scene_breakdown
+    name: 场景分解
+    type: llm
+    prompt: |
+      将剧情大纲分解为具体场景。
+
+      剧情大纲：
+      {plot_outline}
+
+      要求：
+      - 每场戏标注：场景号、地点、时间、出场人物、时长（秒）
+      - 每场戏写一句核心戏剧任务（这场戏要完成什么）
+      - 标注情绪曲线（1-10，10为情绪最高点）
+
+      格式：
+      ## 场景1：<场景名>（XX秒）
+      - 📍 地点：
+      - 🕐 时间：
+      - 👤 出场：
+      - 🎯 戏剧任务：
+      - 📈 情绪值：X/10
+    on_failure: abort
+
+  # 步骤 5：完整剧本
+  - id: script_writing
+    name: 剧本写作
+    type: llm
+    prompt: |
+      根据场景分解，写出完整的短剧剧本（含台词）。
+
+      场景分解：
+      {scene_breakdown}
+
+      角色设计：
+      {character_design}
+
+      语调备注：{plan.tone_notes}
+
+      格式要求（标准剧本格式）：
+      ```
+      【场景1：场景名 | 地点 | 时间】
+
+      [画面描述：镜头、氛围、关键动作]
+
+      角色名：（表情/动作提示）对话内容
+
+      ---
+      ```
+
+      每个角色的台词要符合其性格和口头禅。
+      对话要简洁有力，短视频剧本每句台词不超过30字。
+      画面描述要具体、可拍摄。
+    on_failure: abort
+
+  # 步骤 6：多版本生成（可选）
+  - id: alternative_versions
+    name: 多版本生成
+    condition: "plan.need_multiple_versions == true"
+    type: llm
+    prompt: |
+      基于以下原始剧本，生成2个不同的版本变体：
+
+      原始剧本：
+      {script_writing}
+
+      变体1：反转结局版 — 最后30秒来一个大反转
+      变体2：高能加速版 — 压缩到原时长70%，节奏更快，去掉铺垫直接进冲突
+
+      每个变体只改关键场景的剧本，不是全部重写。
+      标注每个变体的核心改动点。
+    on_failure: skip
+
+  # 步骤 7：视觉简报（可选）
+  - id: visual_brief
+    name: 视觉简报
+    condition: "plan.need_visual == true"
+    type: llm
+    prompt: |
+      为每个场景生成视觉/拍摄简报，用于AI视频生成。
+
+      剧本：
+      {script_writing}
+
+      对每个场景输出：
+      1. **视觉风格**：色调、光线、氛围关键词（适合 AI 生成 prompt）
+      2. **构图建议**：景别（特写/中景/远景）、镜头运动
+      3. **素材关键词**：用于 Pexels/Pixabay 搜索的英文关键词
+      4. **背景音乐建议**：情绪 + BPM + 风格
+
+      格式：
+      ## 场景X 视觉简报
+      - 🎨 AI Prompt：<英文，适合 Midjourney/Stable Diffusion>
+      - 🎥 构图：...
+      - 🔍 素材搜索词：keyword1, keyword2, keyword3
+      - 🎵 BGM：...
+    on_failure: skip
+
+  # 步骤 8：最终合成
+  - id: final_package
+    name: 最终输出
+    type: llm
+    prompt: |
+      将所有内容整合为一个完整的短剧制作包。
+
+      角色设计：{character_design}
+      剧情大纲：{plot_outline}
+      场景分解：{scene_breakdown}
+      完整剧本：{script_writing}
+      替代版本：{alternative_versions}
+      视觉简报：{visual_brief}
+
+      请按以下结构输出最终结果：
+
+      # 🎬 《<根据剧情起一个吸引人的剧名>》
+      > {plan.genre} | {plan.style} | 约{plan.duration_per_episode}
+
+      ## 📋 制作概要
+      - 类型、风格、目标观众、核心冲突、预计时长
+
+      ## 👥 角色表
+      （整理角色设计，用表格形式）
+
+      ## 📖 剧情大纲
+      （保留完整大纲）
+
+      ## 🎞️ 场景列表
+      （场景号、地点、时长、情绪值的表格）
+
+      ## ✍️ 完整剧本
+      （保留完整剧本）
+
+      ## 🎨 视觉简报
+      （如有）
+
+      ## 💡 拍摄建议
+      根据 MoneyPrinterTurbo 等工作流工具，给出：
+      1. 推荐视频比例（竖屏 9:16 适合抖音/快手，横屏 16:9 适合 YouTube/B站）
+      2. 素材获取方式（Pexels/Pixabay 免费素材 + AI 生成画面）
+      3. TTS 配音建议（角色用不同音色区分）
+      4. 字幕样式建议
+      5. BGM 推荐
+
+      {plan.need_multiple_versions == true ? "## 🔄 替代版本\n{alternative_versions}" : ""}
+    on_failure: abort
