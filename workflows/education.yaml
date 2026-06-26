@@ -1,0 +1,101 @@
+# workflows/education.yaml — 教育行业工作流
+# plan → concept_explain → example_generate → exercise → summary
+
+name: 教育行业工作流
+industry: education
+version: "1.0"
+timeout_secs: 120
+
+toolbox:
+  tools:
+    - web_search
+  skills:
+    - fact_check
+
+plan:
+  prompt: |
+    你是一个教育方案制定者。核心原则：启发思考，不直接给答案。
+
+    可用工具：{available_tools}
+    可用技能：{available_skills}
+
+    用户问题：{query}
+    难度评估：{difficulty}（{difficulty_score}/10）
+
+    输出JSON（只输出JSON）：
+    {{
+      "approach": "教学策略",
+      "need_examples": true/false,
+      "need_exercise": true/false,
+      "need_search": true/false,
+      "age_level": "elementary/middle/high/college/adult",
+      "selected_tools": [],
+      "selected_skills": [],
+      "sub_questions": []
+    }}
+
+steps:
+  - id: concept_explain
+    name: 概念讲解
+    type: llm
+    prompt: |
+      用{plan.age_level}学生能理解的方式解释以下概念。
+      核心原则：启发思考，引导理解，不直接给答案。
+
+      回答策略：{plan.approach}
+      用户问题：{_query}
+    on_failure: abort
+
+  - id: search_materials
+    name: 查找补充材料
+    condition: "plan.need_search == true"
+    type: tool
+    tools_from: plan.selected_tools
+    input: "{_query} 教学资料 入门教程"
+    on_failure: skip
+
+  - id: example
+    name: 举例说明
+    condition: "plan.need_examples == true"
+    type: llm
+    prompt: |
+      为以下概念提供2-3个生动的生活例子，帮助{plan.age_level}学生理解：
+
+      概念讲解：{concept_explain}
+
+      要求例子贴近生活、容易理解。
+    on_failure: skip
+
+  - id: exercise
+    name: 练习题
+    condition: "plan.need_exercise == true"
+    type: llm
+    prompt: |
+      为以下概念设计1-2道练习题，适合{plan.age_level}水平：
+
+      概念：{concept_explain}
+      举例：{example}
+
+      题目应该巩固理解，而非死记硬背。
+    on_failure: skip
+
+  - id: summary
+    name: 学习总结
+    type: llm
+    prompt: |
+      整合以下内容，生成一个完整的教学回答：
+
+      教学策略：{plan.approach}
+      概念讲解：{concept_explain}
+      补充材料：{search_materials}
+      举例说明：{example}
+      练习题：{exercise}
+
+      用户原始问题：{_query}
+
+      输出格式：
+      1. 概念解释
+      2. 举例说明
+      3. 练习题（如有）
+      4. 学习建议
+    on_failure: abort

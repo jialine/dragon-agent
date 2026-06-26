@@ -227,21 +227,31 @@ class StepExecutor:
 
     @staticmethod
     def _render_template(template: str, context: Dict[str, Any]) -> str:
-        """Simple {key} template rendering with fallback to empty string."""
+        """Render {key} and {nested.key.subkey} templates from context."""
         if not template:
             return ""
 
-        result = template
-        for key, value in context.items():
-            placeholder = "{" + key + "}"
-            if placeholder in result:
-                # Convert value to string for display
-                if isinstance(value, (dict, list)):
-                    val_str = json.dumps(value, ensure_ascii=False, indent=2)
-                elif value is None:
-                    val_str = ""
-                else:
-                    val_str = str(value)
-                result = result.replace(placeholder, val_str)
+        import re
 
-        return result
+        def _resolve(key_path: str) -> str:
+            parts = key_path.split(".")
+            current = context
+            for part in parts:
+                if isinstance(current, dict):
+                    current = current.get(part)
+                elif hasattr(current, part):
+                    current = getattr(current, part)
+                else:
+                    return ""  # Not found
+                if current is None:
+                    return ""
+            # Convert to string
+            if isinstance(current, (dict, list)):
+                return json.dumps(current, ensure_ascii=False, indent=2)
+            return str(current)
+
+        return re.sub(
+            r"\{([a-zA-Z_][\w.]*)\}",
+            lambda m: _resolve(m.group(1)),
+            template,
+        )

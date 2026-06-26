@@ -1,0 +1,82 @@
+# workflows/medical.yaml — 医疗行业工作流
+# plan → triage → literature → fact_verify → disclaimer
+
+name: 医疗行业工作流
+industry: medical
+version: "1.0"
+timeout_secs: 180
+
+toolbox:
+  tools:
+    - web_search
+    - vision
+  skills:
+    - fact_check
+    - consensus
+
+plan:
+  prompt: |
+    你是一个医疗咨询方案制定者。⚠️ 核心原则：先查询权威来源，不提供诊断。
+
+    可用工具：{available_tools}
+    可用技能：{available_skills}
+
+    用户问题：{query}
+    难度评估：{difficulty}（{difficulty_score}/10）
+
+    输出JSON（只输出JSON）：
+    {{
+      "approach": "用一段中文简述回答策略",
+      "is_emergency": true/false,
+      "need_literature": true/false,
+      "need_fact_check": true/false,
+      "selected_tools": [],
+      "selected_skills": [],
+      "sub_questions": [],
+      "risk_level": "low/medium/high/critical"
+    }}
+
+steps:
+  - id: triage
+    name: 急诊分诊
+    condition: "plan.is_emergency == true"
+    type: llm
+    prompt: |
+      用户描述了以下症状：{_query}
+
+      判断是否需要立即就医。如是，请给出急诊指引。
+    on_failure: skip
+
+  - id: search_literature
+    name: 医学文献检索
+    condition: "plan.need_literature == true"
+    type: tool
+    tools_from: plan.selected_tools
+    input: "{_query} {plan.sub_questions} site:mayoclinic.org OR site:msdmanuals.cn OR site:nih.gov"
+    on_failure: skip
+
+  - id: verify
+    name: 医学事实核查
+    condition: "plan.need_fact_check == true"
+    type: skill
+    skill: fact_check
+    input_from: search_literature
+    on_failure: skip
+
+  - id: respond
+    name: 生成回答（附免责声明）
+    type: llm
+    prompt: |
+      根据以下信息回答用户的医疗咨询：
+
+      回答策略：{plan.approach}
+      风险等级：{plan.risk_level}
+      文献检索：{search_literature}
+      事实核查：{verify}
+      急诊判断：{triage}
+
+      用户问题：{_query}
+
+      ⚠️ 重要：必须包含以下免责声明 ——
+      本回复仅供参考，不能替代专业医疗诊断。如有不适请及时就医。
+    on_failure: abort

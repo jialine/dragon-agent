@@ -1,0 +1,84 @@
+# workflows/legal.yaml — 法律行业工作流
+# plan → statute_search → case_reference → jury_debate → risk_notice
+
+name: 法律行业工作流
+industry: legal
+version: "1.0"
+timeout_secs: 180
+
+toolbox:
+  tools:
+    - web_search
+  skills:
+    - jury_debate
+    - consensus
+
+plan:
+  prompt: |
+    你是一个法律咨询方案制定者。⚠️ 核心原则：引法条、参案例、不替代律师。
+
+    可用工具：{available_tools}
+    可用技能：{available_skills}
+
+    用户问题：{query}
+    难度评估：{difficulty}（{difficulty_score}/10）
+
+    输出JSON（只输出JSON）：
+    {{
+      "approach": "用一段中文简述回答策略",
+      "need_statute": true/false,
+      "need_case": true/false,
+      "need_debate": true/false,
+      "jurisdiction": "china/international",
+      "selected_tools": [],
+      "selected_skills": [],
+      "sub_questions": [],
+      "risk_level": "low/medium/high"
+    }}
+
+steps:
+  - id: statute_search
+    name: 法条检索
+    condition: "plan.need_statute == true"
+    type: tool
+    tools_from: plan.selected_tools
+    input: "{_query} 法律法规 {plan.jurisdiction} site:gov.cn OR site:pkulaw.com"
+    on_failure: skip
+
+  - id: case_reference
+    name: 案例参考
+    condition: "plan.need_case == true"
+    type: tool
+    tools_from: plan.selected_tools
+    input: "{_query} 典型案例 判例 {plan.jurisdiction}"
+    on_failure: skip
+
+  - id: jury_debate
+    name: 多模型法律审议
+    condition: "plan.need_debate == true"
+    type: skill
+    skills_from: plan.selected_skills
+    context:
+      query: "{_query}"
+      statutes: "{statute_search}"
+      cases: "{case_reference}"
+    on_failure: abort
+
+  - id: risk_notice
+    name: 生成回答（含法律风险告知）
+    type: llm
+    prompt: |
+      根据以下信息生成法律咨询回答：
+
+      回答策略：{plan.approach}
+      管辖范围：{plan.jurisdiction}
+      法条检索：{statute_search}
+      案例参考：{case_reference}
+      法律审议：{jury_debate}
+
+      用户问题：{_query}
+
+      要求：
+      1. 引用具体法条时注明出处
+      2. ⚠️ 必须包含：本回复仅供参考，不构成法律意见。涉及具体法律事务请咨询执业律师。
+    on_failure: abort

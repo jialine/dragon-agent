@@ -1,0 +1,85 @@
+# workflows/finance.yaml — 金融行业工作流
+# plan → data_search → expert_analysis → fact_verify → risk_notice
+
+name: 金融行业工作流
+industry: finance
+version: "1.0"
+timeout_secs: 180
+
+toolbox:
+  tools:
+    - web_search
+    - vision
+  skills:
+    - jury_debate
+    - fact_check
+    - consensus
+
+plan:
+  prompt: |
+    你是一个金融咨询方案制定者。分析用户问题，制定执行方案。
+
+    可用工具：{available_tools}
+    可用技能：{available_skills}
+
+    用户问题：{query}
+    难度评估：{difficulty}（{difficulty_score}/10）
+
+    输出JSON（只输出JSON）：
+    {{
+      "approach": "用一段中文简述回答策略",
+      "need_data": true/false,
+      "need_debate": true/false,
+      "need_fact_check": true/false,
+      "selected_tools": [],
+      "selected_skills": [],
+      "sub_questions": [],
+      "risk_level": "low/medium/high"
+    }}
+
+steps:
+  - id: data_search
+    name: 获取金融数据
+    condition: "plan.need_data == true"
+    type: tool
+    tools_from: plan.selected_tools
+    input: "{_query} {plan.sub_questions}"
+    on_failure: skip
+
+  - id: expert_analysis
+    name: 专家分析
+    condition: "plan.need_debate == true"
+    type: skill
+    skills_from: plan.selected_skills
+    context:
+      query: "{_query}"
+      data: "{data_search}"
+    on_failure: abort
+
+  - id: fact_verify
+    name: 事实核查
+    condition: "plan.need_fact_check == true"
+    type: skill
+    skill: fact_check
+    input_from: expert_analysis
+    on_failure: skip
+
+  - id: risk_notice
+    name: 生成回答（含风险提示）
+    type: llm
+    prompt: |
+      根据以下信息生成金融咨询回答：
+
+      回答策略：{plan.approach}
+      风险等级：{plan.risk_level}
+      数据查询：{data_search}
+      专家分析：{expert_analysis}
+      事实核查：{fact_verify}
+
+      用户原始问题：{_query}
+
+      要求：
+      1. 回答专业准确，引用数据时注明来源
+      2. ⚠️ 必须附加风险提示：以上内容仅供参考，不构成投资建议。投资有风险，入市需谨慎。
+      3. 用中文回答
+    on_failure: abort

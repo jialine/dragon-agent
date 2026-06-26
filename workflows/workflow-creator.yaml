@@ -1,0 +1,89 @@
+# workflows/workflow-creator.yaml — 元工作流
+# 分析新任务类型 → 生成 YAML 工作流定义 → 保存到 workflows/ 目录
+
+name: 工作流创建器
+industry: workflow-creator
+version: "1.0"
+timeout_secs: 120
+
+# 此工作流不绑定特定行业，由系统内部调用
+toolbox:
+  tools: []
+  skills: []
+
+plan:
+  prompt: |
+    你是一个工作流设计专家。用户描述了一种新的任务类型，你需要分析并设计对应的工作流。
+
+    用户描述的的的任务类型：{query}
+
+    输出JSON（只输出JSON）：
+    {{
+      "workflow_name": "工作流名称（英文，小写，用-分隔）",
+      "industry": "匹配的行业（finance/medical/legal/education/general/或自定义）",
+      "approach": "这个工作流的整体设计思路",
+      "need_tools": ["需要的工具名"],
+      "need_skills": ["需要的技能名"],
+      "steps": [
+        {{
+          "id": "step_id",
+          "name": "步骤中文名",
+          "type": "tool|skill|llm",
+          "condition": "可选的执行条件，如 plan.need_search == true",
+          "description": "这个步骤做什么"
+        }}
+      ]
+    }}
+
+steps:
+  - id: design_workflow
+    name: 设计工作流
+    type: llm
+    prompt: |
+      根据以下分析，生成一个完整的 YAML 工作流定义文件内容。
+
+      工作流名称：{plan.workflow_name}
+      行业：{plan.industry}
+      设计思路：{plan.approach}
+      需要的工具：{plan.need_tools}
+      需要的技能：{plan.need_skills}
+      步骤设计：{plan.steps}
+
+      请生成完整的 YAML 内容，格式严格参照：
+
+      ```yaml
+      name: 工作流名称
+      industry: 行业
+      version: "1.0"
+      timeout_secs: 120
+
+      toolbox:
+        tools: [工具列表]
+        skills: [技能列表]
+
+      plan:
+        prompt: |
+          方案制定提示词...
+
+      steps:
+        - id: step_1
+          name: 步骤名
+          type: tool/skill/llm
+          condition: plan.xxx == true
+          ...
+      ```
+
+      只输出 YAML，不要加 markdown 代码块标记。
+      每个步骤必须有 condition（基于 plan 输出的字段）来实现动态执行。
+    on_failure: abort
+
+  - id: save_workflow
+    name: 保存工作流文件
+    type: transform
+    template: |
+      工作流设计完成：{plan.workflow_name}
+
+      请将以下 YAML 保存到 workflows/{plan.workflow_name}.yaml：
+
+      {design_workflow}
+    on_failure: abort
