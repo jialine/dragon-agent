@@ -999,6 +999,10 @@ class LocalProvider(BaseProvider):
         self._model: Any = None
         self._model_path = config.base_url or ""
 
+    @property
+    def available(self) -> bool:
+        return bool(self._model_path and os.path.exists(self._model_path))
+
     async def complete(self, model, messages, temperature=0.7, max_tokens=2048, **kwargs):
         start = time.monotonic()
 
@@ -1013,33 +1017,32 @@ class LocalProvider(BaseProvider):
                 verbose=False,
             )
 
-        # Build prompt from messages
-        prompt_parts = []
-        for m in messages:
-            role = m["role"]
-            content = m["content"]
-            if role == "system":
-                prompt_parts.append(f"<|system|>\n{content}</s>")
-            elif role == "user":
-                prompt_parts.append(f"<|user|>\n{content}</s>")
-            elif role == "assistant":
-                prompt_parts.append(f"<|assistant|>\n{content}</s>")
-        prompt_parts.append("<|assistant|>\n")
-        prompt = "\n".join(prompt_parts)
-
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            lambda: self._model(
-                prompt,
+            lambda: self._model.create_chat_completion(
+                messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
-                echo=False,
             ),
         )
 
+        raw_content = result["choices"][0]["message"]["content"]
+
+        import re
+        # Strip <think>...</think> blocks (Qwen thinking variants)
+        cleaned = re.sub(
+            r"<think>.*?</think>\s*",
+            "",
+            raw_content,
+            flags=re.DOTALL,
+        ).strip()
+
+        # Fallback: if model only output thinking (no </think>), keep raw
+        content = cleaned if cleaned else raw_content
+
         return ProviderResult(
-            content=result["choices"][0]["text"],
+            content=content,
             model="local",
             provider="local",
             usage={

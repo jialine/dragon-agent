@@ -1,0 +1,34 @@
+{
+  "meta": {
+    "name": "nano-pdf",
+    "description": "Edit PDF text/typos/titles via nano-pdf CLI (NL prompts).",
+    "tags": [
+      "PDF",
+      "Documents",
+      "Editing",
+      "NLP",
+      "Productivity"
+    ],
+    "version": "1.0.0",
+    "author": "dragon-agent",
+    "related_skills": [],
+    "execution_mode": "sequential",
+    "input_schema": {},
+    "output_schema": {},
+    "status": "active",
+    "created_at": "2026-06-25T05:54:05.750100+00:00",
+    "updated_at": "2026-06-25T05:54:05.750100+00:00"
+  },
+  "content": "# nano-pdf\n\nEdit PDFs using natural-language instructions. Point it at a page and describe what to change.\n\n## Prerequisites\n\n```bash\n# Install with uv (recommended — already available in Hermes)\nuv pip install nano-pdf\n\n# Or with pip\npip install nano-pdf\n```\n\n## Usage\n\n```bash\nnano-pdf edit <file.pdf> <page_number> \"<instruction>\"\n```\n\n## Examples\n\n```bash\n# Change a title on page 1\nnano-pdf edit deck.pdf 1 \"Change the title to 'Q3 Results' and fix the typo in the subtitle\"\n\n# Update a date on a specific page\nnano-pdf edit report.pdf 3 \"Update the date from January to February 2026\"\n\n# Fix content\nnano-pdf edit contract.pdf 2 \"Change the client name from 'Acme Corp' to 'Acme Industries'\"\n```\n\n## Notes\n\n- Page numbers may be 0-based or 1-based depending on version — if the edit hits the wrong page, retry with ±1\n- Always verify the output PDF after editing (use `read_file` to check file size, or open it)\n- The tool uses an LLM under the hood — requires an API key (check `nano-pdf --help` for config)\n- Works well for text changes; complex layout modifications may need a different approach\n",
+  "versions": [
+    {
+      "version": "1.0.0",
+      "content": "# nano-pdf\n\nEdit PDFs using natural-language instructions. Point it at a page and describe what to change.\n\n## Prerequisites\n\n```bash\n# Install with uv (recommended — already available in Hermes)\nuv pip install nano-pdf\n\n# Or with pip\npip install nano-pdf\n```\n\n## Usage\n\n```bash\nnano-pdf edit <file.pdf> <page_number> \"<instruction>\"\n```\n\n## Examples\n\n```bash\n# Change a title on page 1\nnano-pdf edit deck.pdf 1 \"Change the title to 'Q3 Results' and fix the typo in the subtitle\"\n\n# Update a date on a specific page\nnano-pdf edit report.pdf 3 \"Update the date from January to February 2026\"\n\n# Fix content\nnano-pdf edit contract.pdf 2 \"Change the client name from 'Acme Corp' to 'Acme Industries'\"\n```\n\n## Notes\n\n- Page numbers may be 0-based or 1-based depending on version — if the edit hits the wrong page, retry with ±1\n- Always verify the output PDF after editing (use `read_file` to check file size, or open it)\n- The tool uses an LLM under the hood — requires an API key (check `nano-pdf --help` for config)\n- Works well for text changes; complex layout modifications may need a different approach\n",
+      "success_count": 0,
+      "failure_count": 0,
+      "avg_latency_ms": 0.0,
+      "last_used_at": "",
+      "active": true
+    }
+  ]
+}

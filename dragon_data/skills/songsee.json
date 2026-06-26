@@ -1,0 +1,34 @@
+{
+  "meta": {
+    "name": "songsee",
+    "description": "Audio spectrograms/features (mel, chroma, MFCC) via CLI.",
+    "tags": [
+      "Audio",
+      "Visualization",
+      "Spectrogram",
+      "Music",
+      "Analysis"
+    ],
+    "version": "1.0.0",
+    "author": "dragon-agent",
+    "related_skills": [],
+    "execution_mode": "sequential",
+    "input_schema": {},
+    "output_schema": {},
+    "status": "active",
+    "created_at": "2026-06-25T05:54:05.937156+00:00",
+    "updated_at": "2026-06-25T05:54:05.937156+00:00"
+  },
+  "content": "# songsee\n\nGenerate spectrograms and multi-panel audio feature visualizations from audio files.\n\n## Prerequisites\n\nRequires [Go](https://go.dev/doc/install):\n```bash\ngo install github.com/steipete/songsee/cmd/songsee@latest\n```\n\nOptional: `ffmpeg` for formats beyond WAV/MP3.\n\n## Quick Start\n\n```bash\n# Basic spectrogram\nsongsee track.mp3\n\n# Save to specific file\nsongsee track.mp3 -o spectrogram.png\n\n# Multi-panel visualization grid\nsongsee track.mp3 --viz spectrogram,mel,chroma,hpss,selfsim,loudness,tempogram,mfcc,flux\n\n# Time slice (start at 12.5s, 8s duration)\nsongsee track.mp3 --start 12.5 --duration 8 -o slice.jpg\n\n# From stdin\ncat track.mp3 | songsee - --format png -o out.png\n```\n\n## Visualization Types\n\nUse `--viz` with comma-separated values:\n\n| Type | Description |\n|------|-------------|\n| `spectrogram` | Standard frequency spectrogram |\n| `mel` | Mel-scaled spectrogram |\n| `chroma` | Pitch class distribution |\n| `hpss` | Harmonic/percussive separation |\n| `selfsim` | Self-similarity matrix |\n| `loudness` | Loudness over time |\n| `tempogram` | Tempo estimation |\n| `mfcc` | Mel-frequency cepstral coefficients |\n| `flux` | Spectral flux (onset detection) |\n\nMultiple `--viz` types render as a grid in a single image.\n\n## Common Flags\n\n| Flag | Description |\n|------|-------------|\n| `--viz` | Visualization types (comma-separated) |\n| `--style` | Color palette: `classic`, `magma`, `inferno`, `viridis`, `gray` |\n| `--width` / `--height` | Output image dimensions |\n| `--window` / `--hop` | FFT window and hop size |\n| `--min-freq` / `--max-freq` | Frequency range filter |\n| `--start` / `--duration` | Time slice of the audio |\n| `--format` | Output format: `jpg` or `png` |\n| `-o` | Output file path |\n\n## Notes\n\n- WAV and MP3 are decoded natively; other formats require `ffmpeg`\n- Output images can be inspected with `vision_analyze` for automated audio analysis\n- Useful for comparing audio outputs, debugging synthesis, or documenting audio processing pipelines\n",
+  "versions": [
+    {
+      "version": "1.0.0",
+      "content": "# songsee\n\nGenerate spectrograms and multi-panel audio feature visualizations from audio files.\n\n## Prerequisites\n\nRequires [Go](https://go.dev/doc/install):\n```bash\ngo install github.com/steipete/songsee/cmd/songsee@latest\n```\n\nOptional: `ffmpeg` for formats beyond WAV/MP3.\n\n## Quick Start\n\n```bash\n# Basic spectrogram\nsongsee track.mp3\n\n# Save to specific file\nsongsee track.mp3 -o spectrogram.png\n\n# Multi-panel visualization grid\nsongsee track.mp3 --viz spectrogram,mel,chroma,hpss,selfsim,loudness,tempogram,mfcc,flux\n\n# Time slice (start at 12.5s, 8s duration)\nsongsee track.mp3 --start 12.5 --duration 8 -o slice.jpg\n\n# From stdin\ncat track.mp3 | songsee - --format png -o out.png\n```\n\n## Visualization Types\n\nUse `--viz` with comma-separated values:\n\n| Type | Description |\n|------|-------------|\n| `spectrogram` | Standard frequency spectrogram |\n| `mel` | Mel-scaled spectrogram |\n| `chroma` | Pitch class distribution |\n| `hpss` | Harmonic/percussive separation |\n| `selfsim` | Self-similarity matrix |\n| `loudness` | Loudness over time |\n| `tempogram` | Tempo estimation |\n| `mfcc` | Mel-frequency cepstral coefficients |\n| `flux` | Spectral flux (onset detection) |\n\nMultiple `--viz` types render as a grid in a single image.\n\n## Common Flags\n\n| Flag | Description |\n|------|-------------|\n| `--viz` | Visualization types (comma-separated) |\n| `--style` | Color palette: `classic`, `magma`, `inferno`, `viridis`, `gray` |\n| `--width` / `--height` | Output image dimensions |\n| `--window` / `--hop` | FFT window and hop size |\n| `--min-freq` / `--max-freq` | Frequency range filter |\n| `--start` / `--duration` | Time slice of the audio |\n| `--format` | Output format: `jpg` or `png` |\n| `-o` | Output file path |\n\n## Notes\n\n- WAV and MP3 are decoded natively; other formats require `ffmpeg`\n- Output images can be inspected with `vision_analyze` for automated audio analysis\n- Useful for comparing audio outputs, debugging synthesis, or documenting audio processing pipelines\n",
+      "success_count": 0,
+      "failure_count": 0,
+      "avg_latency_ms": 0.0,
+      "last_used_at": "",
+      "active": true
+    }
+  ]
+}

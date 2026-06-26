@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "name": "plan",
+    "description": "Plan mode: write markdown plan to .hermes/plans/, no exec.",
+    "tags": [
+      "planning",
+      "plan-mode",
+      "implementation",
+      "workflow"
+    ],
+    "version": "1.0.0",
+    "author": "dragon-agent",
+    "related_skills": [
+      "writing-plans",
+      "subagent-driven-development"
+    ],
+    "execution_mode": "sequential",
+    "input_schema": {},
+    "output_schema": {},
+    "status": "active",
+    "created_at": "2026-06-25T05:54:05.784846+00:00",
+    "updated_at": "2026-06-25T05:54:05.784846+00:00"
+  },
+  "content": "# Plan Mode\n\nUse this skill when the user wants a plan instead of execution.\n\n## Core behavior\n\nFor this turn, you are planning only.\n\n- Do not implement code.\n- Do not edit project files except the plan markdown file.\n- Do not run mutating terminal commands, commit, push, or perform external actions.\n- You may inspect the repo or other context with read-only commands/tools when needed.\n- Your deliverable is a markdown plan saved inside the active workspace under `.hermes/plans/`.\n\n## Output requirements\n\nWrite a markdown plan that is concrete and actionable.\n\nInclude, when relevant:\n- Goal\n- Current context / assumptions\n- Proposed approach\n- Step-by-step plan\n- Files likely to change\n- Tests / validation\n- Risks, tradeoffs, and open questions\n\nIf the task is code-related, include exact file paths, likely test targets, and verification steps.\n\n## Save location\n\nSave the plan with `write_file` under:\n- `.hermes/plans/YYYY-MM-DD_HHMMSS-<slug>.md`\n\nTreat that as relative to the active working directory / backend workspace. Hermes file tools are backend-aware, so using this relative path keeps the plan with the workspace on local, docker, ssh, modal, and daytona backends.\n\nIf the runtime provides a specific target path, use that exact path.\nIf not, create a sensible timestamped filename yourself under `.hermes/plans/`.\n\n## Interaction style\n\n- If the request is clear enough, write the plan directly.\n- If no explicit instruction accompanies `/plan`, infer the task from the current conversation context.\n- If it is genuinely underspecified, ask a brief clarifying question instead of guessing.\n- After saving the plan, reply briefly with what you planned and the saved path.\n",
+  "versions": [
+    {
+      "version": "1.0.0",
+      "content": "# Plan Mode\n\nUse this skill when the user wants a plan instead of execution.\n\n## Core behavior\n\nFor this turn, you are planning only.\n\n- Do not implement code.\n- Do not edit project files except the plan markdown file.\n- Do not run mutating terminal commands, commit, push, or perform external actions.\n- You may inspect the repo or other context with read-only commands/tools when needed.\n- Your deliverable is a markdown plan saved inside the active workspace under `.hermes/plans/`.\n\n## Output requirements\n\nWrite a markdown plan that is concrete and actionable.\n\nInclude, when relevant:\n- Goal\n- Current context / assumptions\n- Proposed approach\n- Step-by-step plan\n- Files likely to change\n- Tests / validation\n- Risks, tradeoffs, and open questions\n\nIf the task is code-related, include exact file paths, likely test targets, and verification steps.\n\n## Save location\n\nSave the plan with `write_file` under:\n- `.hermes/plans/YYYY-MM-DD_HHMMSS-<slug>.md`\n\nTreat that as relative to the active working directory / backend workspace. Hermes file tools are backend-aware, so using this relative path keeps the plan with the workspace on local, docker, ssh, modal, and daytona backends.\n\nIf the runtime provides a specific target path, use that exact path.\nIf not, create a sensible timestamped filename yourself under `.hermes/plans/`.\n\n## Interaction style\n\n- If the request is clear enough, write the plan directly.\n- If no explicit instruction accompanies `/plan`, infer the task from the current conversation context.\n- If it is genuinely underspecified, ask a brief clarifying question instead of guessing.\n- After saving the plan, reply briefly with what you planned and the saved path.\n",
+      "success_count": 0,
+      "failure_count": 0,
+      "avg_latency_ms": 0.0,
+      "last_used_at": "",
+      "active": true
+    }
+  ]
+}

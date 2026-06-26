@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "name": "zerotier-hardware-appliance",
+    "description": "ZeroTier 硬件盒子产品方案 — 对标 ipbox.top，FreeBSD + ZeroTier 的 SD-WAN 边缘设备。覆盖硬件选型、软件写入、Moon 部署、多用户网络隔离。",
+    "tags": [
+      "zerotier-hardware-appliance"
+    ],
+    "version": "1.0.0",
+    "author": "dragon-agent",
+    "related_skills": [],
+    "execution_mode": "sequential",
+    "input_schema": {},
+    "output_schema": {},
+    "status": "active",
+    "created_at": "2026-06-25T05:54:05.725653+00:00",
+    "updated_at": "2026-06-25T05:54:05.725653+00:00"
+  },
+  "content": "# ZeroTier 硬件盒子产品方案\n\n## 产品定位\n\n即插即用的 ZeroTier 硬件节点，FreeBSD + ZeroTier，实现跨地域组网、远程运维、IoT 管理。对标 ipbox.top。\n\n## 硬件三档方案\n\n| 方案 | 硬件 | 成本 | 定位 |\n|------|------|------|------|\n| A | RK3588 ARM SBC | ¥250 | 个人/家庭 |\n| **B** ⭐ | Intel N100 工控机 | ¥700 | 中小企业（MVP 起步） |\n| C | N305 / i5 | ¥1400 | 企业/数据中心 |\n\n推荐 MVP：**畅网 N100**，4×2.5GbE，FreeBSD 14.x 完美兼容。\n\n## 软件架构\n\n```\nFreeBSD 14.x\n├── ZeroTier (网络层)\n├── pf 防火墙 (NAT + ZT↔LAN 互通 + IP 转发)\n├── lighttpd (Web 管理面板)\n└── CGI 脚本 (状态查询)\n```\n\n## 软件写入（三种路径）\n\n| 路径 | 做法 | 适合 |\n|------|------|------|\n| A. 后装脚本 | FreeBSD 装好 → 跑初始化脚本 | 原型验证 |\n| B. 预装镜像 | 构建包含所有软件的镜像 → dd 烧录 | 批量生产 |\n| C. OTA 升级 | ZeroTier 隧道远程推送更新 | 已部署设备 |\n\nMVP 做法（30 分钟）：U 盘 FreeBSD memstick → 安装到 NVMe → 跑 netbox-init.sh → 即用。\n\n## Moon 节点（必须自建）\n\n**必须自建。** ZeroTier 官方 Planet 在海外（200-400ms），不自建 Moon 用户体验极差。\n\n部署：阿里云上海轻量云服务器（1C1G），¥50-100/月。\n\nMoon 配置用 **IP 直连**，不需要域名（云服务器固定 IP）。\n\n## 多用户网络隔离\n\n**ZeroTier 原生隔离：** 每个用户一个独立 Network（16 位 ID），不同 Network 默认完全无法互访。\n\n盒子通过**激活码模式**配网：出厂加入激活网络 → 用户输入激活码 → 切换至专属网络。\n\n企业用户可通过 Tag + ACL 实现部门间隔离。\n\n## 架构总图\n\n```\n        阿里云上海 (¥100/月)\n        ┌────────────────────┐\n        │  Moon + Controller  │\n        │  + Web 管理后台     │\n        └──────────┬─────────┘\n                   │\n    ┌──────────────┼──────────────┐\n    │ Network_A    │ Network_B    │ Network_C\n    │ (用户A)      │ (用户B)      │ (用户C)\n    │ 盒子1-3      │ 盒子1-2      │ 盒子1-5\n    │ ¥499-2499    │              │\n    └──────────────┴──────────────┴──────────────┘\n```\n\n## 关键文件\n\n- `/home/jialine/zerotier_hardware_design.md` — 硬件方案设计书\n- `/home/jialine/zerotier_flash_guide.md` — 软件写入指南（含初始化脚本）\n- `/home/jialine/zerotier_moon_analysis.md` — Moon 部署分析\n- `/home/jialine/zerotier_isolation.md` — 多用户隔离方案\n\n## 注意事项\n\n- ZeroTier 官方 Planet 硬编码在客户端，不动它\n- Moon 是 Planet 的补充（优先使用），不是替代\n- Moon 不需要域名，IP 直连即可\n- 不同 Network 天然隔离，零额外开发\n",
+  "versions": [
+    {
+      "version": "1.0.0",
+      "content": "# ZeroTier 硬件盒子产品方案\n\n## 产品定位\n\n即插即用的 ZeroTier 硬件节点，FreeBSD + ZeroTier，实现跨地域组网、远程运维、IoT 管理。对标 ipbox.top。\n\n## 硬件三档方案\n\n| 方案 | 硬件 | 成本 | 定位 |\n|------|------|------|------|\n| A | RK3588 ARM SBC | ¥250 | 个人/家庭 |\n| **B** ⭐ | Intel N100 工控机 | ¥700 | 中小企业（MVP 起步） |\n| C | N305 / i5 | ¥1400 | 企业/数据中心 |\n\n推荐 MVP：**畅网 N100**，4×2.5GbE，FreeBSD 14.x 完美兼容。\n\n## 软件架构\n\n```\nFreeBSD 14.x\n├── ZeroTier (网络层)\n├── pf 防火墙 (NAT + ZT↔LAN 互通 + IP 转发)\n├── lighttpd (Web 管理面板)\n└── CGI 脚本 (状态查询)\n```\n\n## 软件写入（三种路径）\n\n| 路径 | 做法 | 适合 |\n|------|------|------|\n| A. 后装脚本 | FreeBSD 装好 → 跑初始化脚本 | 原型验证 |\n| B. 预装镜像 | 构建包含所有软件的镜像 → dd 烧录 | 批量生产 |\n| C. OTA 升级 | ZeroTier 隧道远程推送更新 | 已部署设备 |\n\nMVP 做法（30 分钟）：U 盘 FreeBSD memstick → 安装到 NVMe → 跑 netbox-init.sh → 即用。\n\n## Moon 节点（必须自建）\n\n**必须自建。** ZeroTier 官方 Planet 在海外（200-400ms），不自建 Moon 用户体验极差。\n\n部署：阿里云上海轻量云服务器（1C1G），¥50-100/月。\n\nMoon 配置用 **IP 直连**，不需要域名（云服务器固定 IP）。\n\n## 多用户网络隔离\n\n**ZeroTier 原生隔离：** 每个用户一个独立 Network（16 位 ID），不同 Network 默认完全无法互访。\n\n盒子通过**激活码模式**配网：出厂加入激活网络 → 用户输入激活码 → 切换至专属网络。\n\n企业用户可通过 Tag + ACL 实现部门间隔离。\n\n## 架构总图\n\n```\n        阿里云上海 (¥100/月)\n        ┌────────────────────┐\n        │  Moon + Controller  │\n        │  + Web 管理后台     │\n        └──────────┬─────────┘\n                   │\n    ┌──────────────┼──────────────┐\n    │ Network_A    │ Network_B    │ Network_C\n    │ (用户A)      │ (用户B)      │ (用户C)\n    │ 盒子1-3      │ 盒子1-2      │ 盒子1-5\n    │ ¥499-2499    │              │\n    └──────────────┴──────────────┴──────────────┘\n```\n\n## 关键文件\n\n- `/home/jialine/zerotier_hardware_design.md` — 硬件方案设计书\n- `/home/jialine/zerotier_flash_guide.md` — 软件写入指南（含初始化脚本）\n- `/home/jialine/zerotier_moon_analysis.md` — Moon 部署分析\n- `/home/jialine/zerotier_isolation.md` — 多用户隔离方案\n\n## 注意事项\n\n- ZeroTier 官方 Planet 硬编码在客户端，不动它\n- Moon 是 Planet 的补充（优先使用），不是替代\n- Moon 不需要域名，IP 直连即可\n- 不同 Network 天然隔离，零额外开发\n",
+      "success_count": 0,
+      "failure_count": 0,
+      "avg_latency_ms": 0.0,
+      "last_used_at": "",
+      "active": true
+    }
+  ]
+}

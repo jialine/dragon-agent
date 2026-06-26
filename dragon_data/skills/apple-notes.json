@@ -1,0 +1,35 @@
+{
+  "meta": {
+    "name": "apple-notes",
+    "description": "Manage Apple Notes via memo CLI: create, search, edit.",
+    "tags": [
+      "Notes",
+      "Apple",
+      "macOS",
+      "note-taking"
+    ],
+    "version": "1.0.0",
+    "author": "dragon-agent",
+    "related_skills": [
+      "obsidian"
+    ],
+    "execution_mode": "sequential",
+    "input_schema": {},
+    "output_schema": {},
+    "status": "active",
+    "created_at": "2026-06-25T05:54:05.715421+00:00",
+    "updated_at": "2026-06-25T05:54:05.715421+00:00"
+  },
+  "content": "# Apple Notes\n\nUse `memo` to manage Apple Notes directly from the terminal. Notes sync across all Apple devices via iCloud.\n\n## Prerequisites\n\n- **macOS** with Notes.app\n- Install: `brew tap antoniorodr/memo && brew install antoniorodr/memo/memo`\n- Grant Automation access to Notes.app when prompted (System Settings → Privacy → Automation)\n\n## When to Use\n\n- User asks to create, view, or search Apple Notes\n- Saving information to Notes.app for cross-device access\n- Organizing notes into folders\n- Exporting notes to Markdown/HTML\n\n## When NOT to Use\n\n- Obsidian vault management → use the `obsidian` skill\n- Bear Notes → separate app (not supported here)\n- Quick agent-only notes → use the `memory` tool instead\n\n## Quick Reference\n\n### View Notes\n\n```bash\nmemo notes                        # List all notes\nmemo notes -f \"Folder Name\"       # Filter by folder\nmemo notes -s \"query\"             # Search notes (fuzzy)\n```\n\n### Create Notes\n\n```bash\nmemo notes -a                     # Interactive editor\nmemo notes -a \"Note Title\"        # Quick add with title\n```\n\n### Edit Notes\n\n```bash\nmemo notes -e                     # Interactive selection to edit\n```\n\n### Delete Notes\n\n```bash\nmemo notes -d                     # Interactive selection to delete\n```\n\n### Move Notes\n\n```bash\nmemo notes -m                     # Move note to folder (interactive)\n```\n\n### Export Notes\n\n```bash\nmemo notes -ex                    # Export to HTML/Markdown\n```\n\n## Limitations\n\n- Cannot edit notes containing images or attachments\n- Interactive prompts require terminal access (use pty=true if needed)\n- macOS only — requires Apple Notes.app\n\n## Rules\n\n1. Prefer Apple Notes when user wants cross-device sync (iPhone/iPad/Mac)\n2. Use the `memory` tool for agent-internal notes that don't need to sync\n3. Use the `obsidian` skill for Markdown-native knowledge management\n",
+  "versions": [
+    {
+      "version": "1.0.0",
+      "content": "# Apple Notes\n\nUse `memo` to manage Apple Notes directly from the terminal. Notes sync across all Apple devices via iCloud.\n\n## Prerequisites\n\n- **macOS** with Notes.app\n- Install: `brew tap antoniorodr/memo && brew install antoniorodr/memo/memo`\n- Grant Automation access to Notes.app when prompted (System Settings → Privacy → Automation)\n\n## When to Use\n\n- User asks to create, view, or search Apple Notes\n- Saving information to Notes.app for cross-device access\n- Organizing notes into folders\n- Exporting notes to Markdown/HTML\n\n## When NOT to Use\n\n- Obsidian vault management → use the `obsidian` skill\n- Bear Notes → separate app (not supported here)\n- Quick agent-only notes → use the `memory` tool instead\n\n## Quick Reference\n\n### View Notes\n\n```bash\nmemo notes                        # List all notes\nmemo notes -f \"Folder Name\"       # Filter by folder\nmemo notes -s \"query\"             # Search notes (fuzzy)\n```\n\n### Create Notes\n\n```bash\nmemo notes -a                     # Interactive editor\nmemo notes -a \"Note Title\"        # Quick add with title\n```\n\n### Edit Notes\n\n```bash\nmemo notes -e                     # Interactive selection to edit\n```\n\n### Delete Notes\n\n```bash\nmemo notes -d                     # Interactive selection to delete\n```\n\n### Move Notes\n\n```bash\nmemo notes -m                     # Move note to folder (interactive)\n```\n\n### Export Notes\n\n```bash\nmemo notes -ex                    # Export to HTML/Markdown\n```\n\n## Limitations\n\n- Cannot edit notes containing images or attachments\n- Interactive prompts require terminal access (use pty=true if needed)\n- macOS only — requires Apple Notes.app\n\n## Rules\n\n1. Prefer Apple Notes when user wants cross-device sync (iPhone/iPad/Mac)\n2. Use the `memory` tool for agent-internal notes that don't need to sync\n3. Use the `obsidian` skill for Markdown-native knowledge management\n",
+      "success_count": 0,
+      "failure_count": 0,
+      "avg_latency_ms": 0.0,
+      "last_used_at": "",
+      "active": true
+    }
+  ]
+}
