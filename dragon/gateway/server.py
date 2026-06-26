@@ -324,15 +324,104 @@ class GatewayServer:
             skill_engine=skill_engine,
             pairing_store=pairing_store,
         )
-        self.system_prompt = system_prompt or (
-            "你是 Dragon Agent，一个能够自我进化的 AI 助手。\n"
-            "你的技能会随着使用不断改进。回答简洁、准确、有帮助。"
-        )
+        self._skill_engine = skill_engine
+        self.system_prompt = system_prompt or self._build_system_prompt()
 
-        # Register routes
+        # Register routes and lifecycle hooks
         self._register_routes()
+        self._register_lifecycle()
 
         logger.info("GatewayServer ready")
+
+    def _build_system_prompt(self) -> str:
+        """Build the base system prompt with skill awareness instructions."""
+        prompts = [
+            "你是 Dragon Agent，一个能够自我进化的 AI 助手。",
+            "",
+            "## 核心能力",
+            "",
+            "1. **技能驱动** — 面对任何任务，主动搜索并加载相关技能。",
+            "2. **自我进化** — 成功完成任务后，可以创建新技能供未来使用。",
+            "3. **工具使用** — 你可以调用 search_skills、load_skill、install_skill、create_skill 等工具。",
+            "",
+            "## 技能使用规则",
+            "",
+            "- 每次收到用户消息后，先判断是否需要技能帮助。",
+            "- 如果任务涉及编程、调试、部署、配置等领域，先用 search_skills 搜索相关技能。",
+            "- 找到匹配的技能后，用 load_skill 加载完整内容，严格按技能指令执行。",
+            "- 如果没有已有技能匹配，可以先尝试自行处理；完成后若流程通用，用 create_skill 保存为技能。",
+            "- 如果技能来自 Hermes 但尚未导入，用 install_skill 安装。",
+            "",
+            "回答简洁、准确、有帮助。中文优先。",
+        ]
+        return "\n".join(prompts)
+
+    def _build_skills_catalog(self) -> None:
+        """Inject available skills catalog into the system prompt."""
+        if self._skill_engine is None:
+            return
+
+        try:
+            skills = self._skill_engine.list_skills()
+            if not skills:
+                return
+
+            # Build a compact catalog
+            catalog_lines = [
+                "",
+                "## 可用技能 ({} 个)".format(len(skills)),
+                "",
+                "以下技能可直接使用 load_skill 加载：",
+                "",
+            ]
+
+            for s in skills[:100]:
+                name = s.get("name", "?")
+                desc = s.get("description", "")[:80]
+                tags = ", ".join(s.get("tags", [])[:4])
+                sr = s.get("success_rate", 0)
+                sr_str = " (成功率:{:.0%})".format(sr) if sr > 0 else ""
+                catalog_lines.append("- **{}**{}: {} [{}]".format(name, sr_str, desc, tags))
+
+            if len(skills) > 100:
+                remaining = len(skills) - 100
+                catalog_lines.append("")
+                catalog_lines.append("... 还有 {} 个技能，用 search_skills 搜索。".format(remaining))
+
+            catalog_lines.append("")
+            catalog_lines.append('使用 search_skills(query="关键词") 搜索合适的技能。')
+            catalog_lines.append('使用 load_skill(name="技能名") 加载完整内容。')
+
+            catalog = "\n".join(catalog_lines)
+            self.system_prompt += catalog
+
+        except Exception as e:
+            import logging
+            logging.getLogger("dragon.gateway.server").warning(
+                "Failed to build skills catalog: %s", e
+            )
+
+    def _register_lifecycle(self) -> None:
+        """Register startup/shutdown hooks for adapter lifecycle."""
+        @self.app.on_event("startup")
+        async def _startup():
+            for name, adapter in list(self.adapters.items()):
+                try:
+                    connected = await adapter.connect()
+                    if connected:
+                        logger.info("Platform %s connected", name)
+                    else:
+                        logger.warning("Platform %s failed to connect", name)
+                except Exception as exc:
+                    logger.error("Platform %s connect error: %s", name, exc)
+
+        @self.app.on_event("shutdown")
+        async def _shutdown():
+            for name, adapter in list(self.adapters.items()):
+                try:
+                    await adapter.disconnect()
+                except Exception as exc:
+                    logger.error("Platform %s disconnect error: %s", name, exc)
 
     def register_adapter(self, adapter: PlatformAdapter) -> None:
         """Register a platform adapter."""

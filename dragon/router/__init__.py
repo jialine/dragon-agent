@@ -130,7 +130,7 @@ CLASSIFICATION_PROMPT = """你是一个智能路由分类器。请分析用户�
 
 JSON 格式：
 {{
-  "industry": "finance" | "medical" | "legal" | "education" | "general",
+  "industry": "finance" | "medical" | "legal" | "education" | "entertainment" | "general",
   "confidence": 0.0-1.0 之间的浮点数,
   "difficulty": "simple" | "medium" | "complex",
   "difficulty_score": 0-10 的数字,
@@ -142,6 +142,7 @@ JSON 格式：
 - medical（医疗）：涉及疾病、药物、诊断、治疗、健康咨询、医保等。
 - legal（法律）：涉及合同、诉讼、法规、知识产权、劳动法、刑事等。
 - education（教育）：涉及课程、考试、学术、留学、培训、学习方法等。
+- entertainment（娱乐）：涉及短剧、短视频、小说、剧本、故事创作、影视内容等。
 - general（通用）：不属于上述任何类别的其他查询。
 - difficulty：simple 为简单事实型问题，medium 为需要一定分析的问题，complex 为需要深入专业知识或多步骤推理的问题。
 - difficulty_score：0-10的数字，0为极简单（如问候），5为中等（需要专业知识），10为极难（可能需要多个模型协同才能解决）。
@@ -168,7 +169,7 @@ def _build_prompt(query: str) -> str:
 # ---------------------------------------------------------------------------
 
 _JSON_BLOCK_RE = re.compile(r"\{.*\}", re.DOTALL)
-_VALID_INDUSTRIES = frozenset({"finance", "medical", "legal", "education", "general"})
+_VALID_INDUSTRIES = frozenset({"finance", "medical", "legal", "education", "entertainment", "general"})
 _VALID_DIFFICULTIES = frozenset({"simple", "medium", "complex"})
 
 

@@ -64,6 +64,10 @@ from dragon.gateway.base import (
 
 logger = logging.getLogger("dragon.gateway.feishu")
 
+# ── Processing status reactions (Hermes-aligned) ─────────────────
+_FEISHU_REACTION_IN_PROGRESS = "Typing"      # while processing
+_FEISHU_REACTION_FAILURE = "CrossMark"       # on failure
+
 
 # ────────────────────────────────────────────────────────────────────
 # Feishu Adapter
@@ -134,6 +138,10 @@ class FeishuAdapter(PlatformAdapter):
 
         # Voice mode
         self.voice_enabled: bool = False
+
+        # Processing status reactions (Hermes-aligned)
+        self._reactions_enabled: bool = True
+        self._pending_processing_reactions: dict = {}  # msg_id -> reaction_id
 
         logger.info(
             "Feishu adapter ready (domain=%s, mode=%s)",
@@ -287,6 +295,72 @@ class FeishuAdapter(PlatformAdapter):
             .build()
         return handler
 
+    # ── Processing Status Reactions (Hermes-aligned) ──────────────
+
+    async def _add_reaction(self, message_id: str, emoji_type: str) -> str:
+        """Add a reaction emoji to a message. Returns reaction_id or empty."""
+        if not message_id or not emoji_type:
+            return ""
+        token = await self._get_tenant_access_token()
+        if not token:
+            return ""
+        try:
+            url = f"{self.api_base}/im/v1/messages/{message_id}/reactions"
+            body = {"reaction_type": {"emoji_type": emoji_type}}
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            }
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(url, headers=headers, json=body)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("code") == 0:
+                        rid = data.get("data", {}).get("reaction_id", "")
+                        if rid:
+                            logger.debug("[Feishu] Reaction %s added: %s", emoji_type, rid)
+                        return rid
+        except Exception:
+            pass
+        return ""
+
+    async def _remove_reaction(self, message_id: str, reaction_id: str) -> bool:
+        """Remove a reaction. Returns True on success."""
+        if not message_id or not reaction_id:
+            return False
+        token = await self._get_tenant_access_token()
+        if not token:
+            return False
+        try:
+            url = f"{self.api_base}/im/v1/messages/{message_id}/reactions/{reaction_id}"
+            headers = {"Authorization": f"Bearer {token}"}
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.delete(url, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return data.get("code") == 0
+        except Exception:
+            pass
+        return False
+
+    async def on_processing_start(self, message_id: str) -> None:
+        """Add Typing reaction when processing begins."""
+        if not self._reactions_enabled or not message_id:
+            return
+        reaction_id = await self._add_reaction(message_id, _FEISHU_REACTION_IN_PROGRESS)
+        if reaction_id:
+            self._pending_processing_reactions[message_id] = reaction_id
+
+    async def on_processing_complete(self, message_id: str, success: bool = True) -> None:
+        """Remove Typing reaction, optionally add failure mark."""
+        if not self._reactions_enabled or not message_id:
+            return
+        reaction_id = self._pending_processing_reactions.pop(message_id, "")
+        if reaction_id:
+            await self._remove_reaction(message_id, reaction_id)
+        if not success:
+            await self._add_reaction(message_id, _FEISHU_REACTION_FAILURE)
+
     async def _handle_ws_event(self, event: Any) -> None:
         """Process a WebSocket event in the main asyncio loop."""
         event_type = getattr(event, 'type', 'N/A')
@@ -317,9 +391,19 @@ class FeishuAdapter(PlatformAdapter):
                     await self.send_message(reply)
                     return
                 
-                # Normal message handling
-                reply = await self._message_handler(message)
-                await self.send_message(reply)
+                # Normal message handling — Hermes-style reactions
+                msg_id = message.message_id or ""
+                asyncio.create_task(self.on_processing_start(msg_id))
+
+                success = True
+                try:
+                    reply = await self._message_handler(message)
+                    await self.send_message(reply)
+                except Exception:
+                    success = False
+                    raise
+                finally:
+                    asyncio.create_task(self.on_processing_complete(msg_id, success))
                 
                 # If voice is enabled, synthesize and send audio
                 if self.voice_enabled and reply and reply.content:

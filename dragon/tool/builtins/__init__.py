@@ -89,6 +89,7 @@ from dragon.tool.builtins.gif_search import tool_gif_search, tool_gif_trending
 from dragon.tool.builtins.notion import tool_notion_search, tool_notion_read_page, tool_notion_create_page
 from dragon.tool.builtins.linear import tool_linear_list_issues, tool_linear_create_issue
 from dragon.tool.builtins.airtable import tool_airtable_list_records, tool_airtable_create_record
+from dragon.tool.builtins import skills as _skills_module
 from dragon.tool.builtins.google_workspace import (
     tool_gmail_send,
     tool_gmail_search,
@@ -745,6 +746,41 @@ def _register_airtable(registry):
     )(tool_airtable_create_record)
 
 
+def _register_skills(registry):
+    """Register skill management tools (search, load, install, create)."""
+    registry.register(
+        name="search_skills",
+        description="Search available skills by name, description, or tags. Use this to find relevant skills for any task.",
+        tags=["skill", "search", "discovery"],
+        category="skills",
+        timeout_secs=10,
+    )(_skills_module.tool_search_skills)
+
+    registry.register(
+        name="load_skill",
+        description="Load a skill's full content into the conversation. Use when you need detailed instructions for a task.",
+        tags=["skill", "load", "knowledge"],
+        category="skills",
+        timeout_secs=10,
+    )(_skills_module.tool_load_skill)
+
+    registry.register(
+        name="install_skill",
+        description="Install a skill from an external source (Hermes, OpenClaw) by name or search query.",
+        tags=["skill", "install", "import"],
+        category="skills",
+        timeout_secs=30,
+    )(_skills_module.tool_install_skill)
+
+    registry.register(
+        name="create_skill",
+        description="Create a new skill from conversation experience. Save successful task approaches as reusable skills.",
+        tags=["skill", "create", "evolution"],
+        category="skills",
+        timeout_secs=15,
+    )(_skills_module.tool_create_skill)
+
+
 def register_builtins(registry: ToolRegistry) -> None:
     """Register all built-in tools on the given registry."""
     registry.register(
@@ -1083,5 +1119,8 @@ def register_builtins(registry: ToolRegistry) -> None:
 
     # ── Airtable ────────────────────────────────────────────────
     _register_airtable(registry)
+
+    # ── Skills (search, load, install, create) ────────────────────
+    _register_skills(registry)
 
     logger.info("Registered %d built-in tools", len(registry._tools))

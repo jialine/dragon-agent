@@ -1,361 +1,280 @@
-# Dragon Agent — Architecture Design Document
+# Dragon Agent — 架构设计文档
 
-## 1. System Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Dragon Agent                            │
-├───────────┬───────────┬───────────┬───────────┬────────────┤
-│   CLI     │   TUI     │  Gateway  │   MCP     │   Cron     │
-│  (chat,   │ (Ink/     │ (Feishu,  │ (tools    │ (scheduled │
-│  config…) │  React)   │ Telegram…)│ server)   │  jobs)     │
-├───────────┴───────────┴───────────┴───────────┴────────────┤
-│                    Core Services                           │
-│  ┌──────────┬──────────┬──────────┬──────────┬──────────┬──────────┐ │
-│  │ Session  │  Skill   │  Tool    │  Memory  │ Compress │  Config  │ │
-│  │ Manager  │  Engine  │ Registry │  Store   │  Engine  │  Manager │ │
-│  └──────────┴──────────┴──────────┴──────────┴──────────┴──────────┘ │
-├─────────────────────────────────────────────────────────────┤
-│                   Provider Layer                           │
-│  ┌──────────┬──────────┬──────────┬──────────────────┐    │
-│  │AgileMind │  DeepSeek│  OpenAI  │   Anthropic ...  │    │
-│  │(default) │(fallback)│(fallback)│                  │    │
-│  └──────────┴──────────┴──────────┴──────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Layer Responsibilities
-
-| Layer | Role |
-|---|---|
-| **Interface** | CLI, TUI, Gateway, MCP — user-facing entry points |
-| **Core Services** | Session, Skill, Tool, Memory, Compression, Config — business logic |
-| **Provider** | Model abstraction layer — OpenAI, Anthropic, local GGUF |
+> **版本**: v1.0 | **日期**: 2026-06-26 | **代码量**: 50,696 LOC
+> **对齐**: Hermes Agent feature parity
 
 ---
 
-## 2. TUI Architecture
-
-### 2.1 Process Model
+## 1. 系统架构
 
 ```
-┌─ Node.js Process (tui/) ──────────────────┐
-│  Ink/React app                             │
-│  backend.ts — spawns Python subprocess     │
-│     │ pipe (stdin/stdout)                  │
-│     ▼                                      │
-│  ┌─ Python Subprocess ───────────────┐     │
-│  │  dragon.tui.server                 │     │
-│  │  JSON-RPC 2.0 over stdio          │     │
-│  └───────────────────────────────────┘     │
-└────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                       Dragon Agent                            │
+├──────────┬──────────┬──────────┬──────────┬─────────────────┤
+│   CLI    │   TUI    │ Gateway  │   MCP    │   Cron / API    │
+│ (chat/   │ (Ink/    │ (16 平台) │ (tools   │ (REST + Jobs)   │
+│  config) │  React)  │          │  server) │                 │
+├──────────┴──────────┴──────────┴──────────┴─────────────────┤
+│                     Core Engine                              │
+│  ┌──────────┬──────────┬──────────┬──────────┬────────────┐ │
+│  │  Router  │  Jury    │  Fact    │Consensus │ HallMetrics│ │
+│  │ (0.8B)   │ (debate) │ Checker  │ Builder  │ (幻觉追踪) │ │
+│  ├──────────┼──────────┼──────────┼──────────┼────────────┤ │
+│  │ Session  │  Skill   │  Tool    │  Memory  │  Config    │ │
+│  │ Manager  │  Engine  │ Registry │ (Chroma) │  Manager   │ │
+│  └──────────┴──────────┴──────────┴──────────┴────────────┘ │
+├──────────────────────────────────────────────────────────────┤
+│                    Provider Layer                            │
+│  ┌──────────┬──────────┬──────────┬──────────┬────────────┐ │
+│  │AgileMind │ DeepSeek │  OpenAI  │Anthropic │  Local     │ │
+│  │(default) │(fallback)│(fallback)│(fallback)│  GGUF      │ │
+│  └──────────┴──────────┴──────────┴──────────┴────────────┘ │
+├──────────────────────────────────────────────────────────────┤
+│                    API Layer (FastAPI)                        │
+│  ┌──────────┬──────────┬──────────┬──────────┬────────────┐ │
+│  │  Auth    │  API Key │  Billing │  Usage   │  Health    │ │
+│  │ (JWT)    │  Mgmt    │  (订阅)   │  Pricing │  (监控)    │ │
+│  └──────────┴──────────┴──────────┴──────────┴────────────┘ │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 Protocol: JSON-RPC over Stdio
+### 层职责
 
-Each message is a single newline-delimited JSON line.
-
-**Request:**
-```json
-{"jsonrpc": "2.0", "id": 1, "method": "chat.send", "params": {"message": "Hello"}}
-```
-
-**Response:**
-```json
-{"jsonrpc": "2.0", "id": 1, "result": {"session_id": "abc", "content": "Hi!"}}
-```
-
-**Error:**
-```json
-{"jsonrpc": "2.0", "id": 1, "error": {"code": -32601, "message": "Unknown method"}}
-```
-
-### 2.3 Component Tree
-
-```
-App (app.tsx)
-├── Sidebar (Sidebar.tsx)
-│   ├── Session list
-│   ├── Skill browser
-│   └── Status indicator
-└── Chat (Chat.tsx)
-    ├── Message list (streaming)
-    └── Input area
-        └── ToolCall cards (ToolCall.tsx)
-```
-
-### 2.4 State Flow
-
-```
-User types message
-    → backend.call("chat.send", {message})
-    → stdin: JSON-RPC request
-    → Python server processes
-    → stdout: JSON-RPC response
-    → backend.ts resolves
-    → React state update → Ink re-renders
-```
+| 层 | 职责 |
+|----|------|
+| **Interface** | CLI, TUI (JSON-RPC), Gateway (16平台), MCP, Cron, REST API |
+| **Core Engine** | Router→Jury→FactCheck→Consensus 流水线 + Session/Skill/Tool/Memory |
+| **Provider** | 多模型抽象 — AgileMind/DeepSeek/OpenAI/Anthropic/本地 GGUF |
+| **API** | 商业化 — 认证/计费/Key管理/用量统计 |
 
 ---
 
-## 3. Core Service Design
-
-### 3.1 Session Manager
-
-```
-SessionStore
-├── create(title, platform, model) → Session
-├── get(session_id) → Session | None
-├── list(limit, offset) → List[Session]
-├── delete(session_id)
-├── add_message(session_id, role, content) → Message
-├── get_messages(session_id, limit) → List[Message]
-├── search(query) → List[Session]
-└── stats(since, until) → Stats
-```
-
-**Storage:** SQLite with WAL mode. `sessions` and `messages` tables.
-
-### 3.2 Skill Engine
-
-```
-SkillEngine
-├── list() → List[SkillMeta]
-├── search(query) → List[SkillMeta]
-├── create(name, content, tags, description) → Skill
-├── delete(name)
-├── evolve(name, new_content) → Skill  # increments version
-├── rollback(name) → Skill            # restores previous version
-└── get(name) → Skill | None
-```
-
-**Storage:** File-based — each skill is a markdown file in `dragon_data/skills/` with YAML frontmatter.
-
-### 3.3 Tool Registry
-
-```
-ToolRegistry
-├── register(tool: Tool)
-├── list() → List[ToolMeta]
-├── search(query) → List[ToolMeta]
-├── call(name, args) → ToolResult
-└── get_schema(name) → JSONSchema
-```
-
-**Built-in tools:** terminal, file read/write, web search, code execution, session search, memory management.
-
-### 3.4 Config Manager
-
-```
-ConfigManager
-├── get(key: str) → Any
-├── get_all() → Dict
-├── set(key, value)
-├── validate() → List[Issue]
-├── path() → str
-└── check() → bool
-```
-
-**Storage:** YAML file at `~/.dragon/config.yaml`. Environment variable overrides with `DRAGON_` prefix.
-
-### 3.5 Provider Registry
-
-```
-ProviderRegistry
-├── register(name, provider: Provider)
-├── call(provider_name, model, messages) → Response
-├── list() → List[ProviderMeta]
-└── get(provider_name) → Provider | None
-```
-
-**Supported providers:** OpenAI (GPT-4o, etc.), Anthropic (Claude), Local GGUF (via llama.cpp).
-
-### 3.6 Context Compressor
-
-```
-ContextCompressor
-├── compress(messages, current_query, max_tokens=512) → CompressedContext
-│   ├── Step 1: Semantic retrieval from MemoryStore (top_k=5)
-│   ├── Step 2: Retrieval from Skill Store (top_k=3)
-│   ├── Step 3: Summary generation via local router model (0.8B)
-│   └── Step 4: Build injection-friendly system prompt
-├── stats(session_id) → CompressionStats
-│   ├── original_tokens, compressed_tokens, ratio
-│   └── latency_ms, relevance_score
-└── get_summary(session_id) → str | None
-```
-
-**Purpose:** Before each request to the industry LLM, extract relevant context from conversation history and knowledge base, compress into a compact summary (≤512 tokens). Reduces upstream token count by 5-26x, saving API costs.
-
-**Integration point:** Sits between Router/Dispatch and the actual Provider call. Takes full `messages` array, returns `compressed_messages` array with summary injected as system prompt.
-
-**Resource:** Reuses the 0.8B router model for summary generation. No additional model loading required.
-
----
-
-## 4. Data Flow: Chat Message
+## 2. 核心引擎流水线
 
 ```
 User Input
     │
     ▼
-CLI / TUI / Gateway
-    │
-    ▼
-Router.classify(query) → industry, confidence
+Router.classify(query) → 意图识别 + 行业分类
     │
     ▼
 ContextCompressor.compress(messages, query)
-    │  Step 1: MemoryStore.recall(query)    → relevant history
-    │  Step 2: SkillStore.search(query)     → knowledge hits
-    │  Step 3: Local model summary          → ≤512 tokens
+    │  ├─ MemoryStore.recall(query)     → 相关对话
+    │  ├─ SkillStore.search(query)      → 知识命中
+    │  └─ Router 本地摘要               → ≤512 tokens
     │
     ▼
-Build compressed_messages = [summary_system_prompt, current_question]
+【诚实 AI 管线】
+    │
+    ├─→ Jury.debate(query, models=3)
+    │     └─ 3 轮审议 → 加权投票 → 裁决书
+    │
+    ├─→ FactChecker.verify(verdict)
+    │     ├─ 知识库检索 (ChromaDB)
+    │     ├─ Web Search (DDG/Brave)
+    │     └─ 置信度评分
+    │
+    ├─→ Consensus.build(verified_verdicts)
+    │     ├─ 语义聚类模型立场
+    │     ├─ 共识/分歧判定
+    │     └─ 来源标注
+    │
+    └─→ HallMetrics.record(session, verdict)
+          └─ 幻觉率更新 + 趋势追踪
     │
     ▼
-ProviderRegistry.call(provider, model, compressed_messages)
-    │
-    ├─→ OpenAI HTTP API ──→ response
-    ├─→ Anthropic API   ──→ response
-    └─→ Local GGUF      ──→ response
+Guard.check(output) → 安全检查 (PII/违规/注入)
     │
     ▼
-SessionStore.add_message(session_id, role, content)
+Session.add_message() → 持久化
     │
     ▼
-Return to caller (CLI stdout / TUI JSON-RPC / Gateway platform)
+Response → CLI stdout / TUI JSON-RPC / Gateway platform
 ```
 
 ---
 
-## 5. Cron Job Architecture
-
-```
-Scheduler (background thread)
-├── Tick loop: every 30s checks schedule
-├── For each due job:
-│   ├── Create isolated session
-│   ├── Load attached skills
-│   ├── Execute prompt (agent loop)
-│   └── Deliver result to target
-└── Job storage: SQLite `cron_jobs` table
-```
-
-**Delivery targets:**
-- `origin` → Back to originating chat/channel
-- `local` → Save to file only
-- `all` → Broadcast to all connected platforms
-- `platform:chat_id:thread_id` → Specific destination
-
----
-
-## 6. Gateway (Multi-Platform)
-
-```
-Gateway
-├── Feishu Adapter (lark-oapi)
-│   ├── Webhook receiver (HTTP endpoint)
-│   ├── Bot sender (API client)
-│   └── Event subscription
-├── Telegram Adapter (python-telegram-bot)
-├── Discord Adapter (discord.py)
-├── WeChat Adapter (wechatpy)
-└── Message Router
-    └── Unified message format → Core Agent → Response routing
-```
-
----
-
-## 7. Directory Layout
+## 3. 目录结构 (实际)
 
 ```
 dragon-agent/
-├── dragon/                    # Python package (namespace)
-│   ├── __init__.py
-│   ├── cli.py                # CLI entry point
-│   ├── session/              # Session management
-│   │   ├── __init__.py
-│   │   ├── store.py          # SQLite store
-│   │   └── models.py         # Pydantic models
-│   ├── skill/                # Skill engine
-│   │   ├── __init__.py
-│   │   ├── engine.py         # CRUD + versioning
-│   │   └── models.py
-│   ├── tool/                 # Tool registry
-│   │   ├── __init__.py
-│   │   ├── registry.py
-│   │   ├── builtins.py       # Terminal, file, web, etc.
-│   │   └── models.py
-│   ├── memory/               # Persistent memory
-│   ├── compressor/           # Context compression engine
-│   │   ├── __init__.py
-│   │   ├── compressor.py     # Summary generation + retrieval
-│   │   └── estimator.py      # Token counting + stats
-│   ├── config/               # Config management
-│   ├── provider/             # Model provider abstraction
-│   ├── cron/                 # Scheduled jobs
-│   └── tui/                  # TUI backend
-│       ├── __init__.py
-│       └── server.py         # JSON-RPC server
-├── tui/                      # TUI frontend (Node.js)
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── src/
-│       ├── app.tsx
-│       ├── backend.ts
-│       └── components/
-│           ├── Chat.tsx
-│           ├── Sidebar.tsx
-│           └── ToolCall.tsx
-├── docs/                     # Documentation
+├── dragon/                        # Python 包
+│   ├── main.py                    # 主入口 (1165 LOC)
+│   ├── cli.py                     # CLI (1291 LOC)
+│   ├── config.py                  # 配置管理 (222 LOC)
+│   ├── session.py                 # 会话管理 [SQLite] (467 LOC)
+│   │
+│   ├── router/                    # 路由模型 (0.8B GGUF)
+│   │   └── __init__.py            # 行业分类 (551 LOC)
+│   │
+│   ├── jury/                      # 陪审辩论引擎
+│   │   └── __init__.py            # 3模型×3轮辩论 (1421 LOC)
+│   │
+│   ├── debate/                    # 辩论框架
+│   │   └── __init__.py            # (978 LOC)
+│   │
+│   ├── dispatch/                  # 模型调度
+│   │   └── __init__.py            # 行业→模型派发 (859 LOC)
+│   │
+│   ├── factcheck.py               # 事实核查 (515 LOC)
+│   ├── consensus.py               # 共识+来源标注 (397 LOC)
+│   ├── hallmetrics.py             # 幻觉率追踪 (436 LOC)
+│   ├── confidence.py              # 置信度校准 (479 LOC)
+│   ├── consult.py                 # 协商模式 (964 LOC)
+│   ├── auxiliary.py               # 辅助模型 (1032 LOC)
+│   │
+│   ├── guard/                     # 输出安全
+│   │   └── __init__.py            # PII/违规检测 (601 LOC)
+│   │
+│   ├── compressor/                # 上下文压缩
+│   │   ├── compressor.py          # 摘要生成 (782 LOC)
+│   │   └── estimator.py           # Token 估算 (273 LOC)
+│   │
+│   ├── skill/                     # Skill 系统
+│   │   ├── engine.py              # CRUD+版本 (614 LOC)
+│   │   ├── importer.py            # Hermes 导入 (664 LOC)
+│   │   └── skill.py               # Skill 模型 (374 LOC)
+│   │
+│   ├── tool/                      # 工具系统
+│   │   ├── registry.py            # 注册/发现 (592 LOC)
+│   │   ├── guardrails.py          # 安全护栏 (562 LOC)
+│   │   └── builtins/              # 20+ 内置工具
+│   │       ├── __init__.py         # 核心工具集 (1126 LOC)
+│   │       ├── vision.py, tts.py, browser.py, ...
+│   │       └── (共19个工具模块, ~7000 LOC)
+│   │
+│   ├── memory/                    # 向量记忆
+│   │   └── __init__.py            # ChromaDB + bge-small-zh (1252 LOC)
+│   │
+│   ├── provider/                  # 模型抽象
+│   │   └── __init__.py            # OpenAI 兼容 (1564 LOC)
+│   │
+│   ├── plugin/                    # 插件系统
+│   │   ├── __init__.py            # 核心 (1007 LOC)
+│   │   ├── hooks.py               # 钩子 (454 LOC)
+│   │   └── loader.py              # 加载 (397 LOC)
+│   │
+│   ├── gateway/                   # 多平台网关
+│   │   ├── server.py              # FastAPI 主服务 (577 LOC)
+│   │   ├── feishu.py              # 飞书 (814 LOC)
+│   │   ├── telegram.py            # Telegram (298 LOC)
+│   │   ├── wechat.py              # 微信 (285 LOC)
+│   │   └── (13 个其他平台, ~2400 LOC)
+│   │
+│   ├── mcp/                       # MCP Server
+│   │   ├── server.py              # (745 LOC)
+│   │   └── protocol.py            # (158 LOC)
+│   │
+│   ├── api/                       # REST API (FastAPI)
+│   │   ├── app.py                 # 应用 (86 LOC)
+│   │   ├── auth.py                # JWT/OAuth (618 LOC)
+│   │   ├── billing.py             # 计费 (606 LOC)
+│   │   ├── apikeys.py             # Key 管理 (352 LOC)
+│   │   └── models.py              # DB 模型 (185 LOC)
+│   │
+│   ├── tui/                       # TUI 后端
+│   │   └── server.py              # JSON-RPC (703 LOC)
+│   │
+│   └── (其他: cron, subagent, insights, redact, ...)
+│
+├── docs/                          # 文档
 │   ├── REQUIREMENTS.md
-│   └── DESIGN.md
-├── tests/                    # Test suite
-├── README.md
-├── LICENSE
-└── .gitignore
+│   ├── DESIGN.md
+│   └── ...
+│
+└── tests/ → build/usb-package/src/tests/  # 28 测试文件
 ```
 
 ---
 
-## 8. Key Design Decisions
+## 4. 关键设计决策
 
-### 8.1 Why JSON-RPC over stdio for TUI?
+### 4.1 为什么 0.8B 本地路由 + 122B 云端推理？
 
-- **No network port** — No firewall, no port conflicts, no security exposure
-- **Process lifecycle coupling** — Frontend spawns backend; when frontend exits, backend dies
-- **Simplicity** — Newline-delimited JSON is trivial to parse in any language
-- **Streaming compatible** — Chunk/done envelope pattern for real-time streaming
+- **隐私**: 路由在本地完成，用户问题不出本机
+- **速度**: 0.8B 分类 <200ms，不影响体验
+- **成本**: 避免每次请求都送完整上下文给大模型
+- **兜底**: AgileMind 不可用时自动 fallback
 
-### 8.2 Why SQLite for sessions?
+### 4.2 为什么多模型陪审团？
 
-- Zero-config, no server process
-- WAL mode for concurrent reads
-- Single file for backup/export
-- Sufficient for single-user agent workloads
+- **诚实**: 单一模型幻觉率高（15-25%），3 模型交叉验证可降至 <5%
+- **来源**: 每个结论可追溯是哪个模型的观点
+- **差异化**: 市场上尚无竞品
 
-### 8.3 Why file-based skills?
+### 4.3 为什么 ChromaDB 而非 FTS5？
 
-- Skills are markdown — human-readable and editable
-- Git-friendly (can be versioned alongside code)
-- Easy to share and copy between installations
-- YAML frontmatter for structured metadata
+- **语义检索**: 中文场景语义匹配优于关键词
+- **嵌入本地**: bge-small-zh 仅 100MB，无需外部 API
+- **易用**: pip install 即用
 
-### 8.4 Why Python + Node.js split?
+### 4.4 为什么 TUI 用 Node.js + Ink？
 
-- Python: agent logic, tools, ML/AI integration, ecosystem
-- Node.js + Ink: best-in-class terminal UI framework
-- Clean boundary via JSON-RPC — each side can evolve independently
+- Ink/React 是最佳终端 UI 框架
+- JSON-RPC over stdio 隔离进程
+- 前后端可独立演进
 
 ---
 
-## 9. Future Roadmap
+## 5. 数据流: 完整 Chat 请求
 
-| Phase | Features |
-|---|---|
-| v1.2 | Context compression engine — auto-summarize history before LLM requests |
-| v1.3 | pip installable `dragon-agent` package, Docker support |
-| v1.4 | Plugin system, custom tool SDK |
-| v2.0 | Distributed agent mesh (multi-node), agent-to-agent communication |
-| v2.1 | Web UI (React SPA) alongside TUI |
+```
+1. User sends message via CLI/TUI/Gateway
+2. Session.load() → 恢复历史
+3. Router.classify() → 行业分类
+4. Compressor.compress() → 上下文压缩
+5. Jury.debate() → 多模型辩论
+6. FactChecker.verify() → 事实核查
+7. Consensus.build() → 共识输出 + 来源标注
+8. Guard.check() → 安全检查
+9. Session.save() → 持久化
+10. Response → 用户
+```
+
+---
+
+## 6. 部署模式
+
+### 模式 A: CLI (开发/调试)
+```bash
+pip install dragon-agent
+dragon chat "什么是量子计算？"
+```
+
+### 模式 B: Gateway (飞书机器人)
+```bash
+dragon gateway --feishu --port 8080
+```
+
+### 模式 C: API Server (商业化)
+```bash
+dragon serve --host 0.0.0.0 --port 8000
+```
+
+### 模式 D: USB 便携版
+```
+dragon-agent-usb/
+├── dragon-agent.pyz  (zipapp)
+├── models/           (可选)
+└── config.yaml
+```
+
+---
+
+## 7. Hermes 对齐对照表
+
+| Hermes 概念 | Dragon 实现 | 文件 |
+|------------|-----------|------|
+| Agent Loop | `main.py::DragonAgent.run()` | main.py |
+| Provider | `provider/__init__.py::ProviderRegistry` | provider/ |
+| Skill System | `skill/engine.py::SkillEngine` | skill/ |
+| Tool System | `tool/registry.py::ToolRegistry` | tool/ |
+| Memory | `memory/__init__.py::DragonMemory` | memory/ |
+| Session | `session.py::SessionStore` | session.py |
+| Gateway | `gateway/server.py::GatewayServer` | gateway/ |
+| MCP | `mcp/server.py::MCPServer` | mcp/ |
+| Cron | `cron.py::CronScheduler` | cron.py |
+| Subagent | `subagent.py::SubAgentManager` | subagent.py |
+| Config | `config.py::ConfigManager` | config.py |
+| CLI | `cli.py::main()` | cli.py |
+| TUI | `tui/server.py::TUIServer` (Python) + `tui/` (Node.js) | tui/ |

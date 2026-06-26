@@ -34,6 +34,15 @@ logger = logging.getLogger("dragon.cli")
 
 
 def main():
+    # Load .env file for API keys and platform credentials
+    try:
+        from dotenv import load_dotenv
+        env_path = Path.home() / ".dragon" / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+    except ImportError:
+        pass
+
     parser = argparse.ArgumentParser(
         prog="dragon",
         description="Dragon Agent — Self-Evolving AI Agent Framework",
