@@ -143,11 +143,11 @@ class StepExecutor:
 
     async def _call_tool(self, tool_name: str, query: str) -> Any:
         """Call a Dragon tool by name."""
-        # Map common tool names to actual implementations
         if tool_name == "web_search":
             try:
-                from dragon.web_search import search
-                return await search(query)
+                from dragon.web_search import web_search
+                result = await web_search(query)
+                return result.results if hasattr(result, 'results') else str(result)
             except ImportError:
                 return f"[web_search not available] query: {query}"
         elif tool_name == "vision":
