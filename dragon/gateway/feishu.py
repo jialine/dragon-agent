@@ -136,6 +136,12 @@ class FeishuAdapter(PlatformAdapter):
         # Dedup
         self._seen_message_ids: Dict[str, float] = {}  # msg_id → seen_at
 
+        # Sent message tracking (for editing past messages)
+        self._last_reply_id: str = ""
+        self._last_alert_id: str = ""
+        self._last_progress_id: str = ""
+        self._sent_ids: List[str] = []  # keep up to 10 recent
+
         # Voice mode
         self.voice_enabled: bool = False
 
@@ -209,8 +215,27 @@ class FeishuAdapter(PlatformAdapter):
             app_id=self.app_id,
             app_secret=self.app_secret,
             event_handler=event_handler,
-            log_level=lark.LogLevel.WARNING,
+            log_level=lark.LogLevel.DEBUG,
         )
+
+        # Monkey-patch _receive_message_loop for debugging
+        import lark_oapi.ws.client as _wsc
+        _orig_recv_loop = _wsc.Client._receive_message_loop
+        async def _debug_recv_loop(self):
+            import datetime as _dt
+            with open("/tmp/feishu_raw_ws.log", "a") as _f:
+                _f.write(f"[{_dt.datetime.now()}] recv_loop START\n")
+            while True:
+                if self._conn is None:
+                    with open("/tmp/feishu_raw_ws.log", "a") as _f:
+                        _f.write(f"[{_dt.datetime.now()}] conn=None, exiting\n")
+                    break
+                msg = await self._conn.recv()
+                with open("/tmp/feishu_raw_ws.log", "a") as _f:
+                    _f.write(f"[{_dt.datetime.now()}] RECV {len(msg)}B\n")
+                import asyncio as _asyncio
+                _asyncio.get_event_loop().create_task(self._handle_message(msg))
+        _wsc.Client._receive_message_loop = _debug_recv_loop
 
         # Start WS client in a dedicated thread with its own event loop
         # Mirrors Hermes's _run_official_feishu_ws_client pattern
@@ -247,6 +272,10 @@ class FeishuAdapter(PlatformAdapter):
         )
 
         self._connected = True
+        import datetime as _dt
+        with open("/tmp/feishu_event_debug.log", "a") as _f:
+            _f.write(f"[{_dt.datetime.now()}] WebSocket client started, handler={event_handler}\n")
+            _f.write(f"  handler type: {type(event_handler)}\n")
         logger.info("[Feishu] WebSocket client started in background thread")
         return True
 
@@ -256,11 +285,14 @@ class FeishuAdapter(PlatformAdapter):
 
         def _dispatch_event(event):
             """Called by Lark SDK on each inbound event."""
+            import datetime as _dt
+            with open("/tmp/feishu_dispatch.log", "a") as _f:
+                _f.write(f"[{_dt.datetime.now()}] DISPATCH FIRED\n")
             logger.info("[Feishu] RAW EVENT: type=%s", getattr(event, 'type', 'N/A'))
             if not adapter._running:
                 return
             try:
-                event_type = getattr(event, 'type', '') or ''
+                event_type = getattr(event, 'type', '') or getattr(getattr(event, 'header', None), 'event_type', '')
 
                 # Dedup for message events
                 if hasattr(event, 'event') and hasattr(event.event, 'message'):
@@ -363,10 +395,15 @@ class FeishuAdapter(PlatformAdapter):
 
     async def _handle_ws_event(self, event: Any) -> None:
         """Process a WebSocket event in the main asyncio loop."""
+        import datetime as _dh
+        with open("/tmp/feishu_dispatch.log", "a") as _f:
+            _f.write(f"[{_dh.datetime.now()}] HANDLE_WS ENTER\n")
         event_type = getattr(event, 'type', 'N/A')
         logger.info("[Feishu] Processing event: type=%s", event_type)
 
         message = await self._parse_ws_event(event)
+        with open("/tmp/feishu_dispatch.log", "a") as _f:
+            _f.write(f"[{_dh.datetime.now()}] PARSED: {'OK' if message else 'NONE'}\n")
         if message is None:
             logger.info("[Feishu] Event skipped: type=%s (not a message)", event_type)
             return
@@ -376,6 +413,8 @@ class FeishuAdapter(PlatformAdapter):
             message.user_id, message.chat_id, message.content[:80],
         )
 
+        with open("/tmp/feishu_dispatch.log", "a") as _f:
+            _f.write(f"[{_dh.datetime.now()}] HANDLER: {'SET' if self._message_handler else 'NONE'}\n")
         if self._message_handler:
             try:
                 # Check for voice commands
@@ -390,10 +429,76 @@ class FeishuAdapter(PlatformAdapter):
                     )
                     await self.send_message(reply)
                     return
-                
+
+                # ── STEER / QUEUE LOGIC ────────────────────────────
+                # Check if processor is busy for this chat.
+                # If so, queue the message as steer (injected mid-processing)
+                # or as a regular queued message.
+                from dragon.gateway.server import MessageProcessor
+                handler = self._message_handler
+                # Try to access the processor's steer/queue if it's a bound method
+                processor = getattr(handler, '__self__', None)
+                if processor and hasattr(processor, 'is_processing'):
+                    chat_id = getattr(message, 'chat_id', '')
+                    if processor.is_processing(chat_id):
+                        # Busy — queue as steer to inject mid-processing
+                        processor.queue_steer(chat_id, message.content)
+                        logger.info(
+                            "[Feishu] Busy, queued as steer: %s", message.content[:50]
+                        )
+                        await self._send_reaction(message.message_id or "", "OK")
+                        return
+
                 # Normal message handling — Hermes-style reactions
                 msg_id = message.message_id or ""
                 asyncio.create_task(self.on_processing_start(msg_id))
+
+                # Register progress callback for periodic status updates
+                handler = self._message_handler
+                processor = getattr(handler, '__self__', None)
+                if processor and hasattr(processor, 'set_progress_callback'):
+                    async def _progress_cb(chat_id: str, text: str):
+                        try:
+                            reply = PlatformReply(platform="feishu", chat_id=chat_id, content=text)
+                            ok = await self.send_message(reply)
+                            if ok and self._last_reply_id:
+                                self._last_progress_id = self._last_reply_id
+                        except Exception:
+                            pass
+                    processor.set_progress_callback(_progress_cb)
+
+                # Register alert callback for CRITICAL/ALERT immediate push
+                if processor and hasattr(processor, 'set_alert_callback'):
+                    async def _alert_cb(chat_id: str, text: str):
+                        try:
+                            reply = PlatformReply(platform="feishu", chat_id=chat_id, content=text)
+                            ok = await self.send_message(reply)
+                            if ok and self._last_reply_id:
+                                self._last_alert_id = self._last_reply_id
+                        except Exception:
+                            pass
+                    processor.set_alert_callback(_alert_cb)
+
+                # Register edit callback for [EDIT] past-message updates
+                if processor and hasattr(processor, 'set_edit_callback'):
+                    async def _edit_cb(chat_id: str, target: str, new_text: str):
+                        try:
+                            # Resolve target to actual message_id
+                            msg_id = ""
+                            if target == "alert" and self._last_alert_id:
+                                msg_id = self._last_alert_id
+                            elif target == "progress" and self._last_progress_id:
+                                msg_id = self._last_progress_id
+                            elif target == "reply" and self._last_reply_id:
+                                msg_id = self._last_reply_id
+                            elif target == "last":
+                                # Most recent of any type
+                                msg_id = self._last_alert_id or self._last_progress_id or self._last_reply_id
+                            if msg_id:
+                                await self.edit_message(msg_id, new_text)
+                        except Exception:
+                            pass
+                    processor.set_edit_callback(_edit_cb)
 
                 success = True
                 try:
@@ -489,19 +594,27 @@ class FeishuAdapter(PlatformAdapter):
 
     async def _parse_ws_event(self, event: Any) -> Optional[PlatformMessage]:
         """Parse a Lark SDK WebSocket event into PlatformMessage."""
+        import datetime as _dp
+        _log = lambda msg: open("/tmp/feishu_dispatch.log", "a").write(f"[{_dp.datetime.now()}] PARSE: {msg}\n")
         try:
             # Check event type
-            event_type = getattr(event, 'type', '') or ''
+            _log(f"event type attr: {getattr(event, 'type', 'MISSING')}")
+            _log(f"event schema: {getattr(event, 'schema', 'MISSING')}")
+            _log(f"has event: {hasattr(event, 'event')}")
+            event_type = getattr(event, 'type', '') or getattr(getattr(event, 'header', None), 'event_type', '')
 
             if 'message' not in event_type and 'card' not in event_type:
+                _log(f'type check FAILED: {event_type}')
                 return None
 
             evt = getattr(event, 'event', None)
             if evt is None:
+                _log('evt is None')
                 return None
 
             msg = getattr(evt, 'message', None)
             if msg is None:
+                _log('msg is None')
                 return None
 
             chat_id = getattr(msg, 'chat_id', '')
@@ -524,6 +637,7 @@ class FeishuAdapter(PlatformAdapter):
                 text = str(content_raw)
 
             if not text:
+                _log(f'text empty: content_raw={content_raw[:100]}')
                 return None
 
             return PlatformMessage(
@@ -644,6 +758,12 @@ class FeishuAdapter(PlatformAdapter):
                 if resp.status_code == 200:
                     data = resp.json()
                     if data.get("code") == 0:
+                        msg_id = data.get("data", {}).get("message_id", "")
+                        if msg_id:
+                            self._last_reply_id = msg_id
+                            self._sent_ids.append(msg_id)
+                            if len(self._sent_ids) > 10:
+                                self._sent_ids.pop(0)
                         return True
                     logger.error("[Feishu] API error: %s", data.get("msg"))
                 else:
@@ -651,6 +771,37 @@ class FeishuAdapter(PlatformAdapter):
         except Exception as e:
             logger.exception("[Feishu] Failed to send message: %s", e)
 
+        return False
+
+    async def edit_message(self, message_id: str, new_content: str) -> bool:
+        """Edit a previously sent message. Uses Feishu PUT API."""
+        if not message_id or not new_content:
+            return False
+        token = await self._get_tenant_access_token()
+        if not token:
+            return False
+        url = f"{self.api_base}/im/v1/messages/{message_id}"
+        body = {
+            "content": json.dumps({"text": new_content}),
+            "msg_type": "text",
+        }
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.put(url, headers=headers, json=body)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("code") == 0:
+                        logger.info("[Feishu] Edited message %s", message_id)
+                        return True
+                    logger.error("[Feishu] Edit error: %s", data.get("msg"))
+                else:
+                    logger.error("[Feishu] Edit HTTP %d", resp.status_code)
+        except Exception as e:
+            logger.exception("[Feishu] Edit failed: %s", e)
         return False
 
     # ── Send Audio Message ────────────────────────────────────────

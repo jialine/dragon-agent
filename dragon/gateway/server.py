@@ -70,7 +70,7 @@ class MessageProcessor:
         compression_config: Any = None,
         pairing_store: Any = None,
         voice_engine: Any = None,
-        max_tool_iterations: int = 5,
+        max_tool_iterations: int = 90,
     ) -> None:
         self.provider_registry = provider_registry
         self.session_store = session_store
@@ -80,6 +80,14 @@ class MessageProcessor:
         self.voice_engine = voice_engine
         self.max_tool_iterations = max_tool_iterations
 
+        # Multi-turn features
+        self._steer_queues: Dict[str, List[str]] = {}
+        self._message_queues: Dict[str, List[PlatformMessage]] = {}
+        self._processing: Dict[str, bool] = {}
+        self._progress_callback: Optional[Callable] = None
+        self._alert_callback: Optional[Callable] = None  # CRITICAL push
+        self._edit_callback: Optional[Callable] = None   # Edit past messages
+
         if compression_config:
             from dragon.compression import ContextCompressor
             self.compressor = ContextCompressor(
@@ -87,6 +95,114 @@ class MessageProcessor:
             )
         else:
             self.compressor = None
+
+    # ── Steer / Queue / Progress helpers ──────────────────────
+
+    def set_progress_callback(self, callback: Optional[Callable]) -> None:
+        self._progress_callback = callback
+
+    def set_alert_callback(self, callback: Optional[Callable]) -> None:
+        """Set callback for immediate CRITICAL/ALERT push during processing."""
+        self._alert_callback = callback
+
+    def _extract_critical(self, content: str) -> list:
+        """Extract [CRITICAL]/[ALERT]/!!! markers from LLM response.
+        Returns list of (level, text) tuples. level: 'critical'|'alert'|'important'.
+        """
+        import re
+        items = []
+
+        # Format 1: [CRITICAL] ... [/CRITICAL]
+        for m in re.finditer(r'\[CRITICAL\]\s*\n?(.*?)\n?\[/CRITICAL\]', content, re.DOTALL | re.IGNORECASE):
+            items.append(('critical', m.group(1).strip()[:500]))
+
+        # Format 2: [ALERT] ... [/ALERT]
+        for m in re.finditer(r'\[ALERT\]\s*\n?(.*?)\n?\[/ALERT\]', content, re.DOTALL | re.IGNORECASE):
+            items.append(('alert', m.group(1).strip()[:500]))
+
+        # Format 3: !!! ... !!! (important findings)
+        for m in re.finditer(r'!!!\s*(.+?)\s*!!!', content):
+            items.append(('important', m.group(1).strip()[:500]))
+
+        # Format 4: [IMPORTANT] ... [/IMPORTANT]
+        for m in re.finditer(r'\[IMPORTANT\]\s*\n?(.*?)\n?\[/IMPORTANT\]', content, re.DOTALL | re.IGNORECASE):
+            items.append(('important', m.group(1).strip()[:500]))
+
+        return items
+
+    def set_edit_callback(self, callback: Optional[Callable]) -> None:
+        """Set callback for editing past messages during processing."""
+        self._edit_callback = callback
+
+    def _extract_edits(self, content: str) -> list:
+        """Extract [EDIT:target]new text[/EDIT] markers from LLM response.
+        Returns list of (target, new_text) tuples.
+        target: 'last'|'reply'|'alert'|'progress'.
+        """
+        import re
+        edits = []
+        for m in re.finditer(
+            r'\[EDIT(?::\s*(\w+))?\]\s*\n?(.*?)\n?\[/EDIT\]',
+            content, re.DOTALL | re.IGNORECASE
+        ):
+            target = (m.group(1) or 'last').strip().lower()
+            text = m.group(2).strip()[:1500]
+            edits.append((target, text))
+        return edits
+
+    def queue_steer(self, chat_id: str, content: str) -> None:
+        if chat_id not in self._steer_queues:
+            self._steer_queues[chat_id] = []
+        self._steer_queues[chat_id].append(content)
+
+    def _pop_steer(self, chat_id: str) -> Optional[str]:
+        q = self._steer_queues.get(chat_id, [])
+        return q.pop(0) if q else None
+
+    def queue_message(self, message: PlatformMessage) -> None:
+        chat_id = getattr(message, 'chat_id', '')
+        if chat_id not in self._message_queues:
+            self._message_queues[chat_id] = []
+        self._message_queues[chat_id].append(message)
+
+    def is_processing(self, chat_id: str) -> bool:
+        return self._processing.get(chat_id, False)
+
+    async def _process_single(
+        self, message: PlatformMessage, system_prompt: str = "",
+        session: Any = None, max_iterations: int = 5,
+    ) -> Optional[str]:
+        history = []
+        if system_prompt:
+            history.append({"role": "system", "content": system_prompt})
+        if session and self.session_store:
+            past = self.session_store.get_messages(session.id, limit=10)
+            history.extend([{"role": m.role, "content": m.content} for m in past[-5:]])
+        history.append({"role": "user", "content": message.content})
+        for _ in range(max_iterations):
+            try:
+                if self.provider_registry:
+                    result = await self.provider_registry.call(
+                        provider_name="openai", messages=history, max_tokens=1024)
+                    resp = result.content
+                else:
+                    return None
+            except Exception:
+                return None
+            tcs = self._parse_tool_calls(resp)
+            if not tcs:
+                return resp
+            if self.tool_registry:
+                history.append({"role": "assistant", "content": resp})
+                for tc in tcs:
+                    try:
+                        tr = await self.tool_registry.call(tc["name"], tc.get("arguments", {}))
+                        out = str(tr.output) if tr.success else tr.error
+                    except Exception as e:
+                        out = f"Tool error: {e}"
+                    history.append({"role": "tool", "content": out[:1000], "name": tc["name"]})
+        return None
+
 
     async def process(
         self,
@@ -140,6 +256,10 @@ class MessageProcessor:
                         chat_id=message.chat_id,
                     )
 
+        # 0. Processing lock
+        chat_id = getattr(message, 'chat_id', '')
+        self._processing[chat_id] = True
+
         # 1. Session lookup
         session = None
         if self.session_store:
@@ -190,91 +310,171 @@ class MessageProcessor:
         # 5. Agent loop: call provider → parse tool calls → execute → repeat
         reply_text = ""
         tool_call_count = 0
+        steer_injected = 0
+        _loop_start = time.monotonic()
 
-        for iteration in range(self.max_tool_iterations):
-            try:
-                if self.provider_registry:
-                    # Build tool schemas for the provider
-                    tool_schemas = None
-                    if self.tool_registry:
-                        tool_schemas = self.tool_registry.get_openai_schemas()
+        # Progress reporter (background, every 3 min)
+        progress_task = None
+        progress_stop = asyncio.Event()
 
-                    result = await self.provider_registry.call(
-                        provider_name="openai",
-                        messages=history,
-                        max_tokens=2048,
-                    )
-                    response_text = result.content
-
-                    # Record token consumption
-                    if hasattr(result, 'usage') and result.usage:
-                        total_tokens = result.usage.get("total_tokens", 0)
-                        model = getattr(result, "model", "unknown")
-                        record_token_consumption(model=model, tokens=total_tokens)
-                else:
-                    response_text = (
-                        "[Dragon Agent 未配置 Provider]\n\n"
-                        "请设置环境变量: OPENAI_API_KEY 或 DEEPSEEK_API_KEY"
-                    )
+        async def _progress_reporter():
+            last_report = 0
+            while not progress_stop.is_set():
+                await asyncio.sleep(30)
+                if progress_stop.is_set():
                     break
-            except Exception as e:
-                logger.exception("Provider call failed")
-                record_error(error_type="provider_call_failed")
-                reply_text = f"抱歉，处理您的消息时出错: {e}"
-                break
-
-            # Parse tool calls from the response
-            tool_calls = self._parse_tool_calls(response_text)
-
-            if not tool_calls:
-                # No tool calls — this is the final answer
-                reply_text = response_text
-                break
-
-            # Execute tool calls
-            if self.tool_registry:
-                history.append({"role": "assistant", "content": response_text})
-
-                tool_outputs = []
-                for tc in tool_calls:
-                    tool_call_count += 1
+                elapsed = time.monotonic() - _loop_start
+                if elapsed - last_report >= 180 and self._progress_callback:
+                    last_report = elapsed
+                    mins = int(elapsed // 60)
                     try:
-                        tool_result = await self.tool_registry.call(
-                            tc["name"], tc.get("arguments", {})
+                        await self._progress_callback(chat_id,
+                            f"\u23f3 \u6267\u884c\u4e2d... ({mins}\u5206\u949f, "
+                            f"\u7b2c{tool_call_count + 1}\u6b65, "
+                            f"\u4e0a\u9650{self.max_tool_iterations}\u8f6e, "
+                            f"\u5df2\u6ce8\u5165{steer_injected}\u6761\u6307\u4ee4)")
+                    except Exception:
+                        pass
+
+        if self._progress_callback:
+            progress_task = asyncio.create_task(_progress_reporter())
+
+        try:
+            for iteration in range(self.max_tool_iterations):
+                # Steer check
+                steer_msg = self._pop_steer(chat_id)
+                if steer_msg:
+                    steer_injected += 1
+                    history.append({"role": "user", "content": "[\u65b0\u6307\u4ee4] " + steer_msg})
+
+                try:
+                    if self.provider_registry:
+                        # Build tool schemas for the provider
+                        tool_schemas = None
+                        if self.tool_registry:
+                            tool_schemas = self.tool_registry.get_openai_schemas()
+
+                        result = await self.provider_registry.call(
+                            provider_name="openai",
+                            messages=history,
+                            max_tokens=2048,
                         )
-                        output = str(tool_result.output) if tool_result.success else tool_result.error
-                    except Exception as e:
-                        output = f"Tool error: {e}"
+                        response_text = result.content
 
-                    # Record tool call metric
-                    record_tool_call(tool_name=tc["name"])
+                        # ── CRITICAL/ALERT immediate push ──────────
+                        if self._alert_callback:
+                            criticals = self._extract_critical(response_text)
+                            for level, text in criticals:
+                                emoji = {"critical": "🔴", "alert": "🟡", "important": "🔵"}.get(level, "📌")
+                                try:
+                                    await self._alert_callback(chat_id,
+                                        f"{emoji} **[{level.upper()}]** {text}")
+                                except Exception:
+                                    pass
 
-                    tool_outputs.append({
-                        "tool": tc["name"],
-                        "output": output[:2000],
-                    })
-                    history.append({
-                        "role": "tool",
-                        "content": output[:2000],
-                        "name": tc["name"],
-                    })
+                        # ── EDIT past messages ────────────────────
+                        if self._edit_callback:
+                            edits = self._extract_edits(response_text)
+                            for target, new_text in edits:
+                                try:
+                                    await self._edit_callback(chat_id, target, new_text)
+                                except Exception:
+                                    pass
 
-                # Check if we should continue
-                if iteration == self.max_tool_iterations - 1:
-                    # Last iteration — ask model to summarize
-                    history.append({
-                        "role": "user",
-                        "content": "Please provide your final answer based on the tool results above.",
-                    })
-            else:
-                # No tool registry — treat as final response
-                reply_text = response_text
-                break
+                        # Record token consumption
+                        if hasattr(result, 'usage') and result.usage:
+                            total_tokens = result.usage.get("total_tokens", 0)
+                            model = getattr(result, "model", "unknown")
+                            record_token_consumption(model=model, tokens=total_tokens)
+                    else:
+                        response_text = (
+                            "[Dragon Agent \u672a\u914d\u7f6e Provider]\n\n"
+                            "\u8bf7\u8bbe\u7f6e\u73af\u5883\u53d8\u91cf: OPENAI_API_KEY \u6216 DEEPSEEK_API_KEY"
+                        )
+                        break
+                except Exception as e:
+                    logger.exception("Provider call failed")
+                    record_error(error_type="provider_call_failed")
+                    reply_text = f"\u62b1\u6b49\uff0c\u5904\u7406\u60a8\u7684\u6d88\u606f\u65f6\u51fa\u9519: {e}"
+                    break
 
-        # If loop ended without final answer, use accumulated context
-        if not reply_text and history:
-            last_msg = history[-1]["content"]
-            reply_text = f"[已完成 {tool_call_count} 次工具调用]\n\n{last_msg[:2000]}"
+                # Parse tool calls from the response
+                tool_calls = self._parse_tool_calls(response_text)
+
+                if not tool_calls:
+                    # No tool calls — this is the final answer
+                    reply_text = response_text
+                    break
+
+                # Execute tool calls
+                if self.tool_registry:
+                    history.append({"role": "assistant", "content": response_text})
+
+                    tool_outputs = []
+                    for tc in tool_calls:
+                        tool_call_count += 1
+                        try:
+                            tool_result = await self.tool_registry.call(
+                                tc["name"], tc.get("arguments", {})
+                            )
+                            output = str(tool_result.output) if tool_result.success else tool_result.error
+                        except Exception as e:
+                            output = f"Tool error: {e}"
+
+                        # Record tool call metric
+                        record_tool_call(tool_name=tc["name"])
+
+                        tool_outputs.append({
+                            "tool": tc["name"],
+                            "output": output[:2000],
+                        })
+                        history.append({
+                            "role": "tool",
+                            "content": output[:2000],
+                            "name": tc["name"],
+                        })
+
+                    # Check if we should continue
+                    if iteration == self.max_tool_iterations - 1:
+                        # Last iteration — ask model to summarize
+                        history.append({
+                            "role": "user",
+                            "content": "Please provide your final answer based on the tool results above.",
+                        })
+                else:
+                    # No tool registry — treat as final response
+                    reply_text = response_text
+                    break
+
+            # If loop ended without final answer, use accumulated context
+            if not reply_text and history:
+                last_msg = history[-1]["content"]
+                reply_text = f"[\u5df2\u5b8c\u6210 {tool_call_count} \u6b21\u5de5\u5177\u8c03\u7528]\n\n{last_msg[:2000]}"
+
+        finally:
+            if progress_task:
+                progress_stop.set()
+                try:
+                    await asyncio.wait_for(progress_task, timeout=2.0)
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    pass
+
+        # Process queued messages (up to 3)
+        queued = self._message_queues.get(chat_id, [])
+        processed_q = 0
+        while queued and processed_q < 3:
+            next_msg = queued.pop(0)
+            processed_q += 1
+            try:
+                qr = await self._process_single(
+                    next_msg, system_prompt, session,
+                    max_iterations=min(10, self.max_tool_iterations // 5))
+                if qr:
+                    reply_text += f"\n\n---\n\U0001f4e8 \u6392\u961f\u6d88\u606f {processed_q}: {next_msg.content[:50]}...\n\n{qr}"
+            except Exception as exc:
+                logger.error("Queued msg failed: %s", exc)
+        self._message_queues[chat_id] = []
+        self._processing[chat_id] = False
 
         # 6. Save to session
         if self.session_store and session:
@@ -365,6 +565,7 @@ class GatewayServer:
         pairing_store: Any = None,
         voice_engine: Any = None,
         system_prompt: str = "",
+        max_tool_iterations: int = 90,
     ) -> None:
         self.app = FastAPI(title="Dragon Gateway", version="1.0.0")
         self.adapters: Dict[str, PlatformAdapter] = {}
@@ -375,9 +576,28 @@ class GatewayServer:
             skill_engine=skill_engine,
             pairing_store=pairing_store,
             voice_engine=voice_engine,
+            max_tool_iterations=max_tool_iterations,
         )
         self._skill_engine = skill_engine
         self.system_prompt = system_prompt or self._build_system_prompt()
+
+        # Inject available tools into system prompt
+        if self.processor.tool_registry:
+            try:
+                tools = self.processor.tool_registry.list_tools()
+                if tools:
+                    tool_lines = [
+                        "",
+                        "## Available Tools ({} total)".format(len(tools)),
+                        "",
+                    ]
+                    for t in tools:
+                        tool_lines.append("- **{}**: {}".format(t["name"], t["description"]))
+                    tool_lines.append("")
+                    tool_lines.append("Call tools using ```tool_call``` format. Multiple calls per turn OK.")
+                    self.system_prompt += "\n".join(tool_lines)
+            except Exception:
+                pass
 
         # Register routes and lifecycle hooks
         self._register_routes()
@@ -394,7 +614,17 @@ class GatewayServer:
             "",
             "1. **技能驱动** — 面对任何任务，主动搜索并加载相关技能。",
             "2. **自我进化** — 成功完成任务后，可以创建新技能供未来使用。",
-            "3. **工具使用** — 你可以调用 search_skills、load_skill、install_skill、create_skill 等工具。",
+            "3. **工具使用** — 你可以调用多种工具完成任务，也支持子代理委托。",
+            "",
+            "## 工具调用格式",
+            "",
+            "使用以下格式调用工具（每次回复可包含多个）:",
+            "",
+            "```tool_call",
+            '{"name": "tool_name", "arguments": {"arg1": "value1"}}',
+            "```",
+            "",
+            "工具结果会在下一轮返回，你可继续处理或调用更多工具。",
             "",
             "## 技能使用规则",
             "",

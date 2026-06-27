@@ -1187,4 +1187,115 @@ def register_builtins(registry: ToolRegistry) -> None:
     # ── Skills (search, load, install, create) ────────────────────
     _register_skills(registry)
 
+
+    # ── Subagent Delegation (delegate_task, delegate_many) ─────────
+    try:
+        from dragon.subagent import SubagentOrchestrator
+
+        async def _tool_delegate_task(
+            goal: str,
+            context: str = "",
+            timeout_secs: float = 120.0,
+        ) -> str:
+            """Spawn a subagent to work on a task independently."""
+            import json as _json, os, yaml
+            from dragon.provider import ProviderRegistry, OpenAIProvider, ProviderConfig
+
+            _pr = ProviderRegistry()
+            for p in ['config.yaml', os.path.expanduser('~/.dragon/config.yaml')]:
+                if os.path.exists(p):
+                    with open(p) as f:
+                        cfg = yaml.safe_load(f) or {}
+                    api = cfg.get('dispatch', {}).get('global_api', {})
+                    _pr.register('openai', OpenAIProvider(ProviderConfig(
+                        provider='openai',
+                        api_key=os.getenv(api.get('api_key_env', ''), 'not-needed'),
+                        base_url=api.get('base_url'),
+                        default_model=api.get('model', 'gpt-4o'),
+                    )))
+                    break
+
+            orch = SubagentOrchestrator(
+                provider_registry=_pr, tool_registry=registry,
+                max_concurrent=1,
+            )
+            result = await orch.delegate(
+                goal=goal, context=context,
+                timeout_secs=min(timeout_secs, 300),
+            )
+            return _json.dumps({
+                "status": result.status.value,
+                "summary": result.summary[:2000],
+                "findings": result.findings,
+                "tokens_used": result.tokens_used,
+                "confidence": result.confidence,
+                "tool_calls": result.tool_calls,
+                "latency_ms": result.latency_ms,
+            }, ensure_ascii=False)
+
+        async def _tool_delegate_many(
+            tasks: str,
+            timeout_secs: float = 180.0,
+        ) -> str:
+            """Spawn multiple subagents in parallel (max 3)."""
+            import json as _json, os, yaml
+            from dragon.provider import ProviderRegistry, OpenAIProvider, ProviderConfig
+
+            task_list = _json.loads(tasks) if isinstance(tasks, str) else tasks
+            task_list = task_list[:3]
+
+            _pr = ProviderRegistry()
+            for p in ['config.yaml', os.path.expanduser('~/.dragon/config.yaml')]:
+                if os.path.exists(p):
+                    with open(p) as f:
+                        cfg = yaml.safe_load(f) or {}
+                    api = cfg.get('dispatch', {}).get('global_api', {})
+                    _pr.register('openai', OpenAIProvider(ProviderConfig(
+                        provider='openai',
+                        api_key=os.getenv(api.get('api_key_env', ''), 'not-needed'),
+                        base_url=api.get('base_url'),
+                        default_model=api.get('model', 'gpt-4o'),
+                    )))
+                    break
+
+            orch = SubagentOrchestrator(
+                provider_registry=_pr, tool_registry=registry,
+                max_concurrent=min(len(task_list), 3),
+            )
+            results = await orch.delegate_many(task_list)
+            return _json.dumps([{
+                "goal": r.goal[:100],
+                "status": r.status.value,
+                "summary": r.summary[:1000],
+                "confidence": r.confidence,
+            } for r in results], ensure_ascii=False)
+
+        registry.register(
+            name="delegate_task",
+            description="Spawn a subagent to work on a task independently with isolated context. "
+                        "Use for research, code analysis, data processing — any focused task. "
+                        "Returns summary, findings, confidence score, and token usage.",
+            tags=["delegation", "subagent", "parallel"],
+            category="delegation",
+            timeout_secs=300,
+            max_retries=1,
+        )(_tool_delegate_task)
+
+        registry.register(
+            name="delegate_many",
+            description="Spawn up to 3 subagents in parallel for independent tasks. "
+                        "Pass tasks as JSON array of {goal, context}. Each runs in isolation. "
+                        "Use when you have multiple independent subtasks.",
+            tags=["delegation", "subagent", "parallel", "batch"],
+            category="delegation",
+            timeout_secs=600,
+            max_retries=1,
+        )(_tool_delegate_many)
+
+        logger.info("Subagent delegation tools registered (delegate_task, delegate_many)")
+    except ImportError:
+        logger.debug("Subagent tools skipped: subagent module not available")
+    except Exception as _e:
+        logger.warning("Failed to register subagent tools: %s", _e)
+
     logger.info("Registered %d built-in tools", len(registry._tools))

@@ -275,6 +275,25 @@ def cmd_serve(args):
         print("Error: uvicorn not installed. Run: pip install uvicorn")
 
 
+
+def _load_dispatch_config():
+    """Load dispatch.global_api settings from config.yaml."""
+    import os, yaml
+    paths = ['config.yaml', os.path.expanduser('~/.dragon/config.yaml')]
+    for p in paths:
+        if os.path.exists(p):
+            with open(p) as f:
+                cfg = yaml.safe_load(f) or {}
+            dispatch = cfg.get('dispatch', {})
+            api = dispatch.get('global_api', {})
+            if api:
+                return {
+                    "api_key": os.getenv(api.get('api_key_env', ''), ''),
+                    "base_url": api.get('base_url'),
+                    "model": api.get('model', 'gpt-4o'),
+                    "timeout_secs": api.get('timeout_secs', 60),
+                }
+    return {'api_key': 'not-needed', 'base_url': None, 'model': 'gpt-4o', 'timeout_secs': 60}
 def cmd_gateway(args):
     """Start or show status of multi-platform gateway."""
     if args.action == "status":
@@ -295,6 +314,23 @@ def cmd_gateway(args):
     from dragon.gateway.server import GatewayServer
 
     registry = auto_setup_providers()
+
+    # If 'openai' not auto-registered (no OPENAI_API_KEY), register it
+    # using the dispatch.global_api config (supports llama.cpp and other
+    # OpenAI-compatible backends without requiring a real OpenAI key).
+    if 'openai' not in registry.available_providers():
+        from dragon.provider import OpenAIProvider, ProviderConfig
+        _cfg = _load_dispatch_config()
+        registry.register('openai', OpenAIProvider(ProviderConfig(
+            provider='openai',
+            api_key=_cfg.get('api_key', 'not-needed'),
+            base_url=_cfg.get('base_url', None),
+            default_model=_cfg.get('model', 'gpt-4o'),
+            timeout_secs=_cfg.get('timeout_secs', 60),
+        )))
+        print(f"  ✓ Registered 'openai' provider "
+              f"(model={_cfg.get('model')}, base_url={_cfg.get('base_url')})")
+
     session_store = SessionStore()
     tool_registry = ToolRegistry()
     register_builtins(tool_registry)
