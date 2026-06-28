@@ -1,0 +1,45 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Python bytecode and caches
+__pycache__
+*.py[cod]
+*.egg-info
+
+# Virtual environments
+.venv
+venv
+env
+.env  # Keep .env out of the image; mounted at runtime via docker-compose
+
+# Testing
+tests
+test
+*.test.py
+.pytest_cache
+.coverage
+htmlcov
+
+# Documentation
+docs
+*.md
+README*
+LICENSE
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# IDE and editor files
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db

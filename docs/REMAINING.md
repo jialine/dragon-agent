@@ -56,7 +56,7 @@
 
 | 项目 | 状态 | 估价 |
 |------|------|------|
-| **Monitoring** | ⚠️ 18 LOC stub，需 Prometheus metrics | 2 天 |
+| **Monitoring** | ✅ 147 LOC, 9枚Prometheus指标+8录制函数 | ✅ 已完成 |
 | **Docker/Docker Compose** | ❌ 未开始 | 2 天 |
 | **CI/CD (Gitee Actions)** | ❌ 未开始 | 1 天 |
 | **测试修复** | ⚠️ 28 测试文件，2 个 import 错误 | 1 天 |

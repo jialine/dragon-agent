@@ -503,6 +503,8 @@ class TestWebhookAdapterRouting:
 
         class TrackingAdapter:
             platform_name = "feishu"
+            def register_handler(self, handler):
+                self._handler = handler
             async def verify_webhook(self, headers, body):
                 called.append("feishu-verify")
                 return True
@@ -522,6 +524,8 @@ class TestWebhookAdapterRouting:
         calls = []
 
         class FeishuTracker:
+            def register_handler(self, handler):
+                pass
             platform_name = "feishu"
             async def verify_webhook(self, headers, body):
                 calls.append("feishu")
@@ -530,6 +534,8 @@ class TestWebhookAdapterRouting:
                 return None
 
         class TelegramTracker:
+            def register_handler(self, handler):
+                pass
             platform_name = "telegram"
             async def verify_webhook(self, headers, body):
                 calls.append("telegram")
@@ -587,6 +593,8 @@ class TestMessageProcessingPipeline:
 
         class ProcessingAdapter:
             platform_name = "feishu"
+            def register_handler(self, handler):
+                pass  # test mock
             async def verify_webhook(self, headers, body):
                 return True
             async def parse_webhook(self, body):
@@ -618,6 +626,8 @@ class TestMessageProcessingPipeline:
 
         class TelegramAdapter:
             platform_name = "telegram"
+            def register_handler(self, handler):
+                pass
             async def verify_webhook(self, headers, body):
                 return True
             async def parse_webhook(self, body):
@@ -649,6 +659,8 @@ class TestAdapterErrorHandling:
         server = GatewayServer()
 
         class ThrowingAdapter:
+            def register_handler(self, handler):
+                pass
             platform_name = "feishu"
             async def verify_webhook(self, headers, body):
                 raise RuntimeError("verification crashed")
@@ -670,6 +682,8 @@ class TestAdapterErrorHandling:
         server = GatewayServer()
 
         class ParseThrowingAdapter:
+            def register_handler(self, handler):
+                pass
             platform_name = "feishu"
             async def verify_webhook(self, headers, body):
                 return True

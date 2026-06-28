@@ -337,6 +337,55 @@ from dragon.monitoring import router as monitoring_router
 app.include_router(monitoring_router)
 
 
+# ── Per-IP Rate Limiter Middleware ──────────────────────────────
+# Uses the existing dragon.rate_limiter TokenBucket for per-IP tracking.
+# Limits: 60 requests per minute per IP on the main chat endpoints.
+
+from collections import defaultdict
+from dragon.rate_limiter import TokenBucket
+import threading
+
+_ip_buckets: dict = {}
+_ip_buckets_lock = threading.Lock()
+_RATE_LIMIT_RPM = 60  # requests per minute per IP
+_RATE_LIMITED_PATHS = {"/v1/chat", "/v1/chat/honest"}
+
+def _get_ip_bucket(client_ip: str) -> TokenBucket:
+    with _ip_buckets_lock:
+        if client_ip not in _ip_buckets:
+            _ip_buckets[client_ip] = TokenBucket(
+                capacity=_RATE_LIMIT_RPM,
+                refill_rate=_RATE_LIMIT_RPM / 60.0,
+            )
+        return _ip_buckets[client_ip]
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi import Request
+
+class IPRateLimitMiddleware(BaseHTTPMiddleware):
+    """Per-IP token-bucket rate limiter for selected endpoints."""
+
+    async def dispatch(self, request: Request, call_next):
+        # Only rate-limit specific paths
+        if request.url.path in _RATE_LIMITED_PATHS:
+            client_ip = request.client.host if request.client else "unknown"
+            bucket = _get_ip_bucket(client_ip)
+            if not bucket.consume():
+                from fastapi.responses import JSONResponse
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "error": "rate_limit_exceeded",
+                        "message": f"Too many requests. Limit: {_RATE_LIMIT_RPM}/min per IP.",
+                        "retry_after_seconds": 1,
+                    },
+                )
+        response = await call_next(request)
+        return response
+
+app.add_middleware(IPRateLimitMiddleware)
+
+
 # ── Request/Response Models ──────────────────────────────
 
 class Message(BaseModel):

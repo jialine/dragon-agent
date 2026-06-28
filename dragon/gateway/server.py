@@ -33,6 +33,7 @@ from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from dragon.gateway.base import PlatformAdapter, PlatformMessage, PlatformReply
+from dragon.workflow_store import WorkflowStore
 from dragon.monitoring import (
     record_request,
     record_latency,
@@ -87,6 +88,7 @@ class MessageProcessor:
         self._progress_callback: Optional[Callable] = None
         self._alert_callback: Optional[Callable] = None  # CRITICAL push
         self._edit_callback: Optional[Callable] = None   # Edit past messages
+        self.workflow_store: Optional[WorkflowStore] = None  # Task state tracking
 
         if compression_config:
             from dragon.compression import ContextCompressor
@@ -260,6 +262,17 @@ class MessageProcessor:
         chat_id = getattr(message, 'chat_id', '')
         self._processing[chat_id] = True
 
+        # 0.5 Auto-create workflow run for state tracking
+        wf_id = ""
+        if self.workflow_store:
+            wf_name = message.content[:40].replace("\n", " ")
+            wf_id = self.workflow_store.start_workflow(wf_name, {
+                "chat_id": chat_id,
+                "platform": getattr(message, 'platform', ''),
+                "user_id": getattr(message, 'user_id', ''),
+            })
+            logger.debug("Workflow started: %s", wf_id)
+
         # 1. Session lookup
         session = None
         if self.session_store:
@@ -424,6 +437,18 @@ class MessageProcessor:
                         # Record tool call metric
                         record_tool_call(tool_name=tc["name"])
 
+                        # Log to workflow store
+                        if self.workflow_store and wf_id:
+                            try:
+                                self.workflow_store.log_step(
+                                    task_node_id=wf_id,
+                                    step_name=f"tool_{tc['name']}",
+                                    action="execute",
+                                    output=output[:500],
+                                )
+                            except Exception:
+                                pass
+
                         tool_outputs.append({
                             "tool": tc["name"],
                             "output": output[:2000],
@@ -475,6 +500,18 @@ class MessageProcessor:
                 logger.error("Queued msg failed: %s", exc)
         self._message_queues[chat_id] = []
         self._processing[chat_id] = False
+
+        # Update workflow store
+        if self.workflow_store and wf_id:
+            try:
+                status = "done" if reply_text and "error" not in reply_text.lower()[:50] else "failed"
+                self.workflow_store.update_workflow(
+                    wf_id,
+                    status=status,
+                    summary=f"工具调用{tool_call_count}次, 回复{len(reply_text)}字",
+                )
+            except Exception:
+                pass
 
         # 6. Save to session
         if self.session_store and session:
@@ -580,6 +617,13 @@ class GatewayServer:
         )
         self._skill_engine = skill_engine
         self.system_prompt = system_prompt or self._build_system_prompt()
+
+        # Initialize workflow store for state persistence
+        try:
+            self.workflow_store = WorkflowStore()
+            self.processor.workflow_store = self.workflow_store
+        except Exception:
+            self.workflow_store = None
 
         # Inject available tools into system prompt
         if self.processor.tool_registry:
@@ -715,6 +759,11 @@ class GatewayServer:
             return await self.processor.process(message, self.system_prompt)
 
         adapter.register_handler(_handler)
+
+        # Wire shared VoiceEngine to adapter for voice mode
+        if hasattr(adapter, 'set_voice_engine') and self.processor.voice_engine:
+            adapter.set_voice_engine(self.processor.voice_engine)
+
         logger.info(
             "Registered platform: %s (handler wired)", adapter.platform_name
         )

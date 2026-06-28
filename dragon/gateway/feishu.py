@@ -144,6 +144,7 @@ class FeishuAdapter(PlatformAdapter):
 
         # Voice mode
         self.voice_enabled: bool = False
+        self._voice_engine: Any = None  # shared VoiceEngine from processor
 
         # Processing status reactions (Hermes-aligned)
         self._reactions_enabled: bool = True
@@ -153,6 +154,10 @@ class FeishuAdapter(PlatformAdapter):
             "Feishu adapter ready (domain=%s, mode=%s)",
             domain, self.connection_mode,
         )
+
+    def set_voice_engine(self, engine: Any) -> None:
+        """Wire the shared VoiceEngine from the processor."""
+        self._voice_engine = engine
 
     # ── Connection Lifecycle ──────────────────────────────────────
 
@@ -502,7 +507,25 @@ class FeishuAdapter(PlatformAdapter):
 
                 success = True
                 try:
-                    reply = await self._message_handler(message)
+                    # When voice is enabled, process with output_mode="voice"
+                    # so the response is ready for audio delivery
+                    if self.voice_enabled:
+                        handler = self._message_handler
+                        # Extract GatewayServer from closure to access processor/system_prompt
+                        gw_server = None
+                        if hasattr(handler, "__closure__") and handler.__closure__:
+                            for cell in handler.__closure__:
+                                if hasattr(cell.cell_contents, "processor") and hasattr(cell.cell_contents, "system_prompt"):
+                                    gw_server = cell.cell_contents
+                                    break
+                        if gw_server:
+                            reply = await gw_server.processor.process(
+                                message, gw_server.system_prompt, output_mode="voice"
+                            )
+                        else:
+                            reply = await self._message_handler(message)
+                    else:
+                        reply = await self._message_handler(message)
                     await self.send_message(reply)
                 except Exception:
                     success = False
@@ -545,12 +568,14 @@ class FeishuAdapter(PlatformAdapter):
         import os as _os
         
         try:
-            from dragon.voice_engine import VoiceEngine
-            
             # Truncate long text for voice (max ~500 chars for reasonable audio length)
             voice_text = text[:500] if len(text) > 500 else text
             
-            engine = VoiceEngine(voice="zh-CN-XiaoxiaoNeural")
+            # Use shared VoiceEngine from processor if available, else create one
+            engine = self._voice_engine
+            if engine is None:
+                from dragon.voice_engine import VoiceEngine
+                engine = VoiceEngine(voice="zh-CN-XiaoxiaoNeural")
             await engine.start()
             engine.consume(voice_text)
             await engine.flush()
