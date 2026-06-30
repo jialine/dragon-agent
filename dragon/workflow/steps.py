@@ -421,3 +421,50 @@ class StepExecutor:
             lambda m: _resolve(m.group(1)),
             template,
         )
+
+
+# ════════════════════════════════════════════════════════════════════
+# Compatibility wrappers for engine.py (standalone function API)
+# ════════════════════════════════════════════════════════════════════
+
+def render_template(template: str, context: Dict[str, Any]) -> str:
+    """Render a Jinja2-style template string using context vars."""
+    return StepExecutor._render_template(template, context)
+
+
+def evaluate_expression(expr: str, context: Dict[str, Any]) -> bool:
+    """Evaluate a simple boolean expression (truthy check)."""
+    val = render_template(expr, context)
+    if not val:
+        return False
+    return val.lower() not in ("false", "0", "no", "none", "")
+
+
+async def execute_llm_call(step, context: Dict[str, Any]) -> str:
+    """Execute an LLM step via StepExecutor."""
+    executor = StepExecutor()
+    return await executor._execute_llm(step, context)
+
+
+async def execute_tool_call(step, context: Dict[str, Any]) -> Any:
+    """Execute a tool step via StepExecutor."""
+    executor = StepExecutor()
+    return await executor._execute_tool(step, context)
+
+
+async def execute_conditional(step, context: Dict[str, Any]) -> Any:
+    """Execute a conditional step (stub — delegates to LLM)."""
+    executor = StepExecutor()
+    return await executor._execute_llm(step, context)
+
+
+async def execute_loop(step, context: Dict[str, Any]) -> Any:
+    """Execute a loop step (stub — delegates to LLM)."""
+    executor = StepExecutor()
+    return await executor._execute_llm(step, context)
+
+
+async def execute_sub_workflow(step, context: Dict[str, Any]) -> Any:
+    """Execute a sub-workflow step (stub — delegates to LLM)."""
+    executor = StepExecutor()
+    return await executor._execute_llm(step, context)
