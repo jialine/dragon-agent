@@ -283,7 +283,7 @@ class WorkflowEngine:
 
         except Exception as exc:
             elapsed = (time.perf_counter() - t0) * 1000
-            on_error = step.config.get("on_error", "fail")
+            on_error = step.config.get("on_error") or step.config.get("on_failure", "fail")
             if on_error == "skip":
                 logger.warning("Step '%s' error (skip): %s", step.id, exc)
                 return StepResult(

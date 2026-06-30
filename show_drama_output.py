@@ -1,6 +1,6 @@
-"""Test drama workflow end-to-end with real dispatcher"""
+"""Run drama workflow and print full LLM outputs"""
 import asyncio
-import sys, os, logging
+import sys, os, json, logging
 
 sys.path.insert(0, os.path.dirname(__file__))
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
@@ -16,13 +16,9 @@ async def main():
     ga = config.dispatch.global_api
     for industry, ic in config.dispatch.industries.items():
         dispatcher.register(industry, profile=ProviderProfile(
-            name=industry,
-            provider="sangyuye",
-            model=ga.model,
-            api_key_env=ga.api_key_env,
-            base_url=ga.base_url,
-            system_prompt=ic.system_prompt,
-            timeout=ga.timeout_secs,
+            name=industry, provider="sangyuye", model=ga.model,
+            api_key_env=ga.api_key_env, base_url=ga.base_url,
+            system_prompt=ic.system_prompt, timeout=ga.timeout_secs,
             max_retries=ga.max_retries,
         ))
     
@@ -40,16 +36,19 @@ async def main():
         "_dispatcher": dispatcher,
     }
     
-    print("=" * 60)
-    print("Running drama workflow...")
-    print("=" * 60)
-    
     result = await engine.run(wf, test_input)
-    print(f"\n{'='*60}")
-    print(f"Result: {len(result.steps)} steps, success={result.success}")
+    
+    # Print full output for each LLM step
     for s in result.steps:
-        status = "✅" if s.success else "❌"
-        output_str = str(s.output)[:120] if s.output else "None"
-        print(f"  {status} {s.step_id} ({s.step_type.value}): {output_str}")
+        if s.step_type.value in ("llm_call",) and s.output:
+            print(f"\n{'='*60}")
+            print(f"STEP: {s.step_id}")
+            print(f"{'='*60}")
+            print(s.output)
+    
+    # Print tool call results
+    for s in result.steps:
+        if s.step_type.value in ("tool_call",) and s.output:
+            print(f"\nTOOL: {s.step_id} → {s.output}")
 
 asyncio.run(main())

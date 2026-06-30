@@ -118,6 +118,9 @@ class StepExecutor:
         elif step.config.get("tool"):
             tool_names = [step.config["tool"]]
 
+        logger.warning("Tool step '%s': tool_names=%s, config_keys=%s",
+                       step.id, tool_names, list(step.config.keys())[:8])
+
         if not tool_names:
             logger.warning("Tool step '%s': no tools selected", step.id)
             return None
@@ -143,6 +146,7 @@ class StepExecutor:
 
     async def _call_tool(self, tool_name: str, query: str) -> Any:
         """Call a Dragon tool by name."""
+        logger.warning("_call_tool: tool=%s, query[:200]=%s", tool_name, str(query)[:200])
         if tool_name == "web_search":
             try:
                 from dragon.web_search import web_search
@@ -334,15 +338,15 @@ class StepExecutor:
         """执行技能调用"""
         # Determine which skill(s) to call
         skill_names: list[str] = []
-        if step.skills_from:
+        if step.config.get("skills_from"):
             plan = context.get("plan", {})
-            skills = plan.get(step.skills_from, [])
+            skills = plan.get(step.config["skills_from"], [])
             if isinstance(skills, list):
                 skill_names = skills
             elif isinstance(skills, str):
                 skill_names = [skills]
-        elif step.skill:
-            skill_names = [step.skill]
+        elif step.config.get("skill"):
+            skill_names = [step.config["skill"]]
 
         if not skill_names:
             logger.warning("Skill step '%s': no skills selected", step.id)
@@ -350,7 +354,7 @@ class StepExecutor:
 
         # Build skill context
         skill_context = {}
-        for key, template in step.context.items():
+        for key, template in step.config.get("context", {}).items():
             skill_context[key] = self._render_template(template, context)
 
         results = {}
@@ -385,7 +389,7 @@ class StepExecutor:
         self, step: StepDefinition, context: Dict[str, Any]
     ) -> str:
         """执行纯文本变换"""
-        return self._render_template(step.template, context)
+        return self._render_template(step.config.get("template", ""), context)
 
     # ------------------------------------------------------------------
     # Helpers
