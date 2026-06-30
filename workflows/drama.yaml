@@ -214,7 +214,7 @@ steps:
   - id: ai_generate_images
     name: AI场景图生成
     condition: "plan.need_visual == true"
-    type: tool
+    type: tool_call
     tool: comfyui_generate
     input: |-
       {"prompt": "{visual_brief}", "steps": 20, "width": 512, "height": 768}
@@ -224,7 +224,7 @@ steps:
   - id: ai_generate_voice
     name: AI配音
     condition: "plan.need_visual == true"
-    type: tool
+    type: tool_call
     tool: edge_tts
     input: |-
       {"text": "{script_writing}", "voice": "zh-CN-XiaoxiaoNeural"}

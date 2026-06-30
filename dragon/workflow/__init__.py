@@ -50,6 +50,28 @@ class StepType(str, Enum):
     CONDITIONAL = "conditional"
     LOOP = "loop"
     SUB_WORKFLOW = "sub_workflow"
+    # Legacy aliases for backward compatibility
+    LLM = "llm"
+    TOOL = "tool"
+    PLAN = "plan"
+    SKILL = "skill"
+
+
+# Mapping from legacy type strings to canonical StepType
+_LEGACY_TYPE_MAP: Dict[str, StepType] = {
+    "llm": StepType.LLM_CALL,
+    "tool": StepType.TOOL_CALL,
+    "plan": StepType.LLM_CALL,
+    "skill": StepType.LLM_CALL,
+    "tool_call": StepType.TOOL_CALL,
+}
+
+
+def _parse_step_type(raw_type: str) -> StepType:
+    """Parse step type string, handling legacy names."""
+    if raw_type in _LEGACY_TYPE_MAP:
+        return _LEGACY_TYPE_MAP[raw_type]
+    return StepType(raw_type)
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -81,7 +103,7 @@ class WorkflowDefinition:
         for s in raw.get("steps", []):
             steps.append(StepDefinition(
                 id=s["id"],
-                type=StepType(s.get("type", "llm_call")),
+                type=_parse_step_type(s.get("type", "llm_call")),
                 config=s.get("config", {}),
             ))
 
@@ -98,7 +120,7 @@ class WorkflowDefinition:
         for s in data.get("steps", []):
             steps.append(StepDefinition(
                 id=s["id"],
-                type=StepType(s.get("type", "llm_call")),
+                type=_parse_step_type(s.get("type", "llm_call")),
                 config=s.get("config", {}),
             ))
         return cls(
