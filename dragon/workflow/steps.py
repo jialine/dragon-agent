@@ -80,7 +80,7 @@ class StepExecutor:
         self, step: StepDefinition, context: Dict[str, Any]
     ) -> str:
         """执行 LLM 推理步骤"""
-        prompt = self._render_template(step.prompt, context)
+        prompt = self._render_template(step.config.get("prompt", ""), context)
 
         logger.debug("LLM step '%s': prompt=%s", step.id, prompt[:200])
 
@@ -107,26 +107,26 @@ class StepExecutor:
         """执行内置工具调用"""
         # Determine which tool(s) to call
         tool_names: list[str] = []
-        if step.tools_from:
+        if step.config.get("tools_from"):
             # Dynamic: read from plan output
             plan = context.get("plan", {})
-            tools = plan.get(step.tools_from, [])
+            tools = plan.get(step.config["tools_from"], [])
             if isinstance(tools, list):
                 tool_names = tools
             elif isinstance(tools, str):
                 tool_names = [tools]
-        elif step.tool:
-            tool_names = [step.tool]
+        elif step.config.get("tool"):
+            tool_names = [step.config["tool"]]
 
         if not tool_names:
             logger.warning("Tool step '%s': no tools selected", step.id)
             return None
 
         # Resolve input
-        if step.input_from:
-            query = str(context.get(step.input_from, ""))
-        elif step.input:
-            query = self._render_template(step.input, context)
+        if step.config.get("input_from"):
+            query = str(context.get(step.config["input_from"], ""))
+        elif step.config.get("input"):
+            query = self._render_template(step.config["input"], context)
         else:
             query = str(context.get("_query", ""))
 

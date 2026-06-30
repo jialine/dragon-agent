@@ -101,10 +101,20 @@ class WorkflowDefinition:
 
         steps = []
         for s in raw.get("steps", []):
+            # Merge all YAML fields into config (id/type are reserved)
+            config = dict(s)
+            config.pop("id", None)
+            config.pop("type", None)
+            # Merge explicit config block if present
+            explicit_config = s.get("config", {})
+            if isinstance(explicit_config, dict):
+                config.update(explicit_config)
+            config.pop("config", None)
+            
             steps.append(StepDefinition(
                 id=s["id"],
                 type=_parse_step_type(s.get("type", "llm_call")),
-                config=s.get("config", {}),
+                config=config,
             ))
 
         return cls(
@@ -118,10 +128,18 @@ class WorkflowDefinition:
         """从字典构建工作流定义（用于内嵌子工作流）"""
         steps = []
         for s in data.get("steps", []):
+            config = dict(s)
+            config.pop("id", None)
+            config.pop("type", None)
+            explicit_config = s.get("config", {})
+            if isinstance(explicit_config, dict):
+                config.update(explicit_config)
+            config.pop("config", None)
+            
             steps.append(StepDefinition(
                 id=s["id"],
                 type=_parse_step_type(s.get("type", "llm_call")),
-                config=s.get("config", {}),
+                config=config,
             ))
         return cls(
             name=data.get("name", "inline"),

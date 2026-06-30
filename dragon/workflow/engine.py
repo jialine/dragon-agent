@@ -250,8 +250,8 @@ class WorkflowEngine:
         """执行单个步骤"""
         t0 = time.perf_counter()
 
-        # Check skip condition
-        skip_if = step.config.get("skip_if", "")
+        # Check skip condition (supports both "condition" and "skip_if" keys)
+        skip_if = step.config.get("condition", "") or step.config.get("skip_if", "")
         if skip_if:
             cond = render_template(skip_if, context)
             if cond and evaluate_expression(cond, context):
