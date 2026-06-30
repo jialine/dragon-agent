@@ -216,8 +216,7 @@ steps:
     condition: "plan.need_visual == true"
     type: tool_call
     tool: comfyui_generate
-    input: |-
-      {"prompt": "{visual_brief}", "steps": 20, "width": 512, "height": 768}
+    input: '{"prompt": "cinematic night scene, rain, neon lights, dramatic lighting, 8k", "steps": 20, "width": 512, "height": 768}'
     on_failure: skip
 
   # 步骤 9：AI配音（通过 Edge TTS）
@@ -226,8 +225,7 @@ steps:
     condition: "plan.need_visual == true"
     type: tool_call
     tool: edge_tts
-    input: |-
-      {"text": "{script_writing}", "voice": "zh-CN-XiaoxiaoNeural"}
+    input: '{"text": "深夜的便利店，灯光昏黄。一个失眠的程序员推门走进来。", "voice": "zh-CN-XiaoxiaoNeural", "output": "/tmp/drama_voice_output.mp3"}'
     on_failure: skip
 
   # 步骤 10：视频合成

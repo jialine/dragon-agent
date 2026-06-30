@@ -176,10 +176,10 @@ class StepExecutor:
 
         comfyui_host = "http://192.168.0.30:8188"
 
-        # Parse query as JSON: {"workflow": "...", "prompt": "...", "negative": "..."}
+        # Parse query — handle both JSON and plain text
         try:
             params = _json.loads(query) if isinstance(query, str) and query.startswith("{") else {"prompt": query}
-        except _json.JSONDecodeError:
+        except (_json.JSONDecodeError, Exception):
             params = {"prompt": query}
 
         prompt_text = params.get("prompt", query)
@@ -191,7 +191,7 @@ class StepExecutor:
             "3": {
                 "class_type": "KSampler",
                 "inputs": {
-                    "seed": params.get("seed", -1),
+                    "seed": params.get("seed", 42),
                     "steps": params.get("steps", 20),
                     "cfg": params.get("cfg", 7.5),
                     "sampler_name": "euler",
@@ -237,7 +237,8 @@ class StepExecutor:
                 json={"prompt": workflow, "client_id": client_id}
             ) as resp:
                 if resp.status != 200:
-                    return f"[ComfyUI error: HTTP {resp.status}]"
+                    body = await resp.text()
+                    return f"[ComfyUI error: HTTP {resp.status}, body={body[:500]}]"
                 result = await resp.json()
                 prompt_id = result.get("prompt_id")
 
@@ -276,8 +277,9 @@ class StepExecutor:
         output_file = params.get("output", os.path.join(tempfile.gettempdir(), f"tts_output.mp3"))
 
         try:
+            import sys
             result = _sp.run(
-                ["edge-tts", "--text", text, "--voice", voice, "--write-media", output_file],
+                [sys.executable, "-m", "edge_tts", "--text", text, "--voice", voice, "--write-media", output_file],
                 capture_output=True, text=True, timeout=30
             )
             if result.returncode == 0:
