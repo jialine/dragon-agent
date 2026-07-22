@@ -1,0 +1,379 @@
+# workflows/drama_production.yaml — 短剧完整制作工作流
+# Phase 1: 剧本创作 → Phase 2: 资产制作 → Phase 3: 分镜拍摄 → Phase 4: 后期合成 → Phase 5: 终审交付
+
+name: 短剧完整制作
+industry: entertainment
+version: "2.0"
+timeout_secs: 7200
+
+# ═══════════════════════════════════════════════════════
+# 工作区目录规范
+# ═══════════════════════════════════════════════════════
+# {workspace}/
+# ├── 00_meta.yaml              ← 项目元信息
+# ├── 01_outline/               ← 故事大纲 + 世界观
+# ├── 02_story/                 ← 完整故事
+# ├── 03_review/                ← 审阅记录
+# ├── 04_script/                ← 分集剧本
+# ├── 05_assets/
+# │   ├── characters/           ← 角色设计图（正面/侧面/背面）
+# │   ├── scenes/               ← 场景画面
+# │   └── props/                ← 道具清单
+# ├── 06_storyboard/            ← 分镜表 + 每镜头提示词
+# ├── 07_shots/                 ← 生成的分镜头视频 + 种子记录
+# ├── 08_audio/                 ← 对话语音 + 音效
+# ├── 09_composite/             ← 合成素材
+# └── 10_final/                 ← 最终成品
+
+plan:
+  prompt: |
+    你是一个短剧制作策划人。分析用户需求，制定方案。
+
+    用户需求：{query}
+
+    输出 JSON（只输出 JSON）：
+    {{
+      "title": "剧名",
+      "genre": "类型（甜宠/悬疑/搞笑/职场/家庭/古装/科幻/青春）",
+      "style": "风格（轻松/紧张/温馨/暗黑/喜剧）",
+      "target_audience": "目标观众",
+      "episode_count": 集数（用户指定则用指定的）,
+      "duration_per_episode_secs": 每集秒数,
+      "total_duration_est": "预估总时长",
+      "key_conflict": "核心冲突一句话",
+      "tone_notes": "语调/节奏备注",
+      "aspect_ratio": "横屏16:9 或 竖屏9:16",
+      "workspace_dir": "工作区根目录绝对路径"
+    }}
+
+steps:
+  # ─── 初始化工作区 ────────────────────────────────────
+  - id: init_workspace
+    name: 初始化工作区
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        mkdir -p {plan.workspace_dir}/{{01_outline,02_story,03_review,04_script,05_assets/characters,05_assets/scenes,05_assets/props,06_storyboard,07_shots,08_audio,09_composite,10_final}}
+        && echo "done"
+    on_failure: abort
+
+  # ═════════════════════════════════════════════════════
+  # Phase 1: 剧本创作
+  # ═════════════════════════════════════════════════════
+
+  # 1.1 故事大纲 + 世界观
+  - id: outline_worldbuilding
+    name: 故事大纲与世界观
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_phase1_outline.py
+        --workspace "{plan.workspace_dir}"
+        --genre "{plan.genre}"
+        --style "{plan.style}"
+        --conflict "{plan.key_conflict}"
+        --tone "{plan.tone_notes}"
+        --output "{plan.workspace_dir}/01_outline/outline.md"
+    on_failure: abort
+
+  # 1.2 扩展完整故事
+  - id: expand_story
+    name: 扩展完整故事
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_phase1_story.py
+        --outline "{plan.workspace_dir}/01_outline/outline.md"
+        --episodes {plan.episode_count}
+        --output "{plan.workspace_dir}/02_story/full_story.md"
+    on_failure: abort
+
+  # 1.3 三模型审阅故事 → 修正 → 再审阅（循环）
+  - id: story_review_loop
+    name: 故事审阅循环
+    type: sub_workflow
+    config:
+      workflow: drama_review_loop
+      input:
+        content_path: "{plan.workspace_dir}/02_story/full_story.md"
+        review_dir: "{plan.workspace_dir}/03_review/story"
+        reviewer_count: 3
+        max_rounds: 3
+        reviewer_roles:
+          - "剧情逻辑审查：检查因果关系、时间线、人物行为合理性"
+          - "人物一致性审查：检查角色性格、动机是否前后矛盾"
+          - "市场吸引力审查：从观众角度判断冲突张力、节奏、钩子"
+
+  # 1.4 分集编剧
+  - id: episode_writing
+    name: 分集编剧
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_phase1_episodes.py
+        --story "{plan.workspace_dir}/02_story/full_story.md"
+        --episodes {plan.episode_count}
+        --duration {plan.duration_per_episode_secs}
+        --output "{plan.workspace_dir}/04_script/"
+    on_failure: abort
+
+  # 1.5 剧本审阅循环
+  - id: script_review_loop
+    name: 剧本审阅循环
+    type: sub_workflow
+    config:
+      workflow: drama_review_loop
+      input:
+        content_path: "{plan.workspace_dir}/04_script/"
+        review_dir: "{plan.workspace_dir}/03_review/script"
+        reviewer_count: 3
+        max_rounds: 3
+        reviewer_roles:
+          - "台词审查：对话是否自然、符合角色、无废话"
+          - "节奏审查：每集起承转合、信息密度、观众留存"
+          - "拍摄可行性审查：场景、道具、特效是否可实现"
+
+  # 1.6 剧本PDF → 飞书
+  - id: script_to_feishu
+    name: 剧本PDF发飞书
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_export_pdf.py
+        --scripts "{plan.workspace_dir}/04_script/"
+        --outline "{plan.workspace_dir}/01_outline/outline.md"
+        --output "{plan.workspace_dir}/10_final/剧本_{plan.title}.pdf"
+        && python3 scripts/drama_send_feishu.py
+        --file "{plan.workspace_dir}/10_final/剧本_{plan.title}.pdf"
+        --message "📝 《{plan.title}》剧本已完成，请审阅"
+    on_failure: skip
+
+  # ═════════════════════════════════════════════════════
+  # Phase 2: 资产制作（并行）
+  # ═════════════════════════════════════════════════════
+
+  # 2.1 提取资源清单
+  - id: extract_asset_list
+    name: 提取资源清单
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_phase2_extract.py
+        --scripts "{plan.workspace_dir}/04_script/"
+        --output "{plan.workspace_dir}/05_assets/asset_manifest.yaml"
+    on_failure: abort
+
+  # 2.2 角色设计（并行）
+  - id: character_design
+    name: 角色设计
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_phase2_characters.py
+        --manifest "{plan.workspace_dir}/05_assets/asset_manifest.yaml"
+        --output "{plan.workspace_dir}/05_assets/characters/"
+        --views "portrait,front_full,side_full,back_full"
+    on_failure: abort
+
+  # 2.3 角色多模态审核
+  - id: character_review
+    name: 角色多模态审核
+    type: sub_workflow
+    config:
+      workflow: drama_multimodal_review
+      input:
+        asset_dir: "{plan.workspace_dir}/05_assets/characters/"
+        manifest: "{plan.workspace_dir}/05_assets/asset_manifest.yaml"
+
+  # 2.4 场景画面（并行跑，与角色不冲突）
+  - id: scene_design
+    name: 场景画面设计
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_phase2_scenes.py
+        --manifest "{plan.workspace_dir}/05_assets/asset_manifest.yaml"
+        --output "{plan.workspace_dir}/05_assets/scenes/"
+        --scripts "{plan.workspace_dir}/04_script/"
+    on_failure: abort
+
+  # 2.5 场景多模态审核
+  - id: scene_review
+    name: 场景多模态审核
+    type: sub_workflow
+    config:
+      workflow: drama_multimodal_review
+      input:
+        asset_dir: "{plan.workspace_dir}/05_assets/scenes/"
+        manifest: "{plan.workspace_dir}/05_assets/asset_manifest.yaml"
+
+  # ═════════════════════════════════════════════════════
+  # Phase 3: 分镜 + 拍摄
+  # ═════════════════════════════════════════════════════
+
+  # 3.1 生成分镜表
+  - id: storyboard_generation
+    name: 生成分镜表
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_phase3_storyboard.py
+        --scripts "{plan.workspace_dir}/04_script/"
+        --assets "{plan.workspace_dir}/05_assets/"
+        --episodes {plan.episode_count}
+        --aspect "{plan.aspect_ratio}"
+        --output "{plan.workspace_dir}/06_storyboard/storyboard.yaml"
+    on_failure: abort
+
+  # 3.2 上传参考图到 SignOSS
+  - id: signoss_upload_assets
+    name: 上传参考图到OSS
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_signoss_upload.py
+        --assets "{plan.workspace_dir}/05_assets/"
+        --manifest "{plan.workspace_dir}/06_storyboard/storyboard.yaml"
+        --output "{plan.workspace_dir}/06_storyboard/storyboard_oss.yaml"
+    on_failure: abort
+
+  # 3.3 逐镜头生成（含模型选型、种子管理、配音同步）
+  - id: shot_generation
+    name: 分镜头生成
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_phase3_shoot.py
+        --storyboard "{plan.workspace_dir}/06_storyboard/storyboard_oss.yaml"
+        --output "{plan.workspace_dir}/07_shots/"
+        --audio "{plan.workspace_dir}/08_audio/"
+        --aspect "{plan.aspect_ratio}"
+    on_failure: abort
+
+  # 3.4 分镜多模态审核 → 不合格重生成
+  - id: shot_review_loop
+    name: 分镜审核循环
+    type: sub_workflow
+    config:
+      workflow: drama_multimodal_review
+      input:
+        asset_dir: "{plan.workspace_dir}/07_shots/"
+        manifest: "{plan.workspace_dir}/06_storyboard/storyboard.yaml"
+        retry_failed: true
+        max_retries: 2
+
+  # ═════════════════════════════════════════════════════
+  # Phase 4: 后期合成
+  # ═════════════════════════════════════════════════════
+
+  # 4.1 片头制作
+  - id: intro_title
+    name: 片头与集数
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_phase4_intro.py
+        --title "{plan.title}"
+        --episodes {plan.episode_count}
+        --aspect "{plan.aspect_ratio}"
+        --output "{plan.workspace_dir}/09_composite/intros/"
+    on_failure: abort
+
+  # 4.2 BGM匹配
+  - id: bgm_matching
+    name: BGM匹配
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_phase4_bgm.py
+        --storyboard "{plan.workspace_dir}/06_storyboard/storyboard.yaml"
+        --scripts "{plan.workspace_dir}/04_script/"
+        --output "{plan.workspace_dir}/09_composite/bgm/"
+    on_failure: skip
+
+  # 4.3 字幕生成（时间轴对齐）
+  - id: subtitle_generation
+    name: 字幕生成
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_phase4_subtitles.py
+        --scripts "{plan.workspace_dir}/04_script/"
+        --audio "{plan.workspace_dir}/08_audio/"
+        --storyboard "{plan.workspace_dir}/06_storyboard/storyboard.yaml"
+        --output "{plan.workspace_dir}/09_composite/subtitles/"
+    on_failure: skip
+
+  # 4.4 最终合成
+  - id: final_composite
+    name: 最终合成
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_phase4_composite.py
+        --shots "{plan.workspace_dir}/07_shots/"
+        --intros "{plan.workspace_dir}/09_composite/intros/"
+        --bgm "{plan.workspace_dir}/09_composite/bgm/"
+        --subtitles "{plan.workspace_dir}/09_composite/subtitles/"
+        --storyboard "{plan.workspace_dir}/06_storyboard/storyboard.yaml"
+        --aspect "{plan.aspect_ratio}"
+        --output "{plan.workspace_dir}/10_final/{plan.title}_ep{{ep}}.mp4"
+    on_failure: abort
+
+  # ═════════════════════════════════════════════════════
+  # Phase 5: 终审交付
+  # ═════════════════════════════════════════════════════
+
+  # 5.1 多模态终审
+  - id: final_review
+    name: 多模态终审
+    type: sub_workflow
+    config:
+      workflow: drama_final_review
+      input:
+        final_dir: "{plan.workspace_dir}/10_final/"
+        storyboard: "{plan.workspace_dir}/06_storyboard/storyboard.yaml"
+        review_checks:
+          - "画面连贯性：镜头切换是否流畅"
+          - "音画同步：对话与口型、音效与画面是否对齐"
+          - "字幕准确性：字幕与语音是否一致"
+          - "整体观感：节奏、色调、情绪是否统一"
+
+  # 5.2 发送飞书
+  - id: deliver_to_feishu
+    name: 飞书交付
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_send_feishu.py
+        --dir "{plan.workspace_dir}/10_final/"
+        --message "🎬 《{plan.title}》制作完成！
+
+        📂 工作区：{plan.workspace_dir}
+        📊 共 {plan.episode_count} 集，每集 {plan.duration_per_episode_secs} 秒
+        🎨 类型：{plan.genre} | {plan.style}
+
+        Phase 1 ✅ 剧本 + 三模审阅
+        Phase 2 ✅ 角色 + 场景资产
+        Phase 3 ✅ 分镜拍摄（R2V/I2V/T2V+种子管理）
+        Phase 4 ✅ 片头/BGM/字幕/合成
+        Phase 5 ✅ 终审通过
+
+        请人工终审确认 👆"
+    on_failure: abort
