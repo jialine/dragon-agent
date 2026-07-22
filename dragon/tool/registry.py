@@ -335,12 +335,18 @@ class ToolRegistry:
     def get_openai_schemas(self, tool_names: Optional[List[str]] = None) -> List[Dict]:
         """Get OpenAI function-calling schemas for all or specified tools."""
         tools = []
+        seen_names = set()
         for name, tool in self._tools.items():
             if tool_names and name not in tool_names:
                 continue
             if not self._check_requirements(tool):
                 continue
-            tools.append(tool.to_openai_schema())
+            schema = tool.to_openai_schema()
+            fname = schema.get("function", {}).get("name", "")
+            if fname in seen_names:
+                continue  # Skip aliases (same ToolDef, different registry key)
+            seen_names.add(fname)
+            tools.append(schema)
         return tools
 
     # ── Execution ──────────────────────────────────────────────────

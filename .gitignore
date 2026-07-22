@@ -57,3 +57,4 @@ config.yaml
 
 # Drama director (user script, has API paths)
 drama_director.py
+*.bak

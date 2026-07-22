@@ -9,6 +9,7 @@ FastAPI entry point with:
 
 import time
 import logging
+import os
 import json
 import asyncio
 import base64
@@ -215,37 +216,28 @@ async def _start_gateway(cfg) -> bool:
 
     pr = _GwProviderRegistry()
 
-    # Simple in-memory session store (for gateway)
-    class _MemSessionStore:
-        def __init__(self):
-            self._sessions: Dict[str, Any] = {}
-
-        def get(self, session_id: str):
-            return self._sessions.get(session_id)
-
-        def create(self, title: str = "", platform: str = ""):
-            from types import SimpleNamespace
-            sid = f"sess_{len(self._sessions) + 1:06d}"
-            sess = SimpleNamespace(id=sid, messages=[])
-            self._sessions[sid] = sess
-            return sess
-
-        def get_messages(self, session_id: str, limit: int = 50):
-            sess = self._sessions.get(session_id)
-            if sess:
-                return sess.messages[-limit:]
-            return []
-
-        def add_message(self, session_id: str, role: str, content: str):
-            from types import SimpleNamespace
-            sess = self._sessions.get(session_id)
-            if sess:
-                sess.messages.append(SimpleNamespace(role=role, content=content))
-
+    # Use persistent SQLite session store (survives restarts)
+    from dragon.session import SessionStore
     from dragon.gateway.pairing import PairingStore
 
-    ss = _MemSessionStore()
+    ss = SessionStore(db_path=os.path.join(work_dir, "dragon_data", "sessions.db"))
     pairing = PairingStore()
+
+    # Enable context compression for long conversations
+    from dragon.gateway.compression import CompressionConfig
+    compression_cfg = CompressionConfig(
+        context_window=128000,
+        threshold_ratio=0.75,
+        target_ratio=0.50,
+    )
+
+    # Start config hot-reload watcher
+    try:
+        from dragon.config_reload import start_global_watcher
+        start_global_watcher()
+        logger.info("Config hot-reload watcher started")
+    except Exception:
+        pass
 
     gateway_server = GatewayServer(
         provider_registry=pr,
@@ -254,6 +246,7 @@ async def _start_gateway(cfg) -> bool:
         skill_engine=skill_engine,
         pairing_store=pairing,
         system_prompt=gw.system_prompt or "",
+        compression_config=compression_cfg,
     )
 
     # Platform adapter mapping
@@ -412,6 +405,14 @@ async def lifespan(app: FastAPI):
             messages=[{"role": "user", "content": f"Execute skill: {skill.name}\\n\\nContext: {json.dumps(ctx)}\\n\\nInstructions:\\n{skill.content}"}],
         )
     ) if dispatcher else None
+
+    # Cronjob Scheduler — start in background
+    try:
+        from dragon.tool.builtins.cronjob import get_scheduler
+        get_scheduler()
+        logger.info("Cronjob scheduler started (dragon_data/cron.db)")
+    except Exception as _ce:
+        logger.warning("Cronjob scheduler failed: %s", _ce)
 
     # Gateway (Feishu / WeChat / Telegram / Discord)
     await _start_gateway(config)

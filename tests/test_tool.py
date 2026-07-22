@@ -253,8 +253,10 @@ class TestToolDef:
             },
         )
         schema = td.to_openai_schema()
-        assert schema["name"] == "test"
-        assert "parameters" in schema
+        assert schema["type"] == "function"
+        inner = schema["function"]
+        assert inner["name"] == "test"
+        assert "parameters" in inner
 
     def test_auto_inferred_schema(self):
         td = ToolDef(
@@ -263,8 +265,9 @@ class TestToolDef:
             handler=_echo,
         )
         schema = td.to_openai_schema()
-        assert "parameters" in schema
-        props = schema["parameters"]["properties"]
+        params = schema["function"]["parameters"]
+        assert "properties" in params
+        props = params["properties"]
         assert isinstance(props, dict)
 
 
@@ -325,8 +328,8 @@ class TestComplexSchemas:
             },
         )
         schema = td.to_openai_schema()
-        assert schema["name"] == "complex"
-        params = schema["parameters"]
+        params = schema["function"]["parameters"]
+        assert schema["function"]["name"] == "complex"
         assert params["type"] == "object"
         assert "config" in params["properties"]
         assert params["properties"]["config"]["type"] == "object"
@@ -357,7 +360,7 @@ class TestComplexSchemas:
             },
         )
         schema = td.to_openai_schema()
-        items_schema = schema["parameters"]["properties"]["items"]
+        items_schema = schema["function"]["parameters"]["properties"]["items"]
         assert items_schema["type"] == "array"
         assert items_schema["items"]["type"] == "object"
 
@@ -726,3 +729,105 @@ class TestRegistrationEdgeCases:
         assert self.registry.unregister("to-remove") is True
         assert self.registry.get("to-remove") is None
         assert len(self.registry.list_tools()) == 0
+
+
+# ── Deduplication: get_openai_schemas with Hermes aliases ────────────
+
+class TestGetOpenaiSchemasDedup:
+    """get_openai_schemas() must not produce duplicate function names
+    when Hermes aliases share the same ToolDef object (different dict keys)."""
+
+    @staticmethod
+    async def _echo(**kwargs) -> str:
+        import json
+        return json.dumps(kwargs)
+
+    def setup_method(self):
+        self.registry = ToolRegistry()
+        # Register originals
+        self.registry.register(name="file_read", description="Read a file", category="file")(self._echo)
+        self.registry.register(name="file_write", description="Write a file", category="file")(self._echo)
+        self.registry.register(name="search", description="Search files", category="file")(self._echo)
+        self.registry.register(name="tts", description="Text to speech", category="media")(self._echo)
+
+        # Add Hermes aliases (same pattern as builtins/__init__.py)
+        self.registry._tools["read_file"] = self.registry._tools["file_read"]
+        self.registry._tools["read_file"].name = "read_file"
+        self.registry._tools["read_file"].description = "Read a text file (Hermes alias)"
+
+        self.registry._tools["write_file"] = self.registry._tools["file_write"]
+        self.registry._tools["write_file"].name = "write_file"
+        self.registry._tools["write_file"].description = "Write content to a file (Hermes alias)"
+
+        self.registry._tools["search_files"] = self.registry._tools["search"]
+        self.registry._tools["search_files"].name = "search_files"
+        self.registry._tools["search_files"].description = "Search file contents (Hermes alias)"
+
+        self.registry._tools["text_to_speech"] = self.registry._tools["tts"]
+        self.registry._tools["text_to_speech"].name = "text_to_speech"
+        self.registry._tools["text_to_speech"].description = "Convert text to speech (Hermes alias)"
+
+    def test_no_duplicate_function_names(self):
+        """8 registry keys (4 originals + 4 aliases) → 4 unique schemas."""
+        assert len(self.registry._tools) == 8
+        schemas = self.registry.get_openai_schemas()
+        names = [s["function"]["name"] for s in schemas]
+        from collections import Counter
+        dupes = {k: v for k, v in Counter(names).items() if v > 1}
+        assert len(dupes) == 0, f"Duplicate function names: {dupes}"
+        assert len(schemas) == len(set(names))
+
+    def test_alias_names_in_output(self):
+        """Schemas must use Hermes-aligned alias names, not original names."""
+        schemas = self.registry.get_openai_schemas()
+        names = [s["function"]["name"] for s in schemas]
+        assert "read_file" in names
+        assert "write_file" in names
+        assert "search_files" in names
+        assert "text_to_speech" in names
+        # Originals must NOT appear (aliases mutated the shared object)
+        assert "file_read" not in names
+        assert "file_write" not in names
+        assert "search" not in names
+        assert "tts" not in names
+
+    def test_dedup_with_tool_names_filter(self):
+        """Dedup works when tool_names filter is specified."""
+        schemas = self.registry.get_openai_schemas(
+            tool_names=["read_file", "write_file", "search_files"]
+        )
+        names = [s["function"]["name"] for s in schemas]
+        assert len(names) == len(set(names))
+        assert set(names) == {"read_file", "write_file", "search_files"}
+
+    def test_no_alias_registry_unaffected(self):
+        """Registries without aliases must still work (no regression)."""
+        reg = ToolRegistry()
+        reg.register(name="a", description="A", category="test")(self._echo)
+        reg.register(name="b", description="B", category="test")(self._echo)
+        schemas = reg.get_openai_schemas()
+        names = [s["function"]["name"] for s in schemas]
+        assert len(schemas) == 2
+        assert set(names) == {"a", "b"}
+
+    def test_builtins_registry_no_duplicates(self):
+        """Integration: real builtins registry must have zero dupes."""
+        from dragon.tool.builtins import register_builtins
+        reg = ToolRegistry()
+        register_builtins(reg)
+        schemas = reg.get_openai_schemas()
+        names = [s["function"]["name"] for s in schemas]
+        from collections import Counter
+        dupes = {k: v for k, v in Counter(names).items() if v > 1}
+        assert len(dupes) == 0, (
+            f"Builtins has {len(dupes)} duplicates: {dupes}"
+        )
+
+    def test_builtins_alias_names_present(self):
+        """Hermes-aligned names must appear in builtins schemas."""
+        from dragon.tool.builtins import register_builtins
+        reg = ToolRegistry()
+        register_builtins(reg)
+        names = set(s["function"]["name"] for s in reg.get_openai_schemas())
+        for alias in ("read_file", "write_file", "search_files", "text_to_speech", "feishu_doc_read"):
+            assert alias in names, f"Alias '{alias}' missing from builtins"

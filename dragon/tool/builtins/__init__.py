@@ -64,6 +64,15 @@ from dragon.tool.builtins.analysis import (
 )
 from dragon.tool.registry import ToolRegistry
 from dragon.tool.builtins.workflows import set_workflow_store
+from dragon.tool.builtins.cronjob import tool_cronjob
+from dragon.tool.builtins.send_message import tool_send_message
+from dragon.tool.builtins.process import tool_process
+from dragon.tool.builtins.feishu_comments import (
+    tool_feishu_drive_add_comment,
+    tool_feishu_drive_list_comments,
+    tool_feishu_drive_reply_comment,
+    tool_feishu_drive_list_comment_replies,
+)
 from dragon.tool.builtins.kanban import (
     tool_kanban_create_board,
     tool_kanban_add_task,
@@ -1441,4 +1450,101 @@ def register_builtins(registry: ToolRegistry) -> None:
         timeout_secs=15,
     )(tool_session_search)
 
-    logger.info("Registered %d built-in tools", len(registry._tools))
+    # ── Hermes-aligned tool aliases ──────────────────────────────────
+    # Register with Hermes names so LLM trained on Hermes conventions works
+    if "file_read" in registry._tools:
+        # read_file → file_read
+        registry._tools["read_file"] = registry._tools["file_read"]
+        registry._tools["read_file"].name = "read_file"
+        registry._tools["read_file"].description = (
+            "Read a text file with line numbers and pagination. "
+            "Use offset and limit for large files. Hermes-aligned."
+        )
+    if "file_write" in registry._tools:
+        # write_file → file_write
+        registry._tools["write_file"] = registry._tools["file_write"]
+        registry._tools["write_file"].name = "write_file"
+        registry._tools["write_file"].description = (
+            "Write content to a file, creating parent directories. "
+            "Always overwrites the entire file. Hermes-aligned."
+        )
+    if "search" in registry._tools:
+        # search_files → search
+        registry._tools["search_files"] = registry._tools["search"]
+        registry._tools["search_files"].name = "search_files"
+        registry._tools["search_files"].description = (
+            "Search file contents or find files by name. "
+            "Use pattern with target='content' or target='files'. Hermes-aligned."
+        )
+    if "vision_analyze" in registry._tools:
+        pass  # placeholder
+    if "tts" in registry._tools:
+        registry._tools["text_to_speech"] = registry._tools["tts"]
+        registry._tools["text_to_speech"].name = "text_to_speech"
+        registry._tools["text_to_speech"].description = "Convert text to speech audio. Hermes-aligned: text_to_speech(text, output_path)."
+    if "feishu_read_doc" in registry._tools:
+        registry._tools["feishu_doc_read"] = registry._tools["feishu_read_doc"]
+        registry._tools["feishu_doc_read"].name = "feishu_doc_read"
+        registry._tools["feishu_doc_read"].description = "Read the full content of a Feishu/Lark document. Hermes-aligned: feishu_doc_read(doc_token)."
+
+    # ── Send Message ────────────────────────────────────────────
+    registry.register(
+        name="send_message",
+        description="Send a message to a connected messaging platform, or list available targets. Hermes-aligned: send_message(action='send'|'list', target, message, file_path).",
+        tags=["messaging", "feishu", "send"],
+        category="interaction",
+        timeout_secs=30,
+    )(tool_send_message)
+
+    # ── Process Management ───────────────────────────────────────
+    registry.register(
+        name="process",
+        description="Manage background processes. Hermes-aligned: process(action, session_id, command). Actions: list, start, poll, log, wait, kill, write, submit, close.",
+        tags=["process", "background", "terminal"],
+        category="terminal",
+        timeout_secs=300,
+    )(tool_process)
+
+    # ── Feishu Drive Comments ────────────────────────────────────
+    registry.register(
+        name="feishu_drive_add_comment",
+        description="Add a whole-document comment on a Feishu document. Hermes-aligned: feishu_drive_add_comment(file_token, content).",
+        tags=["feishu", "document", "comment"],
+        category="productivity",
+        timeout_secs=15,
+    )(tool_feishu_drive_add_comment)
+
+    registry.register(
+        name="feishu_drive_list_comments",
+        description="List comments on a Feishu document. Hermes-aligned: feishu_drive_list_comments(file_token, is_whole=False).",
+        tags=["feishu", "document", "comment"],
+        category="productivity",
+        timeout_secs=15,
+    )(tool_feishu_drive_list_comments)
+
+    registry.register(
+        name="feishu_drive_reply_comment",
+        description="Reply to a comment thread on a Feishu document. Hermes-aligned: feishu_drive_reply_comment(file_token, comment_id, content).",
+        tags=["feishu", "document", "comment"],
+        category="productivity",
+        timeout_secs=15,
+    )(tool_feishu_drive_reply_comment)
+
+    registry.register(
+        name="feishu_drive_list_comment_replies",
+        description="List all replies in a comment thread on a Feishu document. Hermes-aligned.",
+        tags=["feishu", "document", "comment"],
+        category="productivity",
+        timeout_secs=15,
+    )(tool_feishu_drive_list_comment_replies)
+
+    # ── Cronjob ─────────────────────────────────────────────────
+    registry.register(
+        name="cronjob",
+        description="Manage scheduled cron jobs. Hermes-aligned: cronjob(action, name, schedule, prompt, job_id). Actions: create, list, pause, resume, remove, run, stats.",
+        tags=["cron", "schedule", "automation"],
+        category="automation",
+        timeout_secs=15,
+    )(tool_cronjob)
+
+    logger.info("Registered %d built-in tools (with Hermes aliases)", len(registry._tools))

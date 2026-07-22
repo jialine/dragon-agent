@@ -42,7 +42,6 @@ dependencies = [
     "PyJWT>=2.0",
     "requests>=2.31",
     "psutil>=6.0",
-    "llama-cpp-python>=0.3.8",
 ]
 
 [project.optional-dependencies]

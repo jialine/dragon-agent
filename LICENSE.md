@@ -1,63 +1,81 @@
-# Dragon Agent 开源许可协议 v1.0
+# Dragon Agent Community License v1.0
 
-Copyright (c) 2025-2026 Dragon Agent 作者
+© 2026 Dragon Agent Authors <9690746@qq.com>
 
 ## 授权范围
 
-本协议授予任何人免费获取、使用、复制、修改、合并、发布、分发本软件及其
-文档（以下简称"本软件"）的权利，但须满足以下全部条件：
-
-## 限制条款
-
-### 1. 禁止商用
-
-未经作者明确的书面授权，**禁止将本软件整体或部分用于任何商业目的**。
-"商业目的"包括但不限于：
-
-- 将本软件作为付费产品或服务的一部分进行销售、许可或出租；
-- 将本软件部署后向第三方收取使用费、订阅费或服务费；
-- 将本软件嵌入商业产品中并从中获取直接经济收益；
-- 利用本软件提供商业化的 AI Agent 托管、API 代理或 SaaS 服务。
-
-个人学习、研究、教育、非营利组织内部使用不视为商业目的。
-
-### 2. 禁止篡改官方 API 域名
-
-**禁止以任何方式修改、替换、劫持或重定向本软件中预设的官方 API 端点域名**，
-包括但不限于：
-
-- 修改配置文件中 `base_url` 等字段为作者未授权的第三方地址；
-- 通过反向代理、DNS 劫持、hosts 篡改等手段重定向 API 流量；
-- 分发预配置了非官方 API 地址的修改版本。
-
-此条款旨在防止本软件被用于搭建仿冒平台、流量劫持或未经授权的 API 代理服务。
-作者保留对官方 API 域名列表的最终解释权。
-
-### 3. 署名要求
-
-所有分发、再发布或修改版本必须：
-
-- 保留原始版权声明和本许可协议全文；
-- 在显著位置标注原始项目名称和出处。
-
-## 免责声明
-
-本软件按"原样"提供，不提供任何明示或暗示的保证。在任何情况下，作者均不
-对因使用本软件而产生的任何损害承担责任。
-
-## 附则
-
-- 本协议未尽事宜，适用中华人民共和国相关法律法规。
-- 作者保留随时更新本协议的权利，新版本发布后旧版本自动失效。
-- 如需商业授权，请联系作者获取单独的商用许可。
+以源码形式提供本软件（下称"本软件"），任何获取本软件副本的主体（下称"您"）
+均受以下条款约束。使用、复制、修改或分发本软件即表示您接受本许可。
 
 ---
 
-**官方 API 域名列表（示例）：**
+## 1. 非商业使用
 
-| 用途 | 官方域名 |
-|------|---------|
-| LLM API | `api.andlapi.cn` |
-| 对象存储 | `signoss.sangyuye.com` |
+您可以出于**非商业目的**使用、复制、修改和分发本软件及其衍生作品。
 
-*此列表由作者维护，以软件中预置的默认值为准。*
+以下行为**明确禁止**（无论是否收费）：
+- 将本软件或其衍生作品作为 SaaS 服务向第三方提供；
+- 将本软件嵌入任何商业产品或服务中；
+- 利用本软件提供商业咨询、技术支持或其他营利性服务；
+- 任何直接或间接以盈利为目的的使用行为。
+
+**个人学习、研究、教育、公益项目**属于允许的非商业用途。
+
+## 2. API 端点保护
+
+您**不得**修改、替换、移除或绕过本软件中的默认 API 基础 URL 配置
+（包括但不限于 `base_url`、`API_BASE`、`api_base` 等参数）。
+本软件必须连接至原始指定的 API 服务端点。
+
+此条款旨在保护上游 API 服务的完整性。
+**唯一例外**：经上游 API 服务方书面授权的主机地址变更。
+
+## 3. 署名要求
+
+- 所有分发（源码或二进制形式）必须保留本许可证全文及版权声明。
+- 修改版本必须在显著位置声明"基于 Dragon Agent 修改"。
+- 不得使用 Dragon Agent 或作者名义为衍生作品背书。
+
+## 4. 商业授权
+
+商业使用需另行签署书面许可协议。
+商业授权咨询：**9690746@qq.com**
+
+## 5. 免责声明
+
+本软件按"原样"提供，不提供任何形式的明示或默示保证，包括但不限于
+适销性、特定用途适用性和非侵权性的保证。在任何情况下，作者或版权
+持有人均不对因使用本软件而产生的任何索赔、损害或其他责任负责。
+
+---
+
+*本许可证受中华人民共和国法律管辖。*
+
+---
+
+## Dragon Agent Community License v1.0 (English)
+
+Copyright © 2026 Dragon Agent Authors <9690746@qq.com>
+
+### Permitted Use
+Non-commercial use, reproduction, modification, and distribution is permitted.
+
+### Prohibited
+1. **Commercial use** in any form, including but not limited to SaaS, embedding
+   in commercial products, or profit-generating activities.
+2. **API endpoint modification** — you may NOT change, replace, or bypass the
+   default API base URL configuration. The software must connect to the
+   original API service as configured.
+
+### Attribution
+All distributions must retain this license and copyright notice.
+
+### Commercial Licensing
+Separate written agreement required. Contact: **9690746@qq.com**
+
+### Disclaimer
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+
+---
+
+*This license shall be governed by the laws of the People's Republic of China.*

@@ -107,7 +107,73 @@ gateway:
       app_secret: "xxxxxxxx"
 ```
 
-## 许可证
+## 测试
+
+Dragon Agent 拥有完整的单元测试覆盖，176+ 测试用例，覆盖 20 个核心模块。
+
+### 运行测试
+
+```bash
+# 安装测试依赖
+pip install -r requirements-dev.txt
+
+# 运行全部测试（纯函数，无需 API key）
+python3 -m pytest tests/ -v
+
+# 运行特定模块
+python3 -m pytest tests/test_tool.py tests/test_rate_limiter.py -v
+
+# 带覆盖率报告
+python3 -m pytest tests/ --cov=dragon --cov-report=term-missing
+```
+
+### 测试覆盖
+
+| 测试文件 | 覆盖模块 | 用例数 |
+|---------|---------|--------|
+| `test_tool.py` | ToolRegistry, ToolDef, CircuitBreaker, Pipeline, 去重 | 57 |
+| `test_rate_limiter.py` | TokenBucket, RateLimiter, CircuitBreaker, parse_retry_after | 23 |
+| `test_credential_pool.py` | Credential, CredentialPool, CredentialManager | 12 |
+| `test_prompt_builder.py` | MiniTemplate, PromptBuilder, CacheEntry | 10 |
+| `test_guardrails.py` | ToolGuardrails, GuardrailCheck, ToolCallSignature | 13 |
+| `test_think_scrubber.py` | strip_think_blocks, StreamingThinkScrubber | 11 |
+| `test_error_classifier.py` | classify_api_error, is_retryable, format_chinese_error | 9 |
+| `test_usage_pricing.py` | get_pricing, get_cost, list_models, format_cost | 10 |
+| `test_redact.py` | mask_secret, redact_sensitive_text, redact_for_logs | 8 |
+| `test_feishu_pure.py` | handle_url_verification, verify_hmac_signature | 5 |
+| `test_file_safety.py` | is_file_extension_safe, sanitize_filename, SafetyValidator | 8 |
+| `test_orch_classifier.py` | classify (orchestrator), Tier, Classification | 5 |
+| `test_factcheck.py` | ClaimExtractor, FactClaim, ClaimType | 5 |
+| `test_hallmetrics.py` | BenchmarkRunner, HallucinationReport | 5 |
+
+查看更多已有测试文件：`test_gateway.py`, `test_workflow.py`, `test_skill.py`, `test_session.py` 等。
+
+### 一键安装+测试脚本
+
+```bash
+# 在任何干净 Linux 上运行（需要 Python 3.11+）
+curl -fsSL https://your-server/install_and_test.sh | bash
+```
+
+脚本会自动：创建虚拟环境 → 安装依赖 → 运行全量测试。
+
+### 环境要求
+
+| 依赖 | 最低版本 | 说明 |
+|------|---------|------|
+| Python | 3.11+ | 单元测试不需要 3.12 特性 |
+| pip | 23+ | 虚拟环境自动管理 |
+| 磁盘 | 500MB | venv + 依赖 |
+| 网络 | 出站 | pip install 时需要 |
+| API Key | **不需要** | 纯函数测试全面 mock |
+
+### 测试哲学
+
+- **纯函数优先**：TokenBucket、MiniTemplate、mask_secret 等无 IO 模块完整覆盖
+- **边界测试**：空输入、超限、异常路径、并发安全
+- **集成验证**：真实 builtins registry 去重（98 工具→0 重复）
+- **回归保护**：每次 patch 后跑全量 `pytest tests/`
+
 
 见 [LICENSE.md](LICENSE.md)
 

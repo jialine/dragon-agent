@@ -32,6 +32,7 @@ Reference: https://open.feishu.cn/document/
 from __future__ import annotations
 
 import asyncio
+import os
 import hashlib
 import hmac
 import json
@@ -143,7 +144,7 @@ class FeishuAdapter(PlatformAdapter):
         self._sent_ids: List[str] = []  # keep up to 10 recent
 
         # Voice mode
-        self.voice_enabled: bool = False
+        self.voice_enabled: Dict[str, bool] = {}  # per-user voice toggle
         self._voice_engine: Any = None  # shared VoiceEngine from processor
 
         # Processing status reactions (Hermes-aligned)
@@ -250,27 +251,36 @@ class FeishuAdapter(PlatformAdapter):
             asyncio.set_event_loop(loop)
             ws_client_module.loop = loop
             self._ws_thread_loop = loop
+            retry_delay = 1
+            max_delay = 120
+            while self._running:
+                try:
+                    logger.info("[Feishu] WS client connecting...")
+                    self._ws_client.start()
+                except Exception as exc:
+                    logger.error("[Feishu] WS stopped, reconnecting in %ds: %s", retry_delay, exc)
+                if not self._running:
+                    break
+                import time as _time
+                _time.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, max_delay)
+            # Cleanup — only when _running is False (shutdown)
+            pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+            for task in pending:
+                task.cancel()
+            if pending:
+                loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
             try:
-                self._ws_client.start()
-            except Exception as exc:
-                logger.error("[Feishu] WS client stopped: %s", exc)
-            finally:
-                pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
-                for task in pending:
-                    task.cancel()
-                if pending:
-                    loop.run_until_complete(
-                        asyncio.gather(*pending, return_exceptions=True)
-                    )
-                try:
-                    loop.stop()
-                except Exception:
-                    pass
-                try:
-                    loop.close()
-                except Exception:
-                    pass
-                self._ws_thread_loop = None
+                loop.stop()
+            except Exception:
+                pass
+            try:
+                loop.close()
+            except Exception:
+                pass
+            self._ws_thread_loop = None
 
         self._ws_future = asyncio.get_running_loop().run_in_executor(
             None, _run_ws_in_thread
@@ -434,6 +444,23 @@ class FeishuAdapter(PlatformAdapter):
                         reply_to_message_id=message.message_id,
                     )
                     await self.send_message(reply)
+                    # For /new, create a fresh session
+                    if "/new" in message.content.lower() or "/reset" in message.content.lower() or "/clear" in message.content.lower():
+                        try:
+                            from dragon.session import Session
+                            import hashlib, time
+                            new_sid = hashlib.sha256(
+                                f"{message.platform}:{message.chat_id}:{time.time()}".encode()
+                            ).hexdigest()[:12]
+                            handler = self._message_handler
+                            processor = getattr(handler, '__self__', None)
+                            if processor and hasattr(processor, 'session_store') and processor.session_store:
+                                processor.session_store.create(new_sid)
+                                # Force new session for next message by storing hint
+                                if hasattr(processor, '_next_session_id'):
+                                    processor._next_session_id = new_sid
+                        except Exception:
+                            pass
                     return
 
                 # ── STEER / QUEUE LOGIC ────────────────────────────
@@ -530,7 +557,8 @@ class FeishuAdapter(PlatformAdapter):
                     # When voice is enabled, process with output_mode="voice"
                     # so the response is ready for audio delivery
                     open("/tmp/feishu_dispatch.log", "a").write(f"[{_dh.datetime.now()}] CALLING handler...\n")
-                    if self.voice_enabled:
+                    user_vid = getattr(message, 'user_id', '')
+                    if self.voice_enabled.get(user_vid, False) and self.voice_enabled.get('__global__', False):
                         handler = self._message_handler
                         # Extract GatewayServer from closure to access processor/system_prompt
                         gw_server = None
@@ -557,11 +585,20 @@ class FeishuAdapter(PlatformAdapter):
                     asyncio.create_task(self.on_processing_complete(msg_id, success))
                 
                 # If voice is enabled, synthesize and send audio
-                if self.voice_enabled and reply and reply.content:
+                if self.voice_enabled.get(getattr(message, 'user_id', ''), False) and reply and reply.content:
                     await self._send_voice_reply(message.chat_id, reply.content, reply.reply_to_message_id)
                     
             except Exception as exc:
                 logger.exception("[Feishu] Message handler error: %s", exc)
+                # Send error notification to user
+                try:
+                    await self.send_message(PlatformReply(
+                        platform="feishu",
+                        chat_id=getattr(message, "chat_id", ""),
+                        content=f"\u26a0\ufe0f 处理消息时出错: {str(exc)[:200]}",
+                    ))
+                except Exception:
+                    pass
         else:
             logger.warning(
                 "[Feishu] No message handler registered — "
@@ -572,14 +609,18 @@ class FeishuAdapter(PlatformAdapter):
     # ── Voice Commands ────────────────────────────────────────────
 
     def _check_voice_command(self, text: str) -> Optional[str]:
-        """Check if message is a voice mode command. Returns response text or None."""
+        """Check if message is a command. Returns response text or None."""
         text_lower = text.strip().lower()
+        # Session commands
+        if text_lower in ("/new", "/reset", "/clear", "/新会话", "/重置"):
+            return "🔄 会话已重置，下一轮对话将使用新上下文。"
+        # Voice commands
         if text_lower in ("/voice on", "/voice off", "/语音 on", "/语音 off", "/语音 开", "/语音 关"):
             if "off" in text_lower or "关" in text_lower:
-                self.voice_enabled = False
+                self.voice_enabled[user_id] = False
                 return "🔇 语音模式已关闭"
             else:
-                self.voice_enabled = True
+                self.voice_enabled[user_id] = True
                 return "🔊 语音模式已开启，回复将附带语音"
         return None
 
@@ -592,7 +633,7 @@ class FeishuAdapter(PlatformAdapter):
         
         try:
             # Truncate long text for voice (max ~500 chars for reasonable audio length)
-            voice_text = text[:500] if len(text) > 500 else text
+            voice_text = text[:4000] if len(text) > 500 else text
             
             # Use shared VoiceEngine from processor if available, else create one
             engine = self._voice_engine
@@ -651,9 +692,11 @@ class FeishuAdapter(PlatformAdapter):
             _log(f"has event: {hasattr(event, 'event')}")
             event_type = getattr(event, 'type', '') or getattr(getattr(event, 'header', None), 'event_type', '')
 
-            if 'message' not in event_type and 'card' not in event_type:
+            if 'message' not in event_type and 'card' not in event_type and 'edited' not in event_type:
                 _log(f'type check FAILED: {event_type}')
                 return None
+            # Detect edited messages and annotate
+            is_edited = 'edit' in event_type.lower()
 
             evt = getattr(event, 'event', None)
             if evt is None:
@@ -706,11 +749,15 @@ class FeishuAdapter(PlatformAdapter):
                 _log(f'text empty: content_raw={content_raw[:100]}')
                 return None
 
+            final_text = text.strip()
+            if is_edited:
+                final_text = "[用户编辑了消息]\n" + final_text
+
             return PlatformMessage(
                 platform="feishu",
                 chat_id=chat_id,
                 user_id=sender_id,
-                content=text.strip(),
+                content=final_text,
                 message_id=message_id,
                 raw={"event_type": event_type},
                 timestamp=time.time(),
@@ -769,6 +816,18 @@ class FeishuAdapter(PlatformAdapter):
         try:
             content_obj = json.loads(content_raw)
             text = content_obj.get("text", "")
+            # Handle image/file in webhook mode (parity with WS mode)
+            image_key = content_obj.get("image_key", "")
+            file_key = content_obj.get("file_key", "")
+            if image_key:
+                local_path = await self._download_image(image_key, message_id or "")
+                if local_path:
+                    text = (text + f"\n[图片已下载: {local_path}]") if text else f"[收到图片]\n[已下载: {local_path}]"
+            if file_key:
+                local_path = await self._download_file(file_key, message_id or "")
+                if local_path:
+                    text = (text + f"\n[文件已下载: {local_path}]") if text else f"[收到文件]\n[已下载: {local_path}]"
+                    self._track_file(chat_id, local_path)
         except (json.JSONDecodeError, TypeError):
             text = str(content_raw)
 
@@ -788,8 +847,41 @@ class FeishuAdapter(PlatformAdapter):
 
     # ── Send Message ──────────────────────────────────────────────
 
+    _FEISHU_MSG_MAX_LEN = 3800  # Safe limit for Feishu markdown content
+
+    async def _send_chunk(self, token: str, chat_id: str, text: str,
+                          msg_type: str = "text",
+                          reply_to_msg_id: str = "") -> str:
+        """Send a single message chunk. Returns message_id or empty."""
+        content_json = json.dumps({"text": text})
+        if reply_to_msg_id:
+            url = f"{self.api_base}/im/v1/messages/{reply_to_msg_id}/reply"
+            body = {"content": content_json, "msg_type": msg_type}
+        else:
+            url = f"{self.api_base}/im/v1/messages"
+            body = {
+                "receive_id": chat_id,
+                "content": content_json,
+                "msg_type": msg_type,
+                "receive_id_type": "chat_id",
+            }
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        import httpx
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(url, headers=headers, json=body)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("code") == 0:
+                    return data.get("data", {}).get("message_id", "")
+        return ""
+
     async def send_message(self, reply: PlatformReply) -> bool:
-        """Send a text message reply via Feishu HTTP API."""
+        """Send a text message reply via Feishu HTTP API.
+        Automatically splits long messages to stay under Feishu's limit.
+        """
         token = await self._get_tenant_access_token()
         if not token:
             logger.error("[Feishu] Failed to get tenant access token")
@@ -800,21 +892,106 @@ class FeishuAdapter(PlatformAdapter):
             logger.error("[Feishu] No chat_id in reply")
             return False
 
-        content = json.dumps({"text": reply.content})
+        # ── MEDIA: path support ──
+        content_text = reply.content or ""
+        msg_type = "text"
+        if "MEDIA:" in content_text:
+            import re as _re
+            m = _re.search(r"MEDIA:(/[\w\-_./]+)", content_text)
+            if m:
+                media_path = m.group(1)
+                clean_text = _re.sub(r"MEDIA:\S+", "", content_text).strip()
+                if os.path.exists(media_path):
+                    file_key = await self.upload_media(media_path)
+                    if file_key:
+                        ext = os.path.splitext(media_path)[1].lower()
+                        if ext in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
+                            content_text = json.dumps({"image_key": file_key})
+                            msg_type = "image"
+                        else:
+                            content_text = json.dumps({"file_key": file_key})
+                            msg_type = "file"
+                        logger.info("[Feishu] MEDIA sent: %s as %s", media_path, msg_type)
+                    else:
+                        logger.error("[Feishu] MEDIA upload failed: %s", media_path)
+                        content_text = json.dumps({"text": "[MEDIA upload failed] " + clean_text})
+                else:
+                    logger.error("[Feishu] MEDIA not found: %s", media_path)
+                    content_text = json.dumps({"text": "[File not found: " + media_path + "] " + clean_text})
+            else:
+                content_text = json.dumps({"text": content_text})
+        else:
+            content_text = json.dumps({"text": content_text})
+
+        # ── Check if content needs splitting ──
+        raw_text = reply.content or ""
+        needs_split = (
+            msg_type == "text" and len(raw_text) > self._FEISHU_MSG_MAX_LEN
+        )
+
+        if needs_split:
+            logger.info(
+                "[Feishu] send_message (split): chat=%s len=%d",
+                chat_id, len(raw_text)
+            )
+            # Split on paragraph boundaries, then line boundaries, then word
+            chunks = []
+            remaining = raw_text
+            while remaining:
+                if len(remaining) <= self._FEISHU_MSG_MAX_LEN:
+                    chunks.append(remaining)
+                    break
+                # Find a good split point
+                split_at = self._FEISHU_MSG_MAX_LEN
+                # Try to split at paragraph
+                para_break = remaining.rfind("\n\n", 0, split_at)
+                if para_break > self._FEISHU_MSG_MAX_LEN // 2:
+                    split_at = para_break + 2
+                else:
+                    line_break = remaining.rfind("\n", 0, split_at)
+                    if line_break > self._FEISHU_MSG_MAX_LEN // 2:
+                        split_at = line_break + 1
+                chunk = remaining[:split_at].strip()
+                if chunk:
+                    chunks.append(chunk)
+                remaining = remaining[split_at:].strip()
+
+            # Send all chunks
+            first_id = ""
+            for i, chunk in enumerate(chunks):
+                chunk_text = json.dumps({"text": chunk})
+                rid = "" if i == 0 else (first_id or reply.reply_to_message_id or "")
+                msg_id = await self._send_chunk(
+                    token, chat_id, chunk, msg_type="text", reply_to_msg_id=rid
+                )
+                if i == 0:
+                    first_id = msg_id
+                    if msg_id:
+                        self._last_reply_id = msg_id
+                        self._sent_ids.append(msg_id)
+                        if len(self._sent_ids) > 10:
+                            self._sent_ids.pop(0)
+                import asyncio
+                if i < len(chunks) - 1:
+                    await asyncio.sleep(0.3)  # Rate limit between chunks
+            logger.info("[Feishu] send_message split: %d chunks sent", len(chunks))
+            return bool(first_id)
+
+        # ── Single message (no split needed) ──
         logger.info(
-            "[Feishu] send_message: chat=%s reply_to=%s content_len=%d",
-            chat_id, reply.reply_to_message_id or "(none)", len(reply.content or "")
+            "[Feishu] send_message: chat=%s reply_to=%s type=%s len=%d",
+            chat_id, reply.reply_to_message_id or "(none)", msg_type, len(reply.content or "")
         )
 
         if reply.reply_to_message_id:
             url = f"{self.api_base}/im/v1/messages/{reply.reply_to_message_id}/reply"
-            body = {"content": content, "msg_type": "text"}
+            body = {"content": content_text, "msg_type": msg_type}
         else:
             url = f"{self.api_base}/im/v1/messages"
             body = {
                 "receive_id": chat_id,
-                "content": content,
-                "msg_type": "text",
+                "content": content_text,
+                "msg_type": msg_type,
                 "receive_id_type": "chat_id",
             }
 
@@ -823,25 +1000,35 @@ class FeishuAdapter(PlatformAdapter):
             "Content-Type": "application/json",
         }
 
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.post(url, headers=headers, json=body)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if data.get("code") == 0:
-                        msg_id = data.get("data", {}).get("message_id", "")
-                        if msg_id:
-                            self._last_reply_id = msg_id
-                            self._sent_ids.append(msg_id)
-                            if len(self._sent_ids) > 10:
-                                self._sent_ids.pop(0)
-                        logger.info("[Feishu] send_message OK: msg_id=%s", msg_id)
-                        return True
-                    logger.error("[Feishu] API error: code=%s msg=%s", data.get("code"), data.get("msg"))
-                else:
-                    logger.error("[Feishu] HTTP %d: %s", resp.status_code, resp.text[:200])
-        except Exception as e:
-            logger.exception("[Feishu] Failed to send message: %s", e)
+        # ── Retry with exponential backoff ──
+        import asyncio as _asyncio
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.post(url, headers=headers, json=body)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if data.get("code") == 0:
+                            msg_id = data.get("data", {}).get("message_id", "")
+                            if msg_id:
+                                self._last_reply_id = msg_id
+                                self._sent_ids.append(msg_id)
+                                if len(self._sent_ids) > 10:
+                                    self._sent_ids.pop(0)
+                            logger.info("[Feishu] send_message OK: msg_id=%s", msg_id)
+                            return True
+                        logger.error("[Feishu] API error: code=%s msg=%s", data.get("code"), data.get("msg"))
+                    elif resp.status_code == 429:
+                        retry_after = int(resp.headers.get("Retry-After", "5"))
+                        logger.warning("[Feishu] Rate limited (429), waiting %ds...", retry_after)
+                        await _asyncio.sleep(retry_after)
+                        continue
+                    else:
+                        logger.error("[Feishu] HTTP %d: %s", resp.status_code, resp.text[:200])
+            except Exception as e:
+                logger.exception("[Feishu] send_message attempt %d/3 failed: %s", attempt + 1, e)
+            if attempt < 2:
+                await _asyncio.sleep(2 ** attempt)
 
         return False
 

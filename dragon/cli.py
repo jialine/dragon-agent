@@ -414,6 +414,14 @@ def cmd_gateway(args):
         server.register_adapter(FeishuAdapter())
         print("  ✓ Feishu enabled (default)")
 
+    # Start cron scheduler in background
+    try:
+        from dragon.tool.builtins.cronjob import get_scheduler
+        get_scheduler()
+        print("  ✓ Cronjob scheduler started")
+    except Exception as _ce:
+        print(f"  ⚠ Cronjob scheduler failed: {_ce}")
+
     import uvicorn
     uvicorn.run(server.app, host=args.host, port=args.port, log_level="info")
 
