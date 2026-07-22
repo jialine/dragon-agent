@@ -240,6 +240,69 @@ class DuckDuckGoProvider(SearchProvider):
             self._client = None
 
 
+class BingSearchProvider(SearchProvider):
+    """Bing (cn.bing.com) HTML-scraping search provider. Works in China."""
+
+    def __init__(self) -> None:
+        self._client: httpx.AsyncClient | None = None
+
+    @property
+    def name(self) -> str:
+        return "bing"
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(15.0),
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    ),
+                },
+                follow_redirects=True,
+            )
+        return self._client
+
+    async def search(self, query: str, max_results: int = 10) -> List[WebSearchResult]:
+        client = await self._get_client()
+        resp = await client.get(
+            "https://cn.bing.com/search",
+            params={"q": query, "setlang": "zh-CN"},
+        )
+        results: List[WebSearchResult] = []
+        if resp.status_code == 200:
+            results = _parse_bing_html(resp.text, max_results)
+        return results
+
+    async def close(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+
+def _parse_bing_html(html: str, max_results: int) -> List[WebSearchResult]:
+    """Extract results from cn.bing.com search HTML."""
+    results: List[WebSearchResult] = []
+    blocks = re.findall(r'<li class="b_algo[^"]*">(.*?)</li>', html, re.DOTALL)
+    for block in blocks:
+        if len(results) >= max_results:
+            break
+        title_m = re.search(r'<h2[^>]*><a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', block, re.DOTALL)
+        if not title_m:
+            continue
+        url = html.unescape(title_m.group(1))
+        title = re.sub(r"<[^>]+>", "", title_m.group(2)).strip()
+        snippet = ""
+        snippet_m = re.search(r'<p[^>]*>(.*?)</p>', block, re.DOTALL)
+        if snippet_m:
+            snippet = re.sub(r"<[^>]+>", "", snippet_m.group(1)).strip()
+        if title and url:
+            results.append(WebSearchResult(title=title, url=url, snippet=snippet))
+    return results
+
+
+
 # ────────────────────────────────────────────────────────────────────
 # HTML parsers (kept as module-level functions so they can be reused)
 # ────────────────────────────────────────────────────────────────────
@@ -353,6 +416,7 @@ class WebSearchRouter:
         """Register all available providers based on environment."""
         # Always register DuckDuckGo (no credentials needed)
         self.providers["duckduckgo"] = DuckDuckGoProvider()
+        self.providers["bing"] = BingSearchProvider()
 
         # Register Brave if API key is set
         if os.getenv("BRAVE_API_KEY"):

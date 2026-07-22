@@ -98,6 +98,22 @@ class MessageProcessor:
         else:
             self.compressor = None
 
+    def _get_file_context(self, chat_id: str) -> str:
+        """Read recently downloaded files for this chat, injected into every message."""
+        import json as _json, os as _os
+        tracker = _os.path.join("dragon_data", "uploads", ".chat_files.json")
+        if not _os.path.exists(tracker):
+            return ""
+        try:
+            with open(tracker, "r") as f:
+                data = _json.load(f)
+            files = data.get(chat_id, [])
+            if files:
+                return "\n📁 本对话中下载的文件：\n" + "\n".join(f"- {f}" for f in files) + "\n"
+        except Exception:
+            pass
+        return ""
+
     # ── Steer / Queue / Progress helpers ──────────────────────
 
     def set_progress_callback(self, callback: Optional[Callable]) -> None:
@@ -202,7 +218,8 @@ class MessageProcessor:
                         out = str(tr.output) if tr.success else tr.error
                     except Exception as e:
                         out = f"Tool error: {e}"
-                    history.append({"role": "tool", "content": out[:1000], "name": tc["name"]})
+                    # Non-native FC: use "user" role for API compat
+                    history.append({"role": "user", "content": "[Tool: " + tc["name"] + "]\n" + out[:1000]})
         return None
 
 
@@ -228,11 +245,15 @@ class MessageProcessor:
         via VoiceEngine.stream() and attached as audio_chunks.
         """
         start = time.monotonic()
+        with open("/tmp/feishu_dispatch.log", "a") as _f:
+            _f.write(f"[{time.monotonic()}] PROCESS: ENTER user={getattr(message, 'user_id', '?')} chat={getattr(message, 'chat_id', '?')}\n")
 
         # Record request with industry/difficulty labels
         record_request(industry=industry, difficulty=difficulty)
 
         # 0. Pairing check --- gate unapproved users
+        with open("/tmp/feishu_dispatch.log", "a") as _f:
+            _f.write(f"[{time.monotonic()}] PROCESS: pairing_check pairing_store={'SET' if self.pairing_store else 'NONE'} user_id={message.user_id}\n")
         if self.pairing_store and message.user_id and message.user_id != "__system__":
             if not self.pairing_store.is_approved(
                 message.platform, message.user_id
@@ -285,6 +306,11 @@ class MessageProcessor:
                 record_session_created()
 
         # 2. Build message history
+        # Inject recently downloaded files as context
+        file_context = self._get_file_context(chat_id)
+        if file_context:
+            message.content = file_context + "\n\n" + message.content
+
         history = []
         if system_prompt:
             history.append({"role": "system", "content": system_prompt})
@@ -295,7 +321,7 @@ class MessageProcessor:
             )
             history.extend([
                 {"role": m.role, "content": m.content}
-                for m in past_msgs[-20:]  # last 20 messages
+                for m in past_msgs[-50:]  # last 50 messages
             ])
 
         history.append({"role": "user", "content": message.content})
@@ -321,6 +347,8 @@ class MessageProcessor:
                 logger.debug("Skill matching skipped: %s", e)
 
         # 5. Agent loop: call provider → parse tool calls → execute → repeat
+        with open("/tmp/feishu_dispatch.log", "a") as _f:
+            _f.write(f"[{time.monotonic()}] PROCESS: agent_loop_start history_len={len(history)}\n")
         reply_text = ""
         tool_call_count = 0
         steer_injected = 0
@@ -353,7 +381,9 @@ class MessageProcessor:
             progress_task = asyncio.create_task(_progress_reporter())
 
         try:
+            print(f"[PROC_DEBUG] entering for loop, max_iter={self.max_tool_iterations}", flush=True)
             for iteration in range(self.max_tool_iterations):
+                print(f"[PROC_DEBUG] iter={iteration}", flush=True)
                 # Steer check
                 steer_msg = self._pop_steer(chat_id)
                 if steer_msg:
@@ -361,18 +391,46 @@ class MessageProcessor:
                     history.append({"role": "user", "content": "[\u65b0\u6307\u4ee4] " + steer_msg})
 
                 try:
+                    print(f"[PROC_DEBUG] iter={iteration} provider_registry={'SET' if self.provider_registry else 'NONE'}", flush=True)
                     if self.provider_registry:
                         # Build tool schemas for the provider
                         tool_schemas = None
                         if self.tool_registry:
                             tool_schemas = self.tool_registry.get_openai_schemas()
+                            # No tool limit — send all available tools
 
-                        result = await self.provider_registry.call(
-                            provider_name="openai",
-                            messages=history,
-                            max_tokens=2048,
-                        )
+                        # DEBUG: log messages on error
+                        try:
+                            print(f"[PROC_DEBUG] calling provider with history_len={len(history)}", flush=True)
+                            result = await self.provider_registry.call(
+                                provider_name="openai",
+                                messages=history,
+                                max_tokens=2048,
+                                tools=tool_schemas if tool_schemas else None,  # ENABLED: native FC
+                            )
+                        except Exception as call_err:
+                            import json as _json
+                            err_msg = str(call_err)
+                            logger.error(f"Provider call error: {err_msg}")
+                            # Dump last 3 messages for debugging
+                            for i, m in enumerate(history[-3:]):
+                                logger.error(f"  msg[{i}]: role={m.get('role')}, content_len={len(str(m.get('content','')))} type={type(m.get('content')).__name__}")
+                            raise
                         response_text = result.content
+                        
+                        # DEBUG: log tool calls
+                        if hasattr(result, 'tool_calls') and result.tool_calls:
+                            tc_names = [tc.get('function',{}).get('name','?') for tc in result.tool_calls]
+                            print(f"[PROC_DEBUG] iter={iteration} tool_calls={tc_names}", flush=True)
+                            if self._progress_callback:
+                                try:
+                                    tool_str = ', '.join(tc_names[:3])
+                                    await self._progress_callback(chat_id,
+                                        f"iter {iteration+1}/{self.max_tool_iterations}: {tool_str}")
+                                except Exception:
+                                    pass
+                        else:
+                            print(f"[PROC_DEBUG] iter={iteration} text_response_len={len(response_text) if response_text else 0}", flush=True)
 
                         # ── CRITICAL/ALERT immediate push ──────────
                         if self._alert_callback:
@@ -411,8 +469,29 @@ class MessageProcessor:
                     reply_text = f"\u62b1\u6b49\uff0c\u5904\u7406\u60a8\u7684\u6d88\u606f\u65f6\u51fa\u9519: {e}"
                     break
 
-                # Parse tool calls from the response
-                tool_calls = self._parse_tool_calls(response_text)
+                # ── Parse tool calls (native FC → text fallback) ──
+                tool_calls = []
+                is_native_fc = False
+
+                if hasattr(result, 'tool_calls') and result.tool_calls:
+                    # Native function calling — parse from ProviderResult
+                    is_native_fc = True
+                    native_tcs = result.tool_calls[:5]  # Max 5 tool calls per turn
+                    for tc in native_tcs:
+                        func = tc.get("function", {})
+                        args_raw = func.get("arguments", "{}")
+                        try:
+                            args = json.loads(args_raw) if isinstance(args_raw, str) else args_raw
+                        except json.JSONDecodeError:
+                            args = {}
+                        tool_calls.append({
+                            "name": func.get("name", ""),
+                            "arguments": args,
+                            "id": tc.get("id", ""),
+                        })
+                else:
+                    # Legacy: text-based ```tool_call / <tool_call> parsing
+                    tool_calls = self._parse_tool_calls(response_text)
 
                 if not tool_calls:
                     # No tool calls — this is the final answer
@@ -421,7 +500,21 @@ class MessageProcessor:
 
                 # Execute tool calls
                 if self.tool_registry:
-                    history.append({"role": "assistant", "content": response_text})
+                    if is_native_fc:
+                        history.append({
+                            "role": "assistant",
+                            "content": response_text or None,
+                            "tool_calls": result.tool_calls,
+                        })
+                    else:
+                        # Clean tool call XML
+                        clean_response = re.sub(
+                            r'<(function_calls|tool_call)>(.*?)</\1>',
+                            '', response_text, flags=re.DOTALL
+                        ).strip()
+                        if not clean_response:
+                            clean_response = f"Calling tools: {', '.join(tc['name'] for tc in tool_calls)}"
+                        history.append({"role": "assistant", "content": clean_response})
 
                     tool_outputs = []
                     for tc in tool_calls:
@@ -433,6 +526,15 @@ class MessageProcessor:
                             output = str(tool_result.output) if tool_result.success else tool_result.error
                         except Exception as e:
                             output = f"Tool error: {e}"
+
+                        # Auto-detect tool errors and flag for LLM attention
+                        output_lower = output.lower()
+                        if '"error"' in output_lower or output_lower.startswith('{"error"'):
+                            output = "⚠️ TOOL ERROR - DO NOT claim success: " + output
+                        elif 'already exists' in output_lower:
+                            output = "⚠️ ALREADY EXISTS - Tell user, do NOT recreate: " + output
+                        elif 'not initialized' in output_lower:
+                            output = "⚠️ BACKEND NOT READY - Tell user: " + output
 
                         # Record tool call metric
                         record_tool_call(tool_name=tc["name"])
@@ -451,13 +553,20 @@ class MessageProcessor:
 
                         tool_outputs.append({
                             "tool": tc["name"],
-                            "output": output[:2000],
+                            "output": output[:500],
                         })
-                        history.append({
-                            "role": "tool",
-                            "content": output[:2000],
-                            "name": tc["name"],
-                        })
+                        if is_native_fc and tc.get("id"):
+                            history.append({
+                                "role": "tool",
+                                "tool_call_id": tc["id"],
+                                "content": output[:500],
+                            })
+                        else:
+                            # Non-native mode: use "user" role for API compat
+                            history.append({
+                                "role": "user",
+                                "content": f"[Tool result: {tc['name']}]\n{output[:500]}",
+                            })
 
                     # Check if we should continue
                     if iteration == self.max_tool_iterations - 1:
@@ -568,6 +677,53 @@ class MessageProcessor:
             except json.JSONDecodeError:
                 pass
 
+        # Format 3: <function_calls> (DeepSeek native format)
+        for match in re.finditer(
+            r'<function_calls>(.*?)</function_calls>', content, re.DOTALL
+        ):
+            block = match.group(1)
+            for invoke in re.finditer(
+                r'<invoke name="([^"]+)">(.*?)</invoke>', block, re.DOTALL
+            ):
+                name = invoke.group(1)
+                args_block = invoke.group(2)
+                args = {}
+                for param in re.finditer(
+                    r'<parameter name="([^"]+)">(.*?)</parameter>', args_block, re.DOTALL
+                ):
+                    pname = param.group(1)
+                    pval = param.group(2).strip()
+                    # Try to parse as JSON, otherwise use as string
+                    try:
+                        pval = json.loads(pval)
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+                    args[pname] = pval
+                calls.append({"name": name, "arguments": args})
+
+        # Format 4: Self-closing tags <tool_name key="val" />
+        # Example: <search_skills query="lottery analysis" />
+        for match in re.finditer(
+            r'<(\w+)\s+([^>]*?)\s*/>', content
+        ):
+            name = match.group(1)
+            # Skip known non-tool tags
+            if name.lower() in ('br', 'hr', 'img', 'input', 'meta', 'link'):
+                continue
+            attrs_str = match.group(2)
+            args = {}
+            for attr_match in re.finditer(
+                r'(\w+)="([^"]*)"', attrs_str
+            ):
+                key = attr_match.group(1)
+                val = attr_match.group(2)
+                try:
+                    val = json.loads(val)
+                except (json.JSONDecodeError, ValueError):
+                    pass
+                args[key] = val
+            calls.append({"name": name, "arguments": args})
+
         return calls
 
 
@@ -625,23 +781,9 @@ class GatewayServer:
         except Exception:
             self.workflow_store = None
 
-        # Inject available tools into system prompt
-        if self.processor.tool_registry:
-            try:
-                tools = self.processor.tool_registry.list_tools()
-                if tools:
-                    tool_lines = [
-                        "",
-                        "## Available Tools ({} total)".format(len(tools)),
-                        "",
-                    ]
-                    for t in tools:
-                        tool_lines.append("- **{}**: {}".format(t["name"], t["description"]))
-                    tool_lines.append("")
-                    tool_lines.append("Call tools using ```tool_call``` format. Multiple calls per turn OK.")
-                    self.system_prompt += "\n".join(tool_lines)
-            except Exception:
-                pass
+        # Tools are now injected via native function calling (OpenAI tools param).
+        # No need for text-based tool list in system prompt — reduces token usage.
+        pass
 
         # Register routes and lifecycle hooks
         self._register_routes()
@@ -649,37 +791,127 @@ class GatewayServer:
 
         logger.info("GatewayServer ready")
 
+
     def _build_system_prompt(self) -> str:
-        """Build the base system prompt with skill awareness instructions."""
+        """Build system prompt aligned with Hermes reasoning standards."""        # ── Auto-inject available skills catalog ──────────────────────────
+        skills_catalog = ""
+        try:
+            import json as _json
+            import os as _os
+            skills_dir = _os.path.join(
+                _os.path.dirname(_os.path.dirname(_os.path.dirname(__file__))),
+                "dragon_data", "skills"
+            )
+            if _os.path.isdir(skills_dir):
+                skill_entries = []
+                for fname in sorted(_os.listdir(skills_dir)):
+                    if not fname.endswith(".json"):
+                        continue
+                    fpath = _os.path.join(skills_dir, fname)
+                    try:
+                        with open(fpath, "r") as _f:
+                            data = _json.load(_f)
+                        meta = data.get("meta", {})
+                        name = meta.get("name", fname.replace(".json", ""))
+                        desc = meta.get("description", "")
+                        if name and desc:
+                            skill_entries.append((name, desc))
+                    except Exception:
+                        pass
+
+                if skill_entries:
+                    lines = [
+                        "",
+                        "## Skills (mandatory)",
+                        "",
+                        "Before replying, scan the skills below. If a skill matches or "
+                        "is even partially relevant to your task, you MUST load it "
+                        "with skill_view(name) and follow its instructions.",
+                        "",
+                        "Err on the side of loading — skills contain specialized "
+                        "knowledge that dramatically improves results.",
+                        "",
+                        "If a loaded skill has issues, fix it with "
+                        "skill_manage(action='patch', name=..., content=...).",
+                        "",
+                        "After completing difficult tasks (>=5 tool calls), "
+                        "offer to save the workflow as a new skill: "
+                        "skill_manage(action='create', name=..., content=..., description=...).",
+                        "",
+                        "<available_skills>",
+                    ]
+                    for name, desc in skill_entries:
+                        lines.append(f"  {name}: {desc}")
+                    lines.append("</available_skills>")
+                    skills_catalog = "\n".join(lines)
+        except Exception:
+            pass
+
+        # Build memory sections
+        memory_text = ""
+        user_text = ""
+        try:
+            from dragon.tool.builtins.memory import load_memory_for_prompt
+            mem = load_memory_for_prompt()
+            if mem.get("memory"):
+                memory_text = mem["memory"]
+            if mem.get("user"):
+                user_text = mem["user"]
+        except Exception:
+            pass
+
         prompts = [
-            "你是 Dragon Agent，一个能够自我进化的 AI 助手。",
+            "你是 Dragon Agent，一个能够自我进化的 AI 助手。工具 API 已与 Hermes Agent 对齐。",
             "",
-            "## 核心能力",
+            "## 核心原则",
             "",
-            "1. **技能驱动** — 面对任何任务，主动搜索并加载相关技能。",
-            "2. **自我进化** — 成功完成任务后，可以创建新技能供未来使用。",
-            "3. **工具使用** — 你可以调用多种工具完成任务，也支持子代理委托。",
+            "- **主动推理，不要等待指令。** 收到消息后立即判断步骤并开始执行。",
+            "- **每次响应要么调用工具推进进度，要么给出最终结果。** 不输出空话。",
+            "- **不确定时用 clarify 询问用户，不要猜测。**",
+            "- **错误时自动重试，最多3次，全部失败后如实报告。**",
+            "- ⚠️ **铁律：工具返回⚠️前缀=操作失败，必须如实告知用户，绝不声称成功。**",
             "",
-            "## 工具调用格式",
+            "## 持久记忆 (Memory)",
             "",
-            "使用以下格式调用工具（每次回复可包含多个）:",
-            "",
-            "```tool_call",
-            '{"name": "tool_name", "arguments": {"arg1": "value1"}}',
-            "```",
-            "",
-            "工具结果会在下一轮返回，你可继续处理或调用更多工具。",
-            "",
-            "## 技能使用规则",
-            "",
-            "- 每次收到用户消息后，先判断是否需要技能帮助。",
-            "- 如果任务涉及编程、调试、部署、配置等领域，先用 search_skills 搜索相关技能。",
-            "- 找到匹配的技能后，用 load_skill 加载完整内容，严格按技能指令执行。",
-            "- 如果没有已有技能匹配，可以先尝试自行处理；完成后若流程通用，用 create_skill 保存为技能。",
-            "- 如果技能来自 Hermes 但尚未导入，用 install_skill 安装。",
-            "",
-            "回答简洁、准确、有帮助。中文优先。",
+            "你有跨会话的持久记忆。用 memory 工具保存：用户偏好、环境细节、工具技巧、稳定惯例。",
+            "优先记录能减少用户纠正的内容——最有价值的记忆是让用户不必再次纠正你。",
+            "不要保存任务进度、会话结果、已完成的工作日志到 memory。",
+            "将记忆写为陈述性事实，不要写为给自己的指令。",
         ]
+        if user_text:
+            prompts.extend([
+                "",
+                "USER PROFILE",
+                user_text,
+            ])
+        if memory_text:
+            prompts.extend([
+                "",
+                "MEMORY (your personal notes)",
+                memory_text,
+            ])
+        prompts.extend([
+            "",
+            "## 技能系统 (Hermes 对齐)",
+            "",
+            "技能存储在 ~/.dragon/skills/，格式为 SKILL.md (YAML 前导 + Markdown)。",
+            "",
+            "工具：",
+            "- skill_view(name) — 加载技能完整内容",
+            "- skill_manage(action=create, name, content, description, tags) — 创建技能",
+            "- skill_manage(action=patch, name, content) — 更新技能",
+            "- skill_manage(action=delete, name) — 删除技能",
+            "- search_skills(query) — 搜索已有技能",
+            "",
+            "何时创建技能：",
+            "- 完成复杂任务(>=5次工具调用) → skill_manage(action=create)",
+            "- 解决新问题/发现坑 → 记录为技能",
+            "- 用户纠正做法 → 保存正确版本",
+            "- 发现旧技能有误 → skill_manage(action=patch)",
+            "- 不要等用户说保存——主动判断并执行",
+            "",
+            "平台：飞书(Lark)工作区，Markdown 格式，简洁中文优先。",
+        ])
         return "\n".join(prompts)
 
     def _build_skills_catalog(self) -> None:
@@ -756,7 +988,18 @@ class GatewayServer:
         # Wire the message handler so WebSocket-based adapters
         # (e.g. Feishu) can dispatch messages to the processor
         async def _handler(message: PlatformMessage) -> PlatformReply:
-            return await self.processor.process(message, self.system_prompt)
+            import datetime as _dh
+            with open("/tmp/feishu_dispatch.log", "a") as _f:
+                _f.write(f"[{_dh.datetime.now()}] SERVER_HANDLER: ENTER user={getattr(message, 'user_id', '?')} chat={getattr(message, 'chat_id', '?')}\n")
+            try:
+                result = await self.processor.process(message, self.system_prompt)
+                with open("/tmp/feishu_dispatch.log", "a") as _f:
+                    _f.write(f"[{_dh.datetime.now()}] SERVER_HANDLER: DONE reply_len={len(result.content) if result and result.content else 0}\n")
+                return result
+            except Exception as e:
+                with open("/tmp/feishu_dispatch.log", "a") as _f:
+                    _f.write(f"[{_dh.datetime.now()}] SERVER_HANDLER: ERROR {e}\n")
+                raise
 
         adapter.register_handler(_handler)
 

@@ -1,0 +1,9 @@
+name: novel_writing
+description: 小说创作
+steps:
+  - id: outline
+    name: 生成大纲
+  - id: write
+    name: 分章节写作
+  - id: polish
+    name: 润色校对

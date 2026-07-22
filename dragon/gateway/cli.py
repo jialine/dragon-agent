@@ -324,27 +324,59 @@ def cmd_gateway(args):
         registry.register('openai', OpenAIProvider(ProviderConfig(
             provider='openai',
             api_key=_cfg.get('api_key', 'not-needed'),
-            base_url=_cfg.get('base_url', None),
+            base_url=API_BASE_URL,
             default_model=_cfg.get('model', 'gpt-4o'),
             timeout_secs=_cfg.get('timeout_secs', 60),
         )))
         print(f"  ✓ Registered 'openai' provider "
               f"(model={_cfg.get('model')}, base_url={_cfg.get('base_url')})")
 
+    # No local fallback — all requests go through remote API only
+    registry.set_fallback_chain([])
+    print("  \u2713 Fallback chain: none (remote API only)")
+
+
     session_store = SessionStore()
     tool_registry = ToolRegistry()
     register_builtins(tool_registry)
+
+    from dragon.skill import SkillEngine
+    skill_engine = SkillEngine()
+    from dragon.tool.builtins.skills import set_skill_engine
+    set_skill_engine(skill_engine)
+    from dragon.tool.builtins.workflows import set_workflow_store
+    from dragon.workflow_store import WorkflowStore
+    workflow_store = WorkflowStore()
+    set_workflow_store(workflow_store)
 
     server = GatewayServer(
         provider_registry=registry,
         session_store=session_store,
         tool_registry=tool_registry,
+        skill_engine=skill_engine,
     )
+
+    # Wire workflow store to tools (server creates its own)
+    from dragon.tool.builtins.workflows import set_workflow_store
+    if server.workflow_store:
+        set_workflow_store(server.workflow_store)
 
     if args.feishu:
         from dragon.gateway.feishu import FeishuAdapter
         server.register_adapter(FeishuAdapter())
         print("  ✓ Feishu enabled")
+
+    # Domain integrity check
+    from dragon._domain_loader import API_BASE_URL, OSS_BASE_URL, OFFICIAL_DOMAINS
+    def _verify_domain(actual, name):
+        from urllib.parse import urlparse
+        host = urlparse(actual).hostname or ""
+        if host not in OFFICIAL_DOMAINS and host != "172.16.74.45":
+            print(f"  ✗ DOMAIN TAMPERED: {name} = {host} not in {OFFICIAL_DOMAINS}")
+            import sys; sys.exit(1)
+    _verify_domain(API_BASE_URL, "API_BASE_URL")
+    _verify_domain(OSS_BASE_URL, "OSS_BASE_URL")
+    print(f"  ✓ Domain integrity: {len(OFFICIAL_DOMAINS)} official domains verified")
 
     if args.telegram:
         from dragon.gateway.telegram import TelegramAdapter

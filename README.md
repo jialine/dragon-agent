@@ -1,218 +1,120 @@
-# 🐉 Dragon Agent
+# Dragon Agent 🐉
 
-**Self-Evolving AI Agent Framework** — CLI + TUI + multi-platform gateway.
+> 可自我进化的 AI Agent 框架 — 工具系统 · 技能引擎 · 工作流编排 · 多平台网关
 
-Dragon Agent is the **AgileMind Engine** (灵思引擎) To-C Editor, powered by a local **Qwen2-1.5B** model for routing and inference. Features persistent memory, skill system, scheduled jobs, and multi-platform messaging (Feishu, Telegram, Discord, WeChat).
+Dragon Agent 是一个 Python AI Agent 框架，支持工具调用、技能记忆、工作流编排、以及多平台消息网关（飞书/Lark 等）。
 
-> **Business Model**: Dragon Agent (Editor) → AgileMind API (SaaS) → Sell Tokens  
-> **Architecture**: Qwen2-1.5B (local) + AgileMind API (default) + Cloud API fallback
+## 核心特性
 
----
+| 模块 | 说明 |
+|------|------|
+| 🤖 **Agent Loop** | 多轮推理 + 工具调用，支持 90 轮迭代 |
+| 🔧 **Tool System** | 内置工具：terminal、file、web_search、memory、skills、wan_video 等 |
+| 📚 **Skill Engine** | 可学习的技能系统，支持创建/加载/版本管理 |
+| 🔀 **Workflow Engine** | DAG 工作流编排，支持 LLM → 工具 → 条件分支 |
+| 🌐 **Gateway** | 飞书/Lark WebSocket 网关，实时消息收发 |
+| 🧠 **Multi-Provider** | DeepSeek / OpenAI / Ollama 多模型后端 |
+| 💾 **Memory** | 跨会话持久记忆，支持自动压缩 |
 
-## Quick Start
-
-### One-Click Install (网络版)
-
-```bash
-curl -fsSL https://gitee.com/jialine/dragon-agent/raw/main/scripts/install.sh | bash
-```
-
-This script will:
-1. Clone / update the repo to `~/dragon-agent`
-2. Create Python virtual environment and install dependencies
-3. Install TUI frontend (Node.js, if available)
-4. Create data directories (`~/.dragon/`)
-5. Add `dragon` alias to your shell rc file
-6. **Auto-detect AgileMind API Key** — set as default if configured
-
-### USB Edition (U盘版)
+## 快速开始
 
 ```bash
-# For distributors: build USB package
-bash scripts/make-usb.sh --with-model
-
-# For end users: plug in and run
-bash run.sh        # Linux/Mac
-run.bat            # Windows (double-click)
-```
-
-First run auto-creates venv and launches setup wizard. See `scripts/make-usb.sh --help` for options.
-
-### Manual Install
-
-```bash
-git clone https://gitee.com/jialine/dragon-agent.git ~/dragon-agent
-cd ~/dragon-agent
+# 安装
+git clone git@gitee.com:jialine/dragon-agent.git
+cd dragon-agent
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
+pip install -r requirements.txt
 
-# (Optional) TUI frontend
-cd tui && npm install && cd ..
+# 配置
+cp config.example.yaml config.yaml
+# 编辑 config.yaml，填入你的 API 密钥
+
+# 启动 CLI
+python dragon_agent_loop.py
+
+# 启动飞书网关
+export FEISHU_APP_ID=cli_xxx
+export FEISHU_APP_SECRET=xxx
+dragon gateway --feishu --port 8000
 ```
 
-**Prerequisites:** Python ≥ 3.11, git, (optional) Node.js ≥ 20 for TUI
+## 项目结构
 
-### First Run
-
-```bash
-source ~/dragon-agent/.venv/bin/activate  # or restart shell for alias
-
-dragon setup     # Interactive setup wizard
-dragon chat      # Start chatting
-dragon --help    # See all commands
 ```
+dragon/
+├── cli.py              # CLI 命令行入口
+├── main.py             # Agent 主循环
+├── config.py           # 配置管理
+├── pipeline.py         # 流水线执行器
+├── prompt_builder.py   # Prompt 构建
+├── credential.py       # 凭证管理
+├── web_providers.py    # Web 搜索提供者
+├── identity.py         # Agent 身份
+├── constants.py        # 常量定义
+├── gateway/            # 消息网关
+│   ├── server.py       # FastAPI 服务器
+│   ├── feishu.py       # 飞书/Lark 适配器
+│   └── cli.py          # 网关 CLI
+├── tool/               # 工具系统
+│   ├── registry.py     # 工具注册表
+│   ├── guardrails.py   # 安全护栏
+│   └── builtins/       # 内置工具
+├── skill/              # 技能引擎
+│   └── engine.py       # 技能加载/执行
+├── workflow/           # 工作流引擎
+│   └── planner.py      # 工作流规划器
+├── provider/           # LLM 提供者
+│   └── __init__.py     # 多模型后端注册
+└── orchestrator/       # 多 Agent 编排
+```
+
+## 工具系统
+
+Dragon 拥有丰富的内置工具集：
+
+| 工具 | 功能 |
+|------|------|
+| `terminal` | Shell 命令执行 |
+| `file_read` / `file_write` | 文件读写 |
+| `web_search` | 网页搜索 |
+| `memory` | 持久记忆存储 |
+| `skills` | 技能管理 |
+| `session_search` | 跨会话搜索 |
+| `wan_video` | WAN 2.7 视频生成 |
+| `todo` | 任务管理 |
+| `clarify` | 用户澄清 |
+| `execute_code` | Python 代码执行 |
+| `patch` | 文件精准编辑 |
+| `comfyui_generate` | ComfyUI 图像生成 |
+| `edge_tts` | 文本转语音 |
+| `ffmpeg_composite` | 视频合成 |
+
+## 配置
+
+```yaml
+# config.yaml
+dispatch:
+  global_api:
+    model: deepseek-v4-pro
+    base_url: https://api.andlapi.cn/v1
+    api_key: "sk-你的API密钥"
+
+gateway:
+  enabled: true
+  platforms:
+    feishu:
+      app_id: "cli_xxxxxxxx"
+      app_secret: "xxxxxxxx"
+```
+
+## 许可证
+
+见 [LICENSE.md](LICENSE.md)
+
+## 贡献
+
+欢迎提交 Issue 和 PR。
 
 ---
 
-## CLI Commands
-
-| Command | Description |
-|---|---|
-| `dragon chat` | Interactive or single-query chat |
-| `dragon serve` | Start API server (REST) |
-| `dragon gateway` | Multi-platform gateway (Feishu/Telegram/Discord/WeChat) |
-| `dragon mcp` | MCP server for tool integration |
-| `dragon config` | Manage configuration (show/edit/init/validate) |
-| `dragon skills` | Manage self-evolving skills (list/search/create/delete/evolve) |
-| `dragon tools` | Manage tools (list/search/call) |
-| `dragon sessions` | Manage sessions (list/search/get/delete/export/stats) |
-| `dragon cron` | Scheduled jobs (list/add/pause/resume/remove/run) |
-| `dragon profile` | Profile management (list/create/edit/clone/export/import) |
-| `dragon test` | Run tests |
-| `dragon doctor` | Diagnostic checks |
-| `dragon tui` | Start TUI backend server |
-| `dragon setup` | Interactive setup wizard |
-
----
-
-## Terminal UI (TUI)
-
-```
-┌─ Ink/React TUI ──────────────────────────┐
-│  app.tsx → Chat / Sidebar / ToolCall     │
-│  backend.ts (spawn + stdin/stdout RPC)   │
-└──────────────┬───────────────────────────┘
-               │ JSON-RPC (newline-delimited)
-┌──────────────▼───────────────────────────┐
-│  dragon tui (Python)                      │
-│  server.py: 12 RPC methods              │
-└──────────────────────────────────────────┘
-```
-
-### Start
-
-```bash
-# Install frontend deps (first time)
-cd tui && npm install && cd ..
-
-# Launch full TUI
-npm --prefix tui start
-```
-
-This spawns `python -m dragon.tui.server` automatically via stdin/stdout JSON-RPC.
-
-### RPC Methods
-
-| Method | Description |
-|---|---|
-| `ping` | Health check |
-| `chat.send` | Send message, create/continue session |
-| `chat.history` | Get session message history |
-| `tools.list` | List available tools |
-| `tools.call` | Invoke a tool by name |
-| `sessions.list` | List sessions |
-| `sessions.get` | Get session details |
-| `skills.list` | List skills |
-| `skills.search` | Search skills by query |
-| `config.get` | Get configuration value |
-| `health` | System health check |
-| `doctor` | Full diagnostic report |
-
----
-
-## Deployment
-
-### One-Click (Recommended)
-
-```bash
-curl -fsSL https://gitee.com/jialine/dragon-agent/raw/main/scripts/install.sh | bash
-```
-
-### Linux / WSL
-
-```bash
-# 1. Clone
-git clone git@gitee.com:jialine/dragon-agent.git ~/dragon-agent
-cd ~/dragon-agent
-
-# 2. Create venv
-python3 -m venv .venv
-source .venv/bin/activate
-
-# 3. Install
-pip install -e .
-
-# 4. Configure
-dragon setup --quick
-
-# 5. Run
-dragon chat
-```
-
-### Docker (coming soon)
-
-```bash
-docker build -t dragon-agent .
-docker run -it dragon-agent
-```
-
-### Headless (server mode)
-
-```bash
-# REST API on port 8000
-dragon serve --host 0.0.0.0 --port 8000
-
-# Multi-platform gateway
-dragon gateway start --feishu --telegram
-```
-
----
-
-## Project Structure
-
-```
-dragon-agent/
-├── dragon/                  # Python package
-│   ├── cli.py              # CLI entry (14 commands)
-│   ├── session/            # Session management
-│   ├── skill/              # Self-evolving skills engine
-│   ├── tool/               # Tool registry + builtins
-│   ├── config/             # Configuration management
-│   └── tui/                # TUI backend
-│       ├── __init__.py
-│       └── server.py       # JSON-RPC server (703 lines)
-├── tui/                    # Ink/React TUI frontend
-│   ├── package.json        # Node.js deps
-│   ├── tsconfig.json       # TypeScript config
-│   └── src/
-│       ├── app.tsx         # Main app (406 lines)
-│       ├── backend.ts      # JSON-RPC client (447 lines)
-│       └── components/
-│           ├── Chat.tsx    # Chat panel (206 lines)
-│           ├── Sidebar.tsx # Sidebar (188 lines)
-│           └── ToolCall.tsx # Tool call card (123 lines)
-├── scripts/                # Deployment & packaging
-│   ├── install.sh          # One-click network installer
-│   ├── deploy.sh           # Local deployment script
-│   └── make-usb.sh         # USB edition packager
-├── docs/                   # Documentation
-│   ├── REQUIREMENTS.md     # Requirements & feature spec
-│   └── DESIGN.md           # Architecture design doc
-└── README.md               # This file
-```
-
----
-
-## License
-
-Apache 2.0 — see [LICENSE](LICENSE)
+**Dragon Agent** — Build agents that learn, remember, and evolve. 🐉

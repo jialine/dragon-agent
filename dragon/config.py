@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 
 
 class RouterConfig(BaseModel):
+    enabled: bool = True
     model_path: str = "models/qwen2-1.5b-q4_k_m.gguf"
     n_threads: int = 4
     n_ctx: int = 512
@@ -30,7 +31,7 @@ class RouterConfig(BaseModel):
 
 class GlobalApiConfig(BaseModel):
     """Single API endpoint shared by all industries."""
-    base_url: str = "https://api.sangyuye.com/v1"
+    api_key: str = ""
     api_key_env: str = "DRAGON_API_KEY"
     model: str = ""
     timeout_secs: int = 60

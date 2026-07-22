@@ -84,14 +84,14 @@ class ToolDef:
     category: str = "general"
 
     def to_openai_schema(self) -> Dict[str, Any]:
+        """Convert to OpenAI function-calling schema (wrapped with type)."""
         """Convert to OpenAI function-calling schema."""
+        inner = {"name": self.name, "description": self.description}
         if self.schema:
-            return {"name": self.name, "description": self.description, "parameters": self.schema}
-        return {
-            "name": self.name,
-            "description": self.description,
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        }
+            inner["parameters"] = self.schema
+        else:
+            inner["parameters"] = {"type": "object", "properties": {}, "required": []}
+        return {"type": "function", "function": inner}
 
 
 @dataclass
@@ -432,6 +432,25 @@ class ToolRegistry:
 
     async def _invoke(self, tool: ToolDef, args: Dict[str, Any]) -> Any:
         """Invoke a tool handler (supports both sync and async)."""
+        logger.info(f"[TOOL INVOKE] {tool.name} args={args}")
+        # Coerce argument types based on tool schema
+        if tool.schema and "properties" in tool.schema:
+            for pname, prop in tool.schema["properties"].items():
+                if pname in args:
+                    ptype = prop.get("type", "string")
+                    if ptype == "integer" and isinstance(args[pname], str):
+                        try:
+                            args[pname] = int(args[pname])
+                        except ValueError:
+                            pass
+                    elif ptype == "number" and isinstance(args[pname], str):
+                        try:
+                            args[pname] = float(args[pname])
+                        except ValueError:
+                            pass
+                    elif ptype == "boolean" and isinstance(args[pname], str):
+                        args[pname] = args[pname].lower() in ("true", "1", "yes")
+
         handler = tool.handler
         if asyncio.iscoroutinefunction(handler):
             return await handler(**args)
@@ -475,6 +494,7 @@ class ToolRegistry:
         self._total_latency[tool_name] = self._total_latency.get(tool_name, 0.0) + latency_ms
 
     @staticmethod
+    @staticmethod
     def _infer_schema(fn: Callable) -> Dict[str, Any]:
         """Infer JSON schema from function signature."""
         sig = inspect.signature(fn)
@@ -484,25 +504,43 @@ class ToolRegistry:
         for pname, param in sig.parameters.items():
             if pname in ("self", "cls"):
                 continue
+
+            # Resolve annotation (handles from __future__ import annotations)
+            ann = param.annotation
+            ann_str = ""
+            if ann is not inspect.Parameter.empty:
+                # from __future__ import annotations makes these strings
+                ann_str = ann if isinstance(ann, str) else str(ann)
+
             ptype = "string"
-            if param.annotation is not inspect.Parameter.empty:
-                if param.annotation is int:
-                    ptype = "integer"
-                elif param.annotation is float:
-                    ptype = "number"
-                elif param.annotation is bool:
-                    ptype = "boolean"
-                elif param.annotation is list or str(param.annotation).startswith("list"):
-                    ptype = "array"
-                elif param.annotation is dict or str(param.annotation).startswith("dict"):
-                    ptype = "object"
+            ann_lower = ann_str.lower()
+            if ann_lower == "int" or ann_lower == "<class 'int'>":
+                ptype = "integer"
+            elif ann_lower == "float" or ann_lower == "<class 'float'>":
+                ptype = "number"
+            elif ann_lower == "bool" or ann_lower == "<class 'bool'>":
+                ptype = "boolean"
+            elif ann_lower.startswith("list") or ann_lower.startswith("optional[list"):
+                ptype = "array"
+            elif ann_lower.startswith("dict"):
+                ptype = "object"
+
+            # Extract description from docstring
+            desc = f"Parameter: {pname}"
+            if fn.__doc__:
+                doc = fn.__doc__
+                marker = pname + ":"
+                for line in doc.split("\n"):
+                    stripped = line.strip()
+                    if stripped.startswith(marker):
+                        desc = stripped[len(marker):].strip()
+                        break
 
             properties[pname] = {
                 "type": ptype,
-                "description": f"Parameter: {pname}",
+                "description": desc,
             }
 
-            # Only mark as required if there's no default value
             if param.default is inspect.Parameter.empty:
                 required.append(pname)
 

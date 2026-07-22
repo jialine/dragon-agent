@@ -138,6 +138,9 @@ def main():
     sess_p.add_argument("--since", help="Start date for stats (YYYY-MM-DD)")
     sess_p.add_argument("--until", help="End date for stats (YYYY-MM-DD)")
 
+    # ── identity ─────────────────────────────────────────────────
+    id_p = sub.add_parser("identity", help="Show Dragon instance identity")
+
     # ── cron ──────────────────────────────────────────────────────
     cron_p = sub.add_parser("cron", help="Manage scheduled jobs")
     cron_p.add_argument("action", nargs="?", default="list", choices=["list", "add", "pause", "resume", "remove", "run"])
@@ -188,6 +191,12 @@ def main():
         return
 
     # Route to command handler
+
+    def cmd_identity(args):
+        """Show Dragon instance identity."""
+        from dragon.identity import show_identity
+        show_identity()
+
     handlers = {
         "chat": cmd_chat,
         "serve": cmd_serve,
@@ -205,6 +214,7 @@ def main():
         "setup": cmd_setup,
         "model": cmd_model,
         "workflow": cmd_workflow,
+        "identity": cmd_identity,
     }
 
     handler = handlers.get(args.command)
@@ -305,7 +315,7 @@ def _load_dispatch_config():
             api = dispatch.get('global_api', {})
             if api:
                 return {
-                    "api_key": os.getenv(api.get('api_key_env', ''), ''),
+                    "api_key": api.get("api_key") or os.getenv(api.get("api_key_env", ""), ""),
                     "base_url": api.get('base_url'),
                     "model": api.get('model', 'gpt-4o'),
                     "timeout_secs": api.get('timeout_secs', 60),
@@ -351,12 +361,16 @@ def cmd_gateway(args):
         registry.register('openai', OpenAIProvider(ProviderConfig(
             provider='openai',
             api_key=_cfg.get('api_key', 'not-needed'),
-            base_url=_cfg.get('base_url', None),
+            base_url=_cfg.get("base_url"),
             default_model=_cfg.get('model', 'gpt-4o'),
             timeout_secs=_cfg.get('timeout_secs', 60),
         )))
         print(f"  ✓ Registered 'openai' provider "
               f"(model={_cfg.get('model')}, base_url={_cfg.get('base_url')})")
+
+# No local fallback - remote API only
+    registry.set_fallback_chain([])
+    print("  ✓ Fallback chain: none (remote API only)")
 
     session_store = SessionStore()
     tool_registry = ToolRegistry()

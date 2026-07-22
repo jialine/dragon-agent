@@ -50,6 +50,14 @@ from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple, Un
 
 logger = logging.getLogger("dragon.provider")
 
+def _log_400(msg: str):
+    """Safely log 400 error details to file (no shell injection)."""
+    try:
+        with open("/tmp/dragon_400.log", "a") as f:
+            f.write(msg.replace("\n", " ") + "\n")
+    except Exception:
+        pass
+
 
 # ────────────────────────────────────────────────────────────────────
 # Data Classes
@@ -64,6 +72,7 @@ class ProviderResult:
     finish_reason: str = "stop"
     latency_ms: float = 0.0
     raw: Any = None
+    tool_calls: Optional[List[Dict]] = None
 
     @property
     def total_tokens(self) -> int:
@@ -75,6 +84,7 @@ class StreamChunk:
     content: str = ""
     finish_reason: Optional[str] = None
     usage: Optional[Dict[str, int]] = None
+    tool_calls: Optional[List[Dict]] = None
 
 
 @dataclass
@@ -147,7 +157,7 @@ class OpenAIProvider(BaseProvider):
 
         for attempt in range(self.config.max_retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self.config.timeout_secs) as client:
+                async with httpx.AsyncClient(verify=False, timeout=self.config.timeout_secs) as client:
                     resp = await client.post(
                         url,
                         headers=self._build_headers(),
@@ -164,12 +174,25 @@ class OpenAIProvider(BaseProvider):
                         logger.warning("Rate limited, retrying in %ds", wait)
                         await asyncio.sleep(wait)
                         continue
+                    if resp.status_code >= 400:
+                        import json as _json, os as _os
+                        body = resp.text[:800]
+                        req_body = _json.dumps({"model": model, "messages_count": len(messages), "first_msg": str(messages[0])[:200] if messages else "NONE"})
+                        _log_400(f"REQ: {req_body}")
+                        _log_400(f"RESP: {body}")
+                        try:
+                            full = _json.dumps({"model": model, "messages": [{"role": m.get("role","?"), "content": str(m.get("content",""))[:300]} for m in messages[:5]], "tools_count": len(kwargs.get("tools", []))}, ensure_ascii=False)
+                            with open("/tmp/dragon_full_req.json", "w") as _df:
+                                _df.write(full)
+                        except Exception:
+                            pass
                     resp.raise_for_status()
                     data = resp.json()
 
                     choice = data["choices"][0]
                     return ProviderResult(
-                        content=choice["message"]["content"],
+                        content=choice["message"]["content"] or "",
+                        tool_calls=choice["message"].get("tool_calls"),
                         model=data.get("model", model),
                         provider="openai",
                         usage=data.get("usage", {}),
@@ -187,7 +210,7 @@ class OpenAIProvider(BaseProvider):
         import httpx
 
         url = f"{self.config.base_url or 'https://api.openai.com/v1'}/chat/completions"
-        async with httpx.AsyncClient(timeout=self.config.timeout_secs) as client:
+        async with httpx.AsyncClient(verify=False, timeout=self.config.timeout_secs) as client:
             async with client.stream(
                 "POST", url,
                 headers=self._build_headers(),
@@ -206,8 +229,9 @@ class OpenAIProvider(BaseProvider):
                         try:
                             data = json.loads(data_str)
                             delta = data["choices"][0].get("delta", {})
+                            chunk_content = delta.get("content", "") or delta.get("reasoning_content", "")
                             yield StreamChunk(
-                                content=delta.get("content", ""),
+                                content=chunk_content,
                                 finish_reason=data["choices"][0].get("finish_reason"),
                             )
                         except json.JSONDecodeError:
@@ -248,7 +272,7 @@ class AnthropicProvider(BaseProvider):
 
         for attempt in range(self.config.max_retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self.config.timeout_secs) as client:
+                async with httpx.AsyncClient(verify=False, timeout=self.config.timeout_secs) as client:
                     resp = await client.post(
                         url,
                         headers={
@@ -258,6 +282,12 @@ class AnthropicProvider(BaseProvider):
                         },
                         json=body,
                     )
+                    if resp.status_code >= 400:
+                        import json as _json, os as _os
+                        body = resp.text[:800]
+                        req_body = _json.dumps({"model": model, "messages_count": len(messages), "first_msg": str(messages[0])[:200] if messages else "NONE"})
+                        _log_400(f"REQ: {req_body}")
+                        _log_400(f"RESP: {body}")
                     resp.raise_for_status()
                     data = resp.json()
 
@@ -336,7 +366,7 @@ class GoogleProvider(BaseProvider):
         if system_instruction:
             body["systemInstruction"] = system_instruction
 
-        async with httpx.AsyncClient(timeout=self.config.timeout_secs) as client:
+        async with httpx.AsyncClient(verify=False, timeout=self.config.timeout_secs) as client:
             resp = await client.post(url, json=body)
             resp.raise_for_status()
             data = resp.json()
@@ -561,7 +591,7 @@ class AzureOpenAIProvider(BaseProvider):
 
         for attempt in range(self.config.max_retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self.config.timeout_secs) as client:
+                async with httpx.AsyncClient(verify=False, timeout=self.config.timeout_secs) as client:
                     resp = await client.post(
                         url,
                         headers=self._build_headers(),
@@ -577,12 +607,25 @@ class AzureOpenAIProvider(BaseProvider):
                         logger.warning("Rate limited, retrying in %ds", wait)
                         await asyncio.sleep(wait)
                         continue
+                    if resp.status_code >= 400:
+                        import json as _json, os as _os
+                        body = resp.text[:800]
+                        req_body = _json.dumps({"model": model, "messages_count": len(messages), "first_msg": str(messages[0])[:200] if messages else "NONE"})
+                        _log_400(f"REQ: {req_body}")
+                        _log_400(f"RESP: {body}")
+                        try:
+                            full = _json.dumps({"model": model, "messages": [{"role": m.get("role","?"), "content": str(m.get("content",""))[:300]} for m in messages[:5]], "tools_count": len(kwargs.get("tools", []))}, ensure_ascii=False)
+                            with open("/tmp/dragon_full_req.json", "w") as _df:
+                                _df.write(full)
+                        except Exception:
+                            pass
                     resp.raise_for_status()
                     data = resp.json()
 
                     choice = data["choices"][0]
                     return ProviderResult(
-                        content=choice["message"]["content"],
+                        content=choice["message"]["content"] or "",
+                        tool_calls=choice["message"].get("tool_calls"),
                         model=data.get("model", model),
                         provider="azure",
                         usage=data.get("usage", {}),
@@ -600,7 +643,7 @@ class AzureOpenAIProvider(BaseProvider):
         import httpx
 
         url = self._build_url(model)
-        async with httpx.AsyncClient(timeout=self.config.timeout_secs) as client:
+        async with httpx.AsyncClient(verify=False, timeout=self.config.timeout_secs) as client:
             async with client.stream(
                 "POST", url,
                 headers=self._build_headers(),
@@ -621,8 +664,9 @@ class AzureOpenAIProvider(BaseProvider):
                         try:
                             data = json.loads(data_str)
                             delta = data["choices"][0].get("delta", {})
+                            chunk_content = delta.get("content", "") or delta.get("reasoning_content", "")
                             yield StreamChunk(
-                                content=delta.get("content", ""),
+                                content=chunk_content,
                                 finish_reason=data["choices"][0].get("finish_reason"),
                             )
                         except json.JSONDecodeError:
@@ -755,7 +799,7 @@ class CloudflareProvider(BaseProvider):
         if max_tokens:
             payload["max_tokens"] = max_tokens
 
-        async with httpx.AsyncClient(timeout=self.config.timeout_secs) as client:
+        async with httpx.AsyncClient(verify=False, timeout=self.config.timeout_secs) as client:
             resp = await client.post(
                 url,
                 headers={"Authorization": f"Bearer {self._api_key}"},
@@ -851,7 +895,7 @@ class VertexAIProvider(BaseProvider):
         if system_instruction:
             body["systemInstruction"] = system_instruction
 
-        async with httpx.AsyncClient(timeout=self.config.timeout_secs) as client:
+        async with httpx.AsyncClient(verify=False, timeout=self.config.timeout_secs) as client:
             resp = await client.post(
                 url,
                 headers={
@@ -1140,27 +1184,54 @@ class ProviderRegistry:
                     )
             raise RuntimeError(f"Provider '{provider_name}' is unavailable and no fallback available")
 
-        return await provider.complete(
-            model=model or provider.config.default_model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            **kwargs,
-        )
+        # Try primary provider, fall back on error
+        last_error = None
+        providers_to_try = [provider_name] + [
+            fb_name for fb_name in self._fallback_chain
+            if fb_name != provider_name and fb_name in self._providers
+        ]
+        for name in providers_to_try:
+            p = self._providers[name]
+            if not p.available:
+                continue
+            try:
+                return await p.complete(
+                    model=model or p.config.default_model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    **kwargs,
+                )
+            except Exception as exc:
+                last_error = exc
+                continue
+        raise RuntimeError("All providers failed. Last error: " + str(last_error))
 
     async def call_stream(
         self, provider_name, model="", messages=None, temperature=0.7, max_tokens=2048, **kwargs
     ) -> AsyncIterator[StreamChunk]:
         messages = messages or []
-        provider = self._providers.get(provider_name)
-        if provider is None:
-            raise ValueError(f"Unknown provider: {provider_name}")
-
-        async for chunk in provider.complete_stream(
-            model=model or provider.config.default_model,
-            messages=messages, temperature=temperature, max_tokens=max_tokens, **kwargs
-        ):
-            yield chunk
+        last_error = None
+        providers_to_try = [provider_name] + [
+            fb_name for fb_name in self._fallback_chain
+            if fb_name != provider_name and fb_name in self._providers
+        ]
+        for name in providers_to_try:
+            p = self._providers.get(name)
+            if p is None or not p.available:
+                continue
+            try:
+                async for chunk in p.complete_stream(
+                    model=model or p.config.default_model,
+                    messages=messages, temperature=temperature,
+                    max_tokens=max_tokens, **kwargs
+                ):
+                    yield chunk
+                return
+            except Exception as exc:
+                last_error = exc
+                continue
+        raise RuntimeError("All stream providers failed. Last error: " + str(last_error))
 
     # ── Credential Pool Integration ─────────────────────────────────
 
@@ -1398,6 +1469,34 @@ def auto_setup_providers() -> ProviderRegistry:
             provider="openai", api_key_env="OPENAI_API_KEY",
             default_model="gpt-4o",
         )))
+
+    # andlapi (OpenAI-compatible gateway)
+    dragon_key = os.getenv("DRAGON_API_KEY", "")
+    from dragon._domain_loader import API_BASE_URL as _DEF_URL
+    dragon_base = os.getenv("DRAGON_BASE_URL", _DEF_URL)
+    dragon_model = os.getenv("DRAGON_MODEL", "deepseek-v4-pro")
+    if dragon_key:
+        registry.register("andlapi", OpenAIProvider(ProviderConfig(
+            provider="andlapi", api_key=dragon_key,
+            base_url=dragon_base, default_model=dragon_model,
+        )))
+    elif os.path.exists("config.yaml"):
+        import yaml
+        try:
+            with open("config.yaml") as cf:
+                cfg = yaml.safe_load(cf) or {}
+            api = cfg.get("dispatch", {}).get("global_api", {})
+            key = api.get("api_key", "")
+            from dragon._domain_loader import API_BASE_URL as _DEF_URL2
+            base = api.get("base_url", _DEF_URL2)
+            model = api.get("model", "deepseek-v4-pro")
+            if key and "..." not in key:
+                registry.register("andlapi", OpenAIProvider(ProviderConfig(
+                    provider="andlapi", api_key=key,
+                    base_url=base, default_model=model,
+                )))
+        except Exception:
+            pass
 
     # Anthropic
     if os.getenv("ANTHROPIC_API_KEY"):

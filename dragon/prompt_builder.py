@@ -34,6 +34,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from dragon.identity import get_identity as _get_dragon_identity
+
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("dragon.prompt_builder")
@@ -238,6 +240,13 @@ class PromptBuilder:
         max_cache_entries: int = 100,
     ) -> None:
         self.identity = identity
+        # Inject Dragon instance ID into system prompt
+        try:
+            dragon_id = _get_dragon_identity().id
+            if dragon_id and dragon_id not in self.identity:
+                self.identity = f"[Instance: {dragon_id}]\n\n" + self.identity
+        except Exception:
+            pass  # identity module not available
         self.tool_guidance = tool_guidance
         self.help_guidance = help_guidance
         self.industry_preambles = industry_preambles or dict(INDUSTRY_PREAMBLES)

@@ -43,6 +43,8 @@ import httpx
 from dragon.tool.builtins.tts import tool_tts, tool_tts_voices
 from dragon.tool.builtins.vision import tool_vision_analyze, tool_vision_info, tool_ocr
 from dragon.tool.builtins.analysis import tool_code_exec, tool_data_explore, tool_data_plot
+from dragon.tool.builtins.execute_code import tool_execute_code
+from dragon.tool.builtins.wan_video import tool_wan_video
 from dragon.tool.builtins.documents import (
     tool_pptx_read,
     tool_pptx_create,
@@ -61,6 +63,7 @@ from dragon.tool.builtins.analysis import (
     tool_data_plot,
 )
 from dragon.tool.registry import ToolRegistry
+from dragon.tool.builtins.workflows import set_workflow_store
 from dragon.tool.builtins.kanban import (
     tool_kanban_create_board,
     tool_kanban_add_task,
@@ -96,6 +99,11 @@ from dragon.tool.builtins.google_workspace import (
     tool_google_drive_search,
     tool_google_calendar_list,
 )
+from dragon.tool.builtins.patch import tool_patch
+from dragon.tool.builtins.clarify import tool_clarify
+from dragon.tool.builtins.todo import tool_todo
+from dragon.tool.builtins.memory import tool_memory, load_memory_for_prompt
+from dragon.tool.builtins.session_search import tool_session_search
 from dragon.web_providers import WebSearchRouter
 
 logger = logging.getLogger("dragon.tool.builtins")
@@ -161,54 +169,55 @@ async def tool_search(
 
 
 async def tool_file_read(
-    filepath: str,
-    start_line: int = 1,
-    end_line: int = 100,
+    path: str,
+    offset: int = 1,
+    limit: int = 500,
 ) -> str:
     """Read a file's contents.
 
     Args:
-        filepath: Path to the file.
-        start_line: First line to read (1-indexed).
-        end_line: Last line to read (inclusive).
+        path: Path to the file.
+        offset: First line to read (1-indexed).
+        limit: Maximum number of lines to read.
     """
-    p = Path(filepath).expanduser().resolve()
+    p = Path(path).expanduser().resolve()
     if not p.exists():
-        return json.dumps({"error": f"File not found: {filepath}"})
+        return json.dumps({"error": f"File not found: {path}"})
     if p.is_dir():
-        return json.dumps({"error": f"Path is a directory: {filepath}"})
+        return json.dumps({"error": f"Path is a directory: {path}"})
 
     try:
         lines = p.read_text(encoding="utf-8", errors="ignore").split("\n")
     except Exception as e:
         return json.dumps({"error": str(e)})
 
-    start = max(0, start_line - 1)
-    end = min(len(lines), end_line)
+    start = max(0, offset - 1)
+    end = min(len(lines), start + limit)
     selected = lines[start:end]
 
     return json.dumps({
         "file": str(p),
         "total_lines": len(lines),
-        "start_line": start_line,
+        "offset": offset,
+        "limit": limit,
         "end_line": end,
         "content": "\n".join(selected),
     })
 
 
 async def tool_file_write(
-    filepath: str,
+    path: str,
     content: str,
     append: bool = False,
 ) -> str:
-    """Write content to a file.
+    """Write content to a file. OVERWRITES the entire file unless append=True.
 
     Args:
-        filepath: Path to write to.
+        path: Path to the file.
         content: Content to write.
         append: If True, append instead of overwrite.
     """
-    p = Path(filepath).expanduser().resolve()
+    p = Path(path).expanduser().resolve()
     p.parent.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -225,9 +234,17 @@ async def tool_file_write(
 
 async def tool_execute(
     command: str,
-    workdir: str = ".",
-    timeout_secs: int = 60,
+    timeout: int = 180,
+    workdir: str = None,
+    background: bool = False,
+    pty: bool = False,
 ) -> str:
+    """Execute shell commands on a Linux environment. Hermes-aligned."""
+    # Map params
+    timeout_secs = timeout
+    if workdir is None:
+        workdir = "."
+
     """Execute a shell command.
 
     Args:
@@ -837,13 +854,39 @@ def _register_skills(registry):
     )(_skills_module.tool_install_skill)
 
     registry.register(
-        name="create_skill",
-        description="Create a new skill from conversation experience. Save successful task approaches as reusable skills.",
-        tags=["skill", "create", "evolution"],
+        name="skill_manage",
+        description="Manage skills: create, patch, delete. Hermes-aligned. After completing a complex task, always save as a skill with action='create'.",
+        tags=["skill", "create", "patch", "delete", "evolution"],
         category="skills",
         timeout_secs=15,
-    )(_skills_module.tool_create_skill)
+    )(_skills_module.tool_skill_manage)
 
+    registry.register(
+        name="skill_view",
+        description="Load a skill's full content. Use BEFORE executing a task to get detailed instructions.",
+        tags=["skill", "view", "load"],
+        category="skills",
+        timeout_secs=10,
+    )(_skills_module.tool_skill_view)
+
+
+
+
+async def tool_terminal(
+    command: str,
+    timeout: int = 180,
+    workdir: str = None,
+    background: bool = False,
+    pty: bool = False,
+) -> str:
+    """Execute shell commands. Hermes-aligned: terminal(command, timeout, workdir, background, pty)."""
+    return await tool_execute(
+        command=command,
+        timeout=timeout,
+        workdir=workdir or ".",
+        background=background,
+        pty=pty,
+    )
 
 def register_builtins(registry: ToolRegistry) -> None:
     """Register all built-in tools on the given registry."""
@@ -857,7 +900,7 @@ def register_builtins(registry: ToolRegistry) -> None:
 
     registry.register(
         name="file_read",
-        description="Read the contents of a file with line numbers and pagination.",
+        description="Read a text file with line numbers and pagination. Use offset and limit for large files.",
         tags=["file", "read"],
         category="file",
         timeout_secs=10,
@@ -872,12 +915,12 @@ def register_builtins(registry: ToolRegistry) -> None:
     )(tool_file_write)
 
     registry.register(
-        name="execute",
-        description="Execute a shell command and capture stdout/stderr.",
+        name="terminal",
+        description="Execute shell commands on a Linux environment. Hermes-aligned.",
         tags=["terminal", "shell", "command"],
         category="terminal",
-        timeout_secs=120,
-    )(tool_execute)
+        timeout_secs=300,
+    )(tool_terminal)
 
     registry.register(
         name="http_get",
@@ -970,6 +1013,40 @@ def register_builtins(registry: ToolRegistry) -> None:
         category="analysis",
         timeout_secs=60,
     )(tool_code_exec)
+
+    registry.register(
+        name="execute_code",
+        description="Execute Python code with FULL system access in a subprocess. Can run shell commands, install packages, create files, start servers. Use for development tasks. Returns JSON: success, output, exit_code, duration_ms.",
+        schema={
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "Python source code to execute with full system access"},
+                "timeout": {"type": "integer", "description": "Max seconds (default 60, max 300)"},
+            },
+            "required": ["code"],
+        },
+        tags=["code", "execution", "python", "subprocess", "development", "system"],
+        category="development",
+        timeout_secs=300,
+    )(tool_execute_code)
+
+    registry.register(
+        name="wan_video",
+        description="Generate video from text using Wan2.7 AI. Text-to-video and image-to-video. Async with polling. Returns video file path.",
+        schema={
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string", "description": "Video scene description"},
+                "model": {"type": "string", "description": "wan2.7-t2v or wan2.7-r2v"},
+                "size": {"type": "string", "description": "1280x720 or 720x1280"},
+                "duration": {"type": "integer", "description": "Seconds (min 5)"},
+            },
+            "required": ["prompt"],
+        },
+        tags=["video", "generation", "wan", "ai-video", "creative"],
+        category="creative",
+        timeout_secs=600,
+    )(tool_wan_video)
 
     registry.register(
         name="data_explore",
@@ -1125,6 +1202,30 @@ def register_builtins(registry: ToolRegistry) -> None:
         category="productivity",
         timeout_secs=10,
     )(tool_kanban_list_boards)
+
+    # --- Workflow management tools ---
+    import dragon.tool.builtins.workflows as _wf_module
+    registry.register(
+        name="create_workflow",
+        description="Create a new workflow for multi-step task orchestration. Use for complex multi-step tasks that need tracking across sessions.",
+        tags=["workflow", "create", "orchestration"],
+        category="workflows",
+        timeout_secs=10,
+    )(_wf_module.tool_create_workflow)
+    registry.register(
+        name="list_workflows",
+        description="List active or recent workflows. Filter by status.",
+        tags=["workflow", "list"],
+        category="workflows",
+        timeout_secs=10,
+    )(_wf_module.tool_list_workflows)
+    registry.register(
+        name="update_workflow",
+        description="Update workflow status (done/failed) and summary.",
+        tags=["workflow", "update"],
+        category="workflows",
+        timeout_secs=10,
+    )(_wf_module.tool_update_workflow)
 
     # ── Email (SMTP/IMAP) ───────────────────────────────────────────
     registry.register(
@@ -1297,5 +1398,47 @@ def register_builtins(registry: ToolRegistry) -> None:
         logger.debug("Subagent tools skipped: subagent module not available")
     except Exception as _e:
         logger.warning("Failed to register subagent tools: %s", _e)
+
+    # ── Hermes-aligned Tools: patch, clarify, todo, session_search ──
+    registry.register(
+        name="patch",
+        description="Targeted find-and-replace edits in files. Returns unified diff format. Hermes-aligned: patch(path, old_string, new_string, replace_all=False).",
+        tags=["file", "edit", "patch", "diff"],
+        category="file",
+        timeout_secs=30,
+    )(tool_patch)
+
+    registry.register(
+        name="clarify",
+        description="Ask the user a clarifying question with optional choices. Hermes-aligned: clarify(question, choices=None). Returns user response or confirmation.",
+        tags=["interaction", "clarify", "question"],
+        category="interaction",
+        timeout_secs=300,
+    )(tool_clarify)
+
+    registry.register(
+        name="todo",
+        description="Manage a session-level todo list. View, set, or merge items. Hermes-aligned: todo(todos=None, merge=False). Items: {id, content, status}.",
+        tags=["todo", "task", "list", "productivity"],
+        category="productivity",
+        timeout_secs=15,
+    )(tool_todo)
+
+    registry.register(
+        name="memory",
+        description="Save durable information to persistent memory that survives across sessions.",
+        tags=["memory", "persistence"],
+        category="memory",
+        timeout_secs=10,
+    )(tool_memory)
+
+    registry.register(
+        name="session_search",
+
+        description="Search or list past conversation sessions with FTS5 full-text search. Hermes-aligned: session_search(query=None, limit=3). Returns session summaries.",
+        tags=["session", "search", "history", "memory"],
+        category="memory",
+        timeout_secs=15,
+    )(tool_session_search)
 
     logger.info("Registered %d built-in tools", len(registry._tools))

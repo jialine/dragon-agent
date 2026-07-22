@@ -21,6 +21,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from dragon.config import DragonConfig
+from dragon.constants import API_BASE_URL
 from dragon.router import DragonRouter, RemoteRouter, RouteResult, RouterStatus as _ignore_RouterStatus
 from dragon.dispatch import DragonDispatcher, ProviderProfile, DispatchResult as _ignore_DispatchResult
 from dragon.guard import AntiLoopGuard, LoopAction as _ignore_LoopAction
@@ -98,16 +99,119 @@ async def _start_gateway(cfg) -> bool:
     # Build provider registry for gateway (reuse dispatcher)
 
     class _GwProviderRegistry:
+        _local_model = None
+
         async def call(self, provider_name, messages, max_tokens=2048, **kwargs):
             if not dispatcher:
                 raise RuntimeError("dispatcher not initialized")
-            result = await dispatcher.dispatch(
-                industry="general",
-                messages=messages,
-                max_tokens=max_tokens,
-            )
+            try:
+                result = await dispatcher.dispatch(
+                    industry="general",
+                    messages=messages,
+                    max_tokens=max_tokens,
+                )
+                from types import SimpleNamespace
+                return SimpleNamespace(content=result.content)
+            except Exception as e:
+                logger.warning("Primary model failed: %s, falling back to local 1.5B", str(e)[:200])
+                import asyncio
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: self._get_local_model().create_chat_completion(
+                        messages=messages,
+                        max_tokens=max_tokens,
+                        temperature=0.7,
+                    ),
+                )
+                from types import SimpleNamespace
+                return SimpleNamespace(content=result["choices"][0]["message"]["content"])
+
+        async def call_stream(self, provider_name, messages, max_tokens=2048, **kwargs):
+            """Stream directly from api4 using httpx.stream, bypassing dispatcher.
+
+            Yields SimpleNamespace(content=..., finish_reason=...) chunks.
+            Supports native OpenAI function calling via tools kwarg.
+            """
+            import os as _os
+            ga = config.dispatch.global_api
+            base_url = API_BASE_URL.rstrip("/")
+            api_key = getattr(ga, "api_key", "") or _os.getenv(ga.api_key_env, "")
+            model = ga.model
+
+            if not api_key:
+                if dispatcher:
+                    async for chunk in dispatcher.dispatch_stream(
+                        industry="general",
+                        messages=messages,
+                    ):
+                        from types import SimpleNamespace
+                        yield SimpleNamespace(
+                            content=chunk.content,
+                            finish_reason=chunk.finish_reason,
+                            usage=getattr(chunk, "usage", None),
+                        )
+                    return
+                raise RuntimeError("No API key configured for streaming")
+
+            url = f"{base_url}/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": kwargs.get("temperature", 0.7),
+                "stream": True,
+            }
+
+            if "tools" in kwargs and kwargs["tools"]:
+                payload["tools"] = kwargs["tools"]
+                payload["tool_choice"] = kwargs.get("tool_choice", "auto")
+
+            import httpx
             from types import SimpleNamespace
-            return SimpleNamespace(content=result.content)
+
+            async with httpx.AsyncClient(verify=False, timeout=300) as client:
+                async with client.stream("POST", url, headers=headers, json=payload) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        data_str = line[6:]
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(data_str)
+                            choices = data.get("choices", [])
+                            if choices:
+                                delta = choices[0].get("delta", {})
+                                content = delta.get("content") or delta.get("reasoning_content") or ""
+                                finish_reason = choices[0].get("finish_reason")
+                                # Hermes alignment: extract native tool_calls from delta
+                                tool_calls_delta = delta.get("tool_calls")
+                                yield SimpleNamespace(
+                                    content=content,
+                                    finish_reason=finish_reason,
+                                    usage=data.get("usage"),
+                                    tool_calls=tool_calls_delta,
+                                )
+                        except json.JSONDecodeError:
+                            pass
+
+        @staticmethod
+        def _get_local_model():
+            if _GwProviderRegistry._local_model is None:
+                from llama_cpp import Llama
+                _GwProviderRegistry._local_model = Llama(
+                    model_path="/home/jialine/models/Qwen2.5-1.5B-Q4_K_M.gguf",
+                    n_ctx=2048,
+                    n_threads=4,
+                    verbose=False,
+                )
+            return _GwProviderRegistry._local_model
 
     pr = _GwProviderRegistry()
 
@@ -257,7 +361,7 @@ async def lifespan(app: FastAPI):
             provider="sangyuye",
             model=ga.model,
             api_key_env=ga.api_key_env,
-            base_url=ga.base_url,
+            base_url=API_BASE_URL,
             system_prompt=ic.system_prompt,
             timeout=ga.timeout_secs,
             max_retries=ga.max_retries,

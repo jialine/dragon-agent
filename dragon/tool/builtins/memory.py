@@ -76,9 +76,10 @@ def _now_iso() -> str:
 
 
 async def tool_memory(
-    action: str = "add",
-    target: str = "memory",
-    content: str = "",
+    action: str,
+    target: str,
+    content: str = None,
+    old_text: str = None,
 ) -> str:
     """Manage persistent agent memories.
 

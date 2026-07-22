@@ -420,6 +420,7 @@ class FeishuAdapter(PlatformAdapter):
 
         with open("/tmp/feishu_dispatch.log", "a") as _f:
             _f.write(f"[{_dh.datetime.now()}] HANDLER: {'SET' if self._message_handler else 'NONE'}\n")
+            _f.write(f"[{_dh.datetime.now()}] handler type: {type(self._message_handler)}\n")
         if self._message_handler:
             try:
                 # Check for voice commands
@@ -460,17 +461,36 @@ class FeishuAdapter(PlatformAdapter):
 
                 # Register progress callback for periodic status updates
                 handler = self._message_handler
+                # Handler is a plain function (not bound method), so __self__ is None.
+                # Extract the GatewayServer instance from its closure instead.
                 processor = getattr(handler, '__self__', None)
+                with open("/tmp/feishu_dispatch.log", "a") as _df:
+                    _df.write(f"[{__import__('datetime').datetime.now()}] CLOSURE_DEBUG: __self__={processor}, has_closure={hasattr(handler, '__closure__')}\n")
+                    if hasattr(handler, '__closure__') and handler.__closure__:
+                        for i, cell in enumerate(handler.__closure__):
+                            cc = cell.cell_contents
+                            cc_type = type(cc).__name__
+                            has_proc = hasattr(cc, 'processor') if cc is not None else False
+                            _df.write(f"[{__import__('datetime').datetime.now()}] CLOSURE_DEBUG: cell[{i}] type={cc_type} has_processor={has_proc}\n")
+                            if has_proc:
+                                processor = cc.processor  # GatewayServer.processor = MessageProcessor
+                                _df.write(f"[{__import__('datetime').datetime.now()}] CLOSURE_DEBUG: FOUND processor in cell[{i}]\n")
+                                break
+                    else:
+                        _df.write(f"[{__import__('datetime').datetime.now()}] CLOSURE_DEBUG: NO closure\n")
+                with open("/tmp/feishu_dispatch.log", "a") as _df:
+                    _df.write(f"[{__import__('datetime').datetime.now()}] CHECK: processor={processor is not None} has_set_progress={hasattr(processor, 'set_progress_callback') if processor else 'N/A'} type={type(processor).__name__ if processor else 'None'}\n")
                 if processor and hasattr(processor, 'set_progress_callback'):
                     async def _progress_cb(chat_id: str, text: str):
                         try:
-                            reply = PlatformReply(platform="feishu", chat_id=chat_id, content=text)
-                            ok = await self.send_message(reply)
-                            if ok and self._last_reply_id:
-                                self._last_progress_id = self._last_reply_id
+                            with open("/tmp/feishu_dispatch.log", "a") as _f:
+                                _f.write(f"[{__import__('datetime').datetime.now()}] PROGRESS_CB: firing text={text[:60]}\n")
+                            await adapter.send_stream_progress(chat_id, text)
                         except Exception:
                             pass
                     processor.set_progress_callback(_progress_cb)
+                    with open("/tmp/feishu_dispatch.log", "a") as _df:
+                        _df.write(f"[{__import__('datetime').datetime.now()}] PROGRESS_CB: REGISTERED processor={type(processor).__name__}\n")
 
                 # Register alert callback for CRITICAL/ALERT immediate push
                 if processor and hasattr(processor, 'set_alert_callback'):
@@ -509,6 +529,7 @@ class FeishuAdapter(PlatformAdapter):
                 try:
                     # When voice is enabled, process with output_mode="voice"
                     # so the response is ready for audio delivery
+                    open("/tmp/feishu_dispatch.log", "a").write(f"[{_dh.datetime.now()}] CALLING handler...\n")
                     if self.voice_enabled:
                         handler = self._message_handler
                         # Extract GatewayServer from closure to access processor/system_prompt
@@ -526,6 +547,8 @@ class FeishuAdapter(PlatformAdapter):
                             reply = await self._message_handler(message)
                     else:
                         reply = await self._message_handler(message)
+                    with open("/tmp/feishu_dispatch.log", "a") as _f:
+                        _f.write(f"[{_dh.datetime.now()}] REPLY rcvd: {reply.content[:50] if reply and reply.content else 'EMPTY'}\n")
                     await self.send_message(reply)
                 except Exception:
                     success = False
@@ -661,6 +684,24 @@ class FeishuAdapter(PlatformAdapter):
             except (json.JSONDecodeError, TypeError):
                 text = str(content_raw)
 
+            image_key = content_obj.get("image_key", "")
+            if image_key:
+                local_path = await self._download_image(image_key, message_id)
+                if local_path:
+                    text = (text + f"\n[图片已下载: {local_path}]") if text else f"[收到图片]\n[已下载: {local_path}]"
+                else:
+                    text = (text + "\n[图片下载失败]") if text else "[收到图片]"
+            file_key = content_obj.get("file_key", "")
+            if file_key:
+                file_name = content_obj.get("file_name", file_key)
+                local_path = await self._download_file(file_key, message_id)
+                if local_path:
+                    text = (text + f"\n[文件已下载: {local_path}]") if text else f"[收到文件: {file_name}]\n[已下载: {local_path}]"
+                    # Track file for this chat
+                    self._track_file(chat_id, local_path)
+                else:
+                    text = (text + f"\n[文件下载失败: {file_name}]") if text else f"[收到文件: {file_name}]"
+
             if not text:
                 _log(f'text empty: content_raw={content_raw[:100]}')
                 return None
@@ -760,6 +801,10 @@ class FeishuAdapter(PlatformAdapter):
             return False
 
         content = json.dumps({"text": reply.content})
+        logger.info(
+            "[Feishu] send_message: chat=%s reply_to=%s content_len=%d",
+            chat_id, reply.reply_to_message_id or "(none)", len(reply.content or "")
+        )
 
         if reply.reply_to_message_id:
             url = f"{self.api_base}/im/v1/messages/{reply.reply_to_message_id}/reply"
@@ -770,6 +815,7 @@ class FeishuAdapter(PlatformAdapter):
                 "receive_id": chat_id,
                 "content": content,
                 "msg_type": "text",
+                "receive_id_type": "chat_id",
             }
 
         headers = {
@@ -789,8 +835,9 @@ class FeishuAdapter(PlatformAdapter):
                             self._sent_ids.append(msg_id)
                             if len(self._sent_ids) > 10:
                                 self._sent_ids.pop(0)
+                        logger.info("[Feishu] send_message OK: msg_id=%s", msg_id)
                         return True
-                    logger.error("[Feishu] API error: %s", data.get("msg"))
+                    logger.error("[Feishu] API error: code=%s msg=%s", data.get("code"), data.get("msg"))
                 else:
                     logger.error("[Feishu] HTTP %d: %s", resp.status_code, resp.text[:200])
         except Exception as e:
@@ -828,6 +875,31 @@ class FeishuAdapter(PlatformAdapter):
         except Exception as e:
             logger.exception("[Feishu] Edit failed: %s", e)
         return False
+
+    # ── Stream Progress ──────────────────────────────────────────
+
+    async def send_stream_progress(self, chat_id: str, text: str,
+                                     is_final: bool = False) -> str:
+        """Send incremental streaming progress to chat.
+
+        Sends progress messages with accumulated text during streaming.
+        Tracks progress message IDs for potential cleanup or editing.
+        When is_final=True, marks this as the final complete response.
+
+        Returns the message ID of the sent message.
+        """
+        prefix = "" if is_final else "\U0001f4dd "
+        reply = PlatformReply(
+            platform="feishu",
+            chat_id=chat_id,
+            content=f"{prefix}{text}",
+        )
+        ok = await self.send_message(reply)
+        if ok:
+            msg_id = self._last_reply_id
+            self._last_progress_id = msg_id
+            return msg_id
+        return ""
 
     # ── Send Audio Message ────────────────────────────────────────
 
@@ -947,6 +1019,113 @@ class FeishuAdapter(PlatformAdapter):
         return None
 
     # ── Token Management ──────────────────────────────────────────
+
+    
+    async def _download_image(self, image_key: str, message_id: str = ""):
+        """Download an image from Feishu by image_key, return local file path."""
+        import os as _os
+        token = await self._get_tenant_access_token()
+        if not token:
+            logger.error("[Feishu] No token for image download")
+            return None
+        url = f"{self.api_base}/im/v1/messages/{message_id}/resources/{image_key}?type=image"
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(url, headers={"Authorization": f"Bearer {token}"})
+                if resp.status_code == 200:
+                    ct = resp.headers.get("content-type", "")
+                    ext = "jpg"
+                    if "png" in ct: ext = "png"
+                    elif "gif" in ct: ext = "gif"
+                    elif "webp" in ct: ext = "webp"
+                    save_dir = "dragon_data/uploads/images"
+                    _os.makedirs(save_dir, exist_ok=True)
+                    filepath = _os.path.join(save_dir, f"{image_key[:20]}.{ext}")
+                    with open(filepath, "wb") as f:
+                        f.write(resp.content)
+                    logger.info("[Feishu] Downloaded image: %s (%d bytes)", filepath, len(resp.content))
+                    return filepath
+                else:
+                    logger.error("[Feishu] Image download failed: HTTP %s", resp.status_code)
+        except Exception:
+            logger.exception("[Feishu] Image download error")
+        return None
+
+    async def _download_file(self, file_key: str, message_id: str = ""):
+        """Download from Feishu by file_key, return local path."""
+        import os as _os, re
+        token = await self._get_tenant_access_token()
+        if not token:
+            logger.error("[Feishu] No token for file download")
+            return None
+        url = f"{self.api_base}/im/v1/messages/{message_id}/resources/{file_key}?type=file"
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(url, headers={"Authorization": f"Bearer {token}"})
+                if resp.status_code == 200:
+                    cd = resp.headers.get("content-disposition", "")
+                    fname = file_key[:20]
+                    m = re.search(r'filename[*]?="?([^";]+)', cd)
+                    if m:
+                        fname = m.group(1)
+                    save_dir = "dragon_data/uploads/files"
+                    _os.makedirs(save_dir, exist_ok=True)
+                    filepath = _os.path.join(save_dir, fname)
+                    with open(filepath, "wb") as fw:
+                        fw.write(resp.content)
+                    logger.info("[Feishu] Downloaded file: %s (%d bytes)", filepath, len(resp.content))
+                    return filepath
+                else:
+                    logger.error("[Feishu] File download failed: HTTP %s", resp.status_code)
+        except Exception:
+            logger.exception("[Feishu] File download error")
+        return None
+
+    async def _upload_to_signoss(self, file_path: str):
+        """Upload file to OSS via signOSS, return public URL."""
+        import subprocess as _sp
+        import json as _json
+        import os as _os
+        signoss_key = _os.getenv("SIGNOSS_API_KEY", "sk-your-signoss-key")
+        from dragon._domain_loader import OSS_BASE_URL, OSS_FALLBACK_URL
+        for base_url in [f"{OSS_BASE_URL}", OSS_FALLBACK_URL]:
+            try:
+                result = _sp.run(
+                    ["curl", "-sk", "--max-time", "30", "-X", "POST", f"{base_url}/upload",
+                     "-H", f"X-API-Key: {signoss_key}",
+                     "-F", "category=feishu_images",
+                     "-F", f"file=@{file_path}"],
+                    capture_output=True, text=True, timeout=35
+                )
+                if result.returncode == 0 and "success" in result.stdout:
+                    data = _json.loads(result.stdout)
+                    files = data.get("files", [])
+                    if files:
+                        url = files[0].get("url", "")
+                        logger.info("[Feishu] Uploaded to signOSS: %s", url)
+                        return url
+            except Exception as e:
+                logger.debug("[Feishu] signOSS attempt %s failed: %s", base_url, e)
+        return None
+
+    def _track_file(self, chat_id: str, file_path: str):
+        """Record downloaded file for a chat so Dragon remembers it across turns."""
+        import json as _json, os as _os
+        tracker = _os.path.join("dragon_data", "uploads", ".chat_files.json")
+        _os.makedirs(_os.path.dirname(tracker), exist_ok=True)
+        data = {}
+        if _os.path.exists(tracker):
+            try:
+                with open(tracker, "r") as f:
+                    data = _json.load(f)
+            except Exception:
+                pass
+        files = data.get(chat_id, [])
+        if file_path not in files:
+            files.append(file_path)
+        data[chat_id] = files
+        with open(tracker, "w") as f:
+            _json.dump(data, f, ensure_ascii=False)
 
     async def _get_tenant_access_token(self) -> str:
         """Get or refresh the tenant access token (cached, ~2h TTL)."""

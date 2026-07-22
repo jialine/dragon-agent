@@ -70,8 +70,8 @@ def _format_timestamp(iso_str: str) -> str:
 
 async def tool_session_search(
     query: str = "",
-    max_results: int = 5,
-    platform: str = "",
+    limit: int = 3,
+    role_filter: str = None,
 ) -> str:
     """Search or list past conversation sessions.
 
@@ -84,14 +84,14 @@ async def tool_session_search(
     Args:
         query: Search query for FTS5 full-text search. Leave empty to list
             recent sessions.
-        max_results: Maximum number of sessions to return (default: 5, max: 20).
+        limit: Maximum number of sessions to return (default: 5, max: 20).
         platform: Optional filter by platform (e.g., "feishu", "api").
 
     Returns:
         JSON with a sessions list, each containing title, created_at, summary,
         session_id, platform, and optional snippet (for search mode).
     """
-    max_results = max(1, min(max_results, 20))
+    limit = max(1, min(limit, 20))
     store = _get_store()
 
     results = []
@@ -99,7 +99,7 @@ async def tool_session_search(
     if not query or not query.strip():
         # ── Mode 1: List recent sessions ──────────────────────────
         sessions = store.list_recent(
-            limit=max_results,
+            limit=limit,
             platform=platform.strip() if platform else None,
         )
         for sess in sessions:
@@ -109,13 +109,13 @@ async def tool_session_search(
                 "title": sess.title,
                 "created_at": _format_timestamp(sess.created_at),
                 "updated_at": _format_timestamp(sess.updated_at),
-                "platform": sess.platform,
+                "role_filter": sess.platform,
                 "message_count": sess.message_count,
                 "preview": preview,
             })
     else:
         # ── Mode 2: FTS5 search ───────────────────────────────────
-        search_results = store.search(query.strip(), limit=max_results)
+        search_results = store.search(query.strip(), limit=limit)
         for sr in search_results:
             preview = _make_preview(store, sr["session_id"])
             # Look up full session to get created_at (search() only returns updated_at)
@@ -126,7 +126,7 @@ async def tool_session_search(
                 "title": sr["title"],
                 "created_at": _format_timestamp(created_at),
                 "updated_at": _format_timestamp(sr.get("updated_at", "")),
-                "platform": sr.get("platform", ""),
+                "role_filter": sr.get("role_filter", ""),
                 "message_count": sr.get("message_count", 0),
                 "snippet": sr.get("snippet", ""),
                 "preview": preview,
