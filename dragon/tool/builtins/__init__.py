@@ -129,6 +129,7 @@ _web_search_router = WebSearchRouter()
 async def tool_search(
     pattern: str,
     path: str = ".",
+    target: str = "content",
     file_glob: str = "*",
     max_results: int = 50,
 ) -> str:
@@ -145,6 +146,16 @@ async def tool_search(
     search_dir = Path(path).expanduser().resolve()
     if not search_dir.exists():
         return json.dumps({"error": f"Path not found: {path}"})
+
+    if target == "files":
+        results = []
+        count = 0
+        for fp in search_dir.rglob(pattern if "*" in pattern else f"*{pattern}*"):
+            if count >= max_results:
+                break
+            results.append(str(fp.relative_to(search_dir)))
+            count += 1
+        return json.dumps({"matches": results, "count": count})
 
     results = []
     count = 0

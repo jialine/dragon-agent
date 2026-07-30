@@ -203,7 +203,7 @@ class MessageProcessor:
             try:
                 if self.provider_registry:
                     result = await self.provider_registry.call(
-                        provider_name="openai", messages=history, max_tokens=4096)
+                        provider_name="openai", messages=history, max_tokens=8192)
                     resp = result.content
                 else:
                     return None
@@ -300,15 +300,17 @@ class MessageProcessor:
         session = None
         if self.session_store:
             # Check for forced new session from /new /reset command
-            forced_sid = self._next_session_ids.pop(chat_id, None) if chat_id else None
+            forced_sid = self._next_session_ids.get(chat_id) if chat_id else None
             lookup_id = forced_sid or message.session_id
             session = self.session_store.get(lookup_id)
-            if session is None or forced_sid:
+            if session is None:
                 session = self.session_store.create(
                     title=message.content[:50],
                     platform=message.platform,
                 )
                 record_session_created()
+            # Persist session_id → chat_id mapping for all future messages
+            self._next_session_ids[chat_id] = session.id
 
         # 2. Build message history
         # Inject recently downloaded files as context
@@ -334,12 +336,34 @@ class MessageProcessor:
 
         if self.session_store and session:
             past_msgs = self.session_store.get_messages(
-                session.id, limit=50
+                session.id, limit=200
             )
-            history.extend([
-                {"role": m.role, "content": m.content}
-                for m in past_msgs[-50:]  # last 50 messages
-            ])
+            # Hermes-style: keep last 20 msgs, prune tool results
+            MAX_HIST = 20
+            MAX_TOOL = 500
+            total = len(past_msgs)
+            if total > MAX_HIST:
+                dropped = total - MAX_HIST
+                past_msgs = past_msgs[-MAX_HIST:]
+                if system_prompt:
+                    system_prompt = system_prompt.rstrip() + (
+                        "\n\n[已截断: 省略 " + str(dropped) + " 条更早消息, 保留最近 " + str(MAX_HIST) + " 条]\n"
+                    )
+            for m in past_msgs:
+                c = m.content or ""
+                r = m.role
+                if r == "tool" and len(c) > MAX_TOOL:
+                    c = c[:MAX_TOOL] + "\n... [截断, 原始 " + str(len(m.content)) + " 字符]"
+                msg = {"role": r, "content": c}
+                # Extract tool_call_id from content prefix [call_XX_...] for tool messages
+                if r == "tool":
+                    tc_match = re.match(r'^\[(call_\w+)\]\s*', c)
+                    if tc_match:
+                        msg["tool_call_id"] = tc_match.group(1)
+                # Restore tool_calls for assistant messages
+                if r == "assistant" and m.tool_calls:
+                    msg["tool_calls"] = m.tool_calls
+                history.append(msg)
 
         history.append({"role": "user", "content": message.content})
 
@@ -369,6 +393,7 @@ class MessageProcessor:
         reply_text = ""
         tool_call_count = 0
         steer_injected = 0
+        _current_tool_name = "thinking..."  # for progress display
         _loop_start = time.monotonic()
 
         # Progress reporter (background, every 3 min)
@@ -378,21 +403,19 @@ class MessageProcessor:
         async def _progress_reporter():
             last_report = 0
             while not progress_stop.is_set():
-                await asyncio.sleep(30)
+                await asyncio.sleep(180)
                 if progress_stop.is_set():
                     break
                 elapsed = time.monotonic() - _loop_start
-                if elapsed - last_report >= 30 and self._progress_callback:
+                if elapsed - last_report >= 180 and self._progress_callback:
                     last_report = elapsed
                     mins = int(elapsed // 60)
                     try:
                         await self._progress_callback(chat_id,
-                            f"\u23f3 \u6267\u884c\u4e2d... ({mins}\u5206\u949f, "
-                            f"\u7b2c{tool_call_count + 1}\u6b65, "
-                            f"\u4e0a\u9650{self.max_tool_iterations}\u8f6e, "
-                            f"\u5df2\u6ce8\u5165{steer_injected}\u6761\u6307\u4ee4)")
-                    except Exception:
-                        pass
+                            f"\u23f3 {mins}min elapsed \u2014 iter {tool_call_count + 1}/{self.max_tool_iterations}, "
+                            f"running: {_current_tool_name}")
+                    except Exception as e:
+                        logger.warning("[Processor] 3min progress error: %s", e)
 
         if self._progress_callback:
             progress_task = asyncio.create_task(_progress_reporter())
@@ -432,7 +455,46 @@ class MessageProcessor:
                                     _others.append(s)
                             tool_schemas = (_priority + _others)[:25]
 
+                        # ── Trim history to prevent unbounded growth from accumulated tool calls ──
+                        MAX_PROVIDER_HIST = 50
+                        # Hermes-aligned orphan cleanup: drop invalid tool messages.
+                        # Runs twice — before AND after trim — because trim can
+                        # chop off an assistant message and leave its tool results
+                        # orphaned.
+                        def _hermes_cleanup(msgs):
+                            known_tool_ids = set()
+                            out = []
+                            for m in msgs:
+                                if not isinstance(m, dict):
+                                    out.append(m)
+                                    continue
+                                role = m.get("role")
+                                if role == "assistant":
+                                    known_tool_ids = set()
+                                    for tc in (m.get("tool_calls") or []):
+                                        if isinstance(tc, dict) and tc.get("id"):
+                                            known_tool_ids.add(tc["id"])
+                                    out.append(m)
+                                elif role == "tool":
+                                    tc_id = m.get("tool_call_id")
+                                    if tc_id and tc_id in known_tool_ids:
+                                        out.append(m)
+                                else:
+                                    if role == "user":
+                                        known_tool_ids = set()
+                                    out.append(m)
+                            return out
+                        history = _hermes_cleanup(history)
+                        if len(history) > MAX_PROVIDER_HIST:
+                            trimmed = [history[0]] if history[0].get("role") == "system" else []
+                            trimmed += history[-(MAX_PROVIDER_HIST - len(trimmed)):]
+                            print(f"[PROC_DEBUG] trimmed history: {len(history)} → {len(trimmed)}", flush=True)
+                            history = trimmed
+                            # Re-run cleanup after trim — trim may have orphaned tool messages
+                            history = _hermes_cleanup(history)
+
                         # ── Retry loop: up to 3 attempts with exponential backoff ──
+
                         max_retries = 3
                         last_err = None
                         result = None
@@ -442,7 +504,7 @@ class MessageProcessor:
                                 result = await self.provider_registry.call(
                                     provider_name="openai",
                                     messages=history,
-                                    max_tokens=4096, temperature=0.7,
+                                    max_tokens=8192, temperature=0.7,
                                     tools=tool_schemas if tool_schemas else None,  # ENABLED: native FC
                                 )
                                 break  # Success
@@ -470,8 +532,8 @@ class MessageProcessor:
                                     tool_str = ', '.join(tc_names[:3])
                                     await self._progress_callback(chat_id,
                                         f"iter {iteration+1}/{self.max_tool_iterations}: {tool_str}")
-                                except Exception:
-                                    pass
+                                except Exception as e:
+                                    logger.warning("[Processor] iter progress error: %s", e)
                         else:
                             print(f"[PROC_DEBUG] iter={iteration} text_response_len={len(response_text) if response_text else 0}", flush=True)
 
@@ -483,8 +545,8 @@ class MessageProcessor:
                                 try:
                                     await self._alert_callback(chat_id,
                                         f"{emoji} **[{level.upper()}]** {text}")
-                                except Exception:
-                                    pass
+                                except Exception as e:
+                                    logger.warning("[Processor] alert_cb error: %s", e)
 
                         # ── EDIT past messages ────────────────────
                         if self._edit_callback:
@@ -492,8 +554,8 @@ class MessageProcessor:
                             for target, new_text in edits:
                                 try:
                                     await self._edit_callback(chat_id, target, new_text)
-                                except Exception:
-                                    pass
+                                except Exception as e:
+                                    logger.warning("[Processor] edit_cb error: %s", e)
 
                         # Record token consumption
                         if hasattr(result, 'usage') and result.usage:
@@ -532,14 +594,21 @@ class MessageProcessor:
                         tool_calls.append({
                             "name": func.get("name", ""),
                             "arguments": args,
-                            "id": tc.get("id", ""),
+                            "id": tc.get("id") or f"call_{func.get('name', 'unknown')}",
                         })
                 else:
                     # Legacy: text-based ```tool_call / <tool_call> parsing
                     tool_calls = self._parse_tool_calls(response_text)
 
                 if not tool_calls:
-                    # No tool calls — this is the final answer
+                    # No tool calls — but check if this is thinking-only
+                    msg = result.raw["choices"][0]["message"] if hasattr(result, "raw") else {}
+                    has_reasoning = bool(msg.get("reasoning_content", ""))
+                    has_content = bool(response_text and response_text.strip())
+                    if has_reasoning and not has_content:
+                        # Thinking-only response — give model another turn to produce output
+                        logger.debug("Thinking-only response detected, continuing loop")
+                        continue
                     reply_text = response_text
                     break
 
@@ -562,15 +631,25 @@ class MessageProcessor:
                         history.append({"role": "assistant", "content": clean_response})
 
                     tool_outputs = []
+                    _current_tool_name = ", ".join(tc["name"] for tc in tool_calls[:2])
                     for tc in tool_calls:
                         tool_call_count += 1
                         try:
+                            import os as _os, datetime as _dt
+                            _tool_name = tc["name"]
+                            _tool_args = tc.get("arguments", {})
+                            with open("/tmp/dragon_tool_debug.log", "a") as _tf:
+                                _tf.write(f"[{_dt.datetime.now()}] CALL {_tool_name} args={json.dumps(_tool_args, ensure_ascii=False)[:300]} cwd={_os.getcwd()}\n")
                             tool_result = await self.tool_registry.call(
-                                tc["name"], tc.get("arguments", {})
+                                _tool_name, _tool_args
                             )
                             output = str(tool_result.output) if tool_result.success else tool_result.error
+                            with open("/tmp/dragon_tool_debug.log", "a") as _tf:
+                                _tf.write(f"[{_dt.datetime.now()}] RESULT {_tool_name} success={tool_result.success} output_len={len(output)} output_preview={output[:200]}\n")
                         except Exception as e:
                             output = f"Tool error: {e}"
+                            with open("/tmp/dragon_tool_debug.log", "a") as _tf:
+                                _tf.write(f"[{_dt.datetime.now()}] ERROR {tc['name']}: {e}\n")
 
                         # Auto-detect tool errors and flag for LLM attention
                         output_lower = output.lower()
@@ -607,19 +686,11 @@ class MessageProcessor:
                             "tool": tc["name"],
                             "output": output[:4000],
                         })
-                        if is_native_fc and tc.get("id"):
-                            history.append({
-                                "role": "tool",
-                                "tool_call_id": tc["id"],
-                                "content": output[:4000],
-                            })
-                        else:
-                            # Non-native mode: use "tool" role to distinguish from user messages
-                            history.append({
-                                "role": "tool",
-                                "tool_call_id": tc.get("id", f"call_{tc['name']}"),
-                                "content": output[:4000],
-                            })
+                        history.append({
+                            "role": "tool",
+                            "tool_call_id": tc.get("id") or f"call_{tc.get('name', 'unknown')}",
+                            "content": output[:4000],
+                        })
 
                     # Check if we should continue
                     if iteration == self.max_tool_iterations - 1:

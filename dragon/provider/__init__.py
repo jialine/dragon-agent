@@ -189,6 +189,17 @@ class OpenAIProvider(BaseProvider):
                     resp.raise_for_status()
                     data = resp.json()
 
+                    # Detect in-body rate limit errors (andlapi.cn returns 200)
+                    if "error" in data:
+                        err = data["error"]
+                        err_msg = str(err.get("message", err))
+                        if "rate_limit" in err_msg.lower() or "rate limit" in err_msg.lower():
+                            wait = min(2 ** attempt, 30)
+                            logger.warning("Rate limited (body), retrying in %ds: %s", wait, err_msg[:100])
+                            await asyncio.sleep(wait)
+                            continue
+                        raise Exception("Provider error: " + err_msg[:300])
+
                     choice = data["choices"][0]
                     return ProviderResult(
                         content=choice["message"]["content"] or "",
@@ -621,6 +632,17 @@ class AzureOpenAIProvider(BaseProvider):
                             pass
                     resp.raise_for_status()
                     data = resp.json()
+
+                    # Detect in-body rate limit errors (andlapi.cn returns 200)
+                    if "error" in data:
+                        err = data["error"]
+                        err_msg = str(err.get("message", err))
+                        if "rate_limit" in err_msg.lower() or "rate limit" in err_msg.lower():
+                            wait = min(2 ** attempt, 30)
+                            logger.warning("Rate limited (body), retrying in %ds: %s", wait, err_msg[:100])
+                            await asyncio.sleep(wait)
+                            continue
+                        raise Exception("Provider error: " + err_msg[:300])
 
                     choice = data["choices"][0]
                     return ProviderResult(

@@ -309,6 +309,7 @@ class FeishuAdapter(PlatformAdapter):
             try:
                 event_type = getattr(event, 'type', '') or getattr(getattr(event, 'header', None), 'event_type', '')
 
+
                 # Dedup for message events
                 if hasattr(event, 'event') and hasattr(event.event, 'message'):
                     msg = event.event.message
@@ -438,14 +439,15 @@ class FeishuAdapter(PlatformAdapter):
                 if voice_cmd_response:
                     # Send command response directly
                     reply = PlatformReply(
-                        platform="feishu",
-                        chat_id=message.chat_id,
                         content=voice_cmd_response,
+                        chat_id=message.chat_id,
                         reply_to_message_id=message.message_id,
                     )
                     await self.send_message(reply)
-                    # For /new, create a fresh session
-                    if "/new" in message.content.lower() or "/reset" in message.content.lower() or "/clear" in message.content.lower():
+                    # For /new or /task, create a fresh session
+                    is_new = "/new" in message.content.lower() or "/reset" in message.content.lower() or "/clear" in message.content.lower()
+                    is_task = message.content.lower().startswith("/task") or message.content.lower().startswith("/任务")
+                    if is_new or is_task:
                         try:
                             from dragon.session import Session
                             import hashlib, time
@@ -454,11 +456,25 @@ class FeishuAdapter(PlatformAdapter):
                             ).hexdigest()[:12]
                             handler = self._message_handler
                             processor = getattr(handler, '__self__', None)
+                            # Fallback: extract from closure (handler is plain function)
+                            if processor is None and hasattr(handler, '__closure__') and handler.__closure__:
+                                for cell in handler.__closure__:
+                                    cc = cell.cell_contents
+                                    if cc is not None and hasattr(cc, 'processor'):
+                                        processor = cc.processor
+                                        break
                             if processor and hasattr(processor, 'session_store') and processor.session_store:
-                                processor.session_store.create(new_sid)
+                                if is_task:
+                                    raw = message.content.strip()
+                                    task_name = raw[5:].strip() if raw.lower().startswith("/task") else raw[3:].strip()
+                                    sess = processor.session_store.create(new_sid)
+                                    if task_name:
+                                        processor.session_store.update_meta(new_sid, title=task_name)
+                                else:
+                                    processor.session_store.create(new_sid)
                                 # Force new session for next message by storing hint
-                                if hasattr(processor, '_next_session_id'):
-                                    processor._next_session_id = new_sid
+                                if hasattr(processor, '_next_session_ids'):
+                                    processor._next_session_ids[message.chat_id] = new_sid
                         except Exception:
                             pass
                     return
@@ -510,11 +526,14 @@ class FeishuAdapter(PlatformAdapter):
                 if processor and hasattr(processor, 'set_progress_callback'):
                     async def _progress_cb(chat_id: str, text: str):
                         try:
+                            _now = __import__('datetime').datetime.now()
                             with open("/tmp/feishu_dispatch.log", "a") as _f:
-                                _f.write(f"[{__import__('datetime').datetime.now()}] PROGRESS_CB: firing text={text[:60]}\n")
-                            await adapter.send_stream_progress(chat_id, text)
-                        except Exception:
-                            pass
+                                _f.write(f"[{_now}] PROGRESS_CB: firing text={text[:60]}\n")
+                            result = await self.send_stream_progress(chat_id, text)
+                            with open("/tmp/feishu_dispatch.log", "a") as _f:
+                                _f.write(f"[{_now}] PROGRESS_CB: result={result!r}\n")
+                        except Exception as e:
+                            logger.warning("[Feishu] progress_cb error: %s", e)
                     processor.set_progress_callback(_progress_cb)
                     with open("/tmp/feishu_dispatch.log", "a") as _df:
                         _df.write(f"[{__import__('datetime').datetime.now()}] PROGRESS_CB: REGISTERED processor={type(processor).__name__}\n")
@@ -523,12 +542,12 @@ class FeishuAdapter(PlatformAdapter):
                 if processor and hasattr(processor, 'set_alert_callback'):
                     async def _alert_cb(chat_id: str, text: str):
                         try:
-                            reply = PlatformReply(platform="feishu", chat_id=chat_id, content=text)
+                            reply = PlatformReply(chat_id=chat_id, content=text)
                             ok = await self.send_message(reply)
                             if ok and self._last_reply_id:
                                 self._last_alert_id = self._last_reply_id
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning("[Feishu] alert_cb error: %s", e)
                     processor.set_alert_callback(_alert_cb)
 
                 # Register edit callback for [EDIT] past-message updates
@@ -548,8 +567,8 @@ class FeishuAdapter(PlatformAdapter):
                                 msg_id = self._last_alert_id or self._last_progress_id or self._last_reply_id
                             if msg_id:
                                 await self.edit_message(msg_id, new_text)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning("[Feishu] edit_cb error: %s", e)
                     processor.set_edit_callback(_edit_cb)
 
                 success = True
@@ -593,7 +612,7 @@ class FeishuAdapter(PlatformAdapter):
                 # Send error notification to user
                 try:
                     await self.send_message(PlatformReply(
-                        platform="feishu",
+            
                         chat_id=getattr(message, "chat_id", ""),
                         content=f"\u26a0\ufe0f 处理消息时出错: {str(exc)[:200]}",
                     ))
@@ -614,6 +633,9 @@ class FeishuAdapter(PlatformAdapter):
         # Session commands
         if text_lower in ("/new", "/reset", "/clear", "/新会话", "/重置"):
             return "🔄 会话已重置，下一轮对话将使用新上下文。"
+        if text_lower.startswith("/task") or text_lower.startswith("/任务"):
+            task_name = text.strip()[5:].strip() if text_lower.startswith("/task") else text.strip()[3:].strip()
+            return f"✅ 新任务已创建：{task_name or '未命名'}"
         # Voice commands
         if text_lower in ("/voice on", "/voice off", "/语音 on", "/语音 off", "/语音 开", "/语音 关"):
             if "off" in text_lower or "关" in text_lower:
@@ -691,6 +713,9 @@ class FeishuAdapter(PlatformAdapter):
             _log(f"event schema: {getattr(event, 'schema', 'MISSING')}")
             _log(f"has event: {hasattr(event, 'event')}")
             event_type = getattr(event, 'type', '') or getattr(getattr(event, 'header', None), 'event_type', '')
+            _log(f"resolved event_type: {event_type!r}")
+            _log("type check PASSED, proceeding")
+            _log(f"evt={getattr(event, 'event', 'NONE')}")
 
             if 'message' not in event_type and 'card' not in event_type and 'edited' not in event_type:
                 _log(f'type check FAILED: {event_type}')
@@ -724,6 +749,16 @@ class FeishuAdapter(PlatformAdapter):
             try:
                 content_obj = json.loads(content_raw)
                 text = content_obj.get("text", "")
+                # If text is empty, extract from rich text content blocks
+                if not text and "content" in content_obj:
+                    blocks = content_obj.get("content", [])
+                    parts = []
+                    for block in blocks:
+                        if isinstance(block, list):
+                            for item in block:
+                                if isinstance(item, dict) and item.get("tag") == "text":
+                                    parts.append(item.get("text", ""))
+                    text = "".join(parts)
             except (json.JSONDecodeError, TypeError):
                 text = str(content_raw)
 
@@ -791,7 +826,7 @@ class FeishuAdapter(PlatformAdapter):
         """Parse Feishu event payload into PlatformMessage (webhook mode)."""
         if body.get("type") == "url_verification":
             return PlatformMessage(
-                platform="feishu",
+    
                 chat_id="__challenge__",
                 user_id="__system__",
                 content=body.get("challenge", ""),
@@ -835,7 +870,6 @@ class FeishuAdapter(PlatformAdapter):
             return None
 
         return PlatformMessage(
-            platform="feishu",
             chat_id=chat_id,
             user_id=sender_id,
             content=text,
@@ -858,12 +892,11 @@ class FeishuAdapter(PlatformAdapter):
             url = f"{self.api_base}/im/v1/messages/{reply_to_msg_id}/reply"
             body = {"content": content_json, "msg_type": msg_type}
         else:
-            url = f"{self.api_base}/im/v1/messages"
+            url = f"{self.api_base}/im/v1/messages?receive_id_type=chat_id"
             body = {
                 "receive_id": chat_id,
                 "content": content_json,
                 "msg_type": msg_type,
-                "receive_id_type": "chat_id",
             }
         headers = {
             "Authorization": f"Bearer {token}",
@@ -987,12 +1020,11 @@ class FeishuAdapter(PlatformAdapter):
             url = f"{self.api_base}/im/v1/messages/{reply.reply_to_message_id}/reply"
             body = {"content": content_text, "msg_type": msg_type}
         else:
-            url = f"{self.api_base}/im/v1/messages"
+            url = f"{self.api_base}/im/v1/messages?receive_id_type=chat_id"
             body = {
                 "receive_id": chat_id,
                 "content": content_text,
                 "msg_type": msg_type,
-                "receive_id_type": "chat_id",
             }
 
         headers = {
@@ -1067,26 +1099,31 @@ class FeishuAdapter(PlatformAdapter):
 
     async def send_stream_progress(self, chat_id: str, text: str,
                                      is_final: bool = False) -> str:
-        """Send incremental streaming progress to chat.
+        """Send incremental streaming progress — edits first message in-place.
 
-        Sends progress messages with accumulated text during streaming.
-        Tracks progress message IDs for potential cleanup or editing.
-        When is_final=True, marks this as the final complete response.
-
-        Returns the message ID of the sent message.
+        First call sends a new message and saves its ID.
+        Subsequent calls edit that message to avoid chat spam.
+        When is_final=True, marks complete and clears tracking.
         """
         prefix = "" if is_final else "\U0001f4dd "
-        reply = PlatformReply(
-            platform="feishu",
-            chat_id=chat_id,
-            content=f"{prefix}{text}",
-        )
-        ok = await self.send_message(reply)
-        if ok:
-            msg_id = self._last_reply_id
-            self._last_progress_id = msg_id
-            return msg_id
-        return ""
+        full_text = f"{prefix}{text}"
+        if self._last_progress_id:
+            # Edit existing progress message in-place
+            ok = await self.edit_message(self._last_progress_id, full_text)
+            if is_final:
+                self._last_progress_id = ""
+            return self._last_progress_id if ok else ""
+        else:
+            # First call: send new message
+            reply = PlatformReply(
+                chat_id=chat_id,
+                content=full_text,
+            )
+            ok = await self.send_message(reply)
+            if ok:
+                self._last_progress_id = self._last_reply_id
+                return self._last_reply_id
+            return ""
 
     # ── Send Audio Message ────────────────────────────────────────
 
@@ -1130,7 +1167,7 @@ class FeishuAdapter(PlatformAdapter):
             url = f"{self.api_base}/im/v1/messages/{reply_to_message_id}/reply"
             body = {"content": content, "msg_type": "audio"}
         else:
-            url = f"{self.api_base}/im/v1/messages"
+            url = f"{self.api_base}/im/v1/messages?receive_id_type=chat_id"
             body = {
                 "receive_id": chat_id,
                 "content": content,
