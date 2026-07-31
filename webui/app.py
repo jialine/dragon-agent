@@ -19,7 +19,8 @@ from database import (
     add_character, update_character_view, update_character_seed, update_character_prompt, get_characters,
     add_shot, update_shot_prompt, update_shot_video, get_shots,
     add_video_task, update_video_task, get_video_task,
-    add_scene, update_scene_image, get_scenes, delete_scene, update_shot_scene
+    add_scene, update_scene_image, get_scenes, delete_scene, update_shot_scene,
+    get_db
 )
 from pipelines.script_writer import generate_script, optimize_prompt
 from pipelines.character_gen import check_comfyui, check_wan, generate_character_views, generate_character_views_comfyui, generate_character_views_wan
@@ -39,12 +40,7 @@ ASSETS_DIR = Path("/home/jialine/dragon-agent/assets")
 # ─── Frontend ───────────────────────────────────────────
 @app.route("/")
 def index():
-    from flask import make_response
-    resp = make_response(send_from_directory(str(BASE_DIR), "index.html"))
-    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-    resp.headers['Pragma'] = 'no-cache'
-    resp.headers['Expires'] = '0'
-    return resp
+    return send_from_directory(str(BASE_DIR), "index.html")
 
 
 # ─── Project APIs ───────────────────────────────────────
@@ -407,15 +403,50 @@ def api_plan_shots():
 
 @app.route("/api/shots/optimize-prompt", methods=["POST"])
 def api_optimize_single_prompt():
-    """Optimize a single prompt."""
+    """Optimize a single prompt. Supports both direct params and shot_id lookup."""
     data = request.json
-    shot_desc = data.get("shot_desc", "")
-    model = data.get("model", "happyhorse-1.1-t2v")
-    char_context = data.get("character_context", "")
+    shot_id = data.get("shot_id")
+    project_id = data.get("project_id")
+
+    # Direct mode: caller provides shot_desc/model/character_context
+    if not shot_id:
+        shot_desc = data.get("shot_desc", "")
+        model = data.get("model", "happyhorse-1.1-t2v")
+        char_context = data.get("character_context", "")
+        try:
+            optimized = optimize_prompt(shot_desc, model, char_context)
+            return jsonify({"prompt": optimized})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    # shot_id mode: look up shot from DB, build full context
+    conn = get_db()
+    row = conn.execute("SELECT * FROM shots WHERE id=? AND project_id=?", (shot_id, project_id)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"error": "Shot not found"}), 404
+
+    shot = dict(row)
+    shot_desc = shot.get("scene_desc", "") or shot.get("prompt_raw", "")
+    model = shot.get("model", "happyhorse-1.1-t2v")
+
+    # Build character context from shot's character_ids
+    char_context = ""
+    try:
+        char_ids = json.loads(shot.get("character_ids", "[]"))
+        if char_ids:
+            chars = get_characters(project_id)
+            char_context = "\\n".join([
+                f"{c['name']}: {c.get('description', '')}"
+                for c in chars if c["id"] in char_ids
+            ])
+    except Exception:
+        pass
 
     try:
         optimized = optimize_prompt(shot_desc, model, char_context)
-        return jsonify({"prompt": optimized})
+        update_shot_prompt(shot_id, optimized, model=model, duration=shot.get("duration", 8))
+        return jsonify({"prompt_optimized": optimized, "id": shot_id})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
