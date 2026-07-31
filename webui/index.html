@@ -965,6 +965,8 @@ function pollShotVideo(shotId, count) {
         }
         renderShots();
         if (statusEl) { statusEl.textContent = '✅ 生成完成！'; statusEl.style.color = 'var(--green)'; }
+        // Auto-preview without refresh
+        previewVideo(shot.video_local);
       } else if (shot.status === 'failed') {
         if (statusEl) { statusEl.textContent = '❌ 生成失败'; statusEl.style.color = 'var(--red)'; }
       } else if (count < 120) {
