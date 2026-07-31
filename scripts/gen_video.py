@@ -92,7 +92,7 @@ def submit(prompt, model, size, duration, ref_images):
             "model": model,
             "input": {
                 "prompt": dashscope_prompt,
-                "media": [{"type": "first_frame", "url": u} for u in all_refs]
+                "media": [{"type": "reference_image", "url": u} for u in all_refs]
             },
             "parameters": {
                 "resolution": resolution,
