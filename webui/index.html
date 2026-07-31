@@ -931,7 +931,7 @@ async function submitOneShot(shotId) {
   statusEl.textContent = '🎬 提交中...';
   statusEl.style.color = '#d2991d';
   try {
-    var r = await fetchAPI('/api/video/submit', {method:'POST', body:JSON.stringify({shot_id:shotId, project_id:currentProject.id, prompt: document.getElementById('shot-prompt-'+shotId).value})});
+    var r = await fetchAPI('/api/video/submit', {method:'POST', body:JSON.stringify({shot_id:shotId, project_id:currentProject.id, prompt: document.getElementById('shot-prompt-'+shotId).value, model: document.getElementById('shot-model-'+shotId).value})});
     if (r.success) {
       statusEl.textContent = '⏳ 后台生成中... task_id=' + r.task_id;
       statusEl.style.color = '#d2991d';
