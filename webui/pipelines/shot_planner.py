@@ -41,7 +41,7 @@ def plan_model_for_shot(shot, characters_available):
             return "happyhorse-1.1-r2v", c["portrait_oss"]
 
     # Fallback to T2V
-    return "happyhorse-1.1-t2v", None
+    return "happyhorse-1.1-r2v", None
 
 
 def build_shot_prompts(shots, characters, project_name=""):

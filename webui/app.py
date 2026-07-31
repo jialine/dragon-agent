@@ -134,7 +134,7 @@ def api_generate_script():
             shot_number=s["shot_number"],
             scene_desc=s["scene_desc"],
             prompt_raw=s["scene_desc"],
-            model="happyhorse-1.1-t2v",
+            model="happyhorse-1.1-r2v",
             duration=s.get("duration_sec", 8),
             character_ids=json.dumps(shot_char_ids)
         )
@@ -345,7 +345,7 @@ def api_plan_shots():
     results = []
     for shot in shots:
         # Decide model
-        model = "happyhorse-1.1-t2v"
+        model = "happyhorse-1.1-r2v"
         ref_image = None
         scene_ref_image = None
 
@@ -411,7 +411,7 @@ def api_optimize_single_prompt():
     # Direct mode: caller provides shot_desc/model/character_context
     if not shot_id:
         shot_desc = data.get("shot_desc", "")
-        model = data.get("model", "happyhorse-1.1-t2v")
+        model = data.get("model", "happyhorse-1.1-r2v")
         char_context = data.get("character_context", "")
         try:
             optimized = optimize_prompt(shot_desc, model, char_context)
@@ -428,7 +428,7 @@ def api_optimize_single_prompt():
 
     shot = dict(row)
     shot_desc = shot.get("scene_desc", "") or shot.get("prompt_raw", "")
-    model = shot.get("model", "happyhorse-1.1-t2v")
+    model = shot.get("model", "happyhorse-1.1-r2v")
 
     # Build character context from shot's character_ids
     char_context = ""
@@ -494,7 +494,7 @@ def api_optimize_batch():
         try:
             optimized = optimize_prompt(
                 shot.get("scene_desc", ""),
-                shot.get("model", "happyhorse-1.1-t2v"),
+                shot.get("model", "happyhorse-1.1-r2v"),
                 shot_char_context
             )
         except Exception:
@@ -516,7 +516,7 @@ def api_insert_shot():
     shot_number = data.get("shot_number")
     scene_desc = data.get("scene_desc", "新分镜")
     duration = data.get("duration", 8)
-    model = data.get("model", "happyhorse-1.1-t2v")
+    model = data.get("model", "happyhorse-1.1-r2v")
 
     if not project_id:
         return jsonify({"error": "project_id required"}), 400
@@ -782,7 +782,7 @@ def api_submit_video():
         return jsonify({"error": "Shot not found"}), 404
 
     prompt = data.get("prompt") or shot.get("prompt_optimized") or shot.get("prompt_raw") or shot.get("scene_desc", "")
-    model = data.get("model") or shot.get("model", "happyhorse-1.1-t2v")
+    model = data.get("model") or shot.get("model", "happyhorse-1.1-r2v")
     duration = data.get("duration") or shot.get("duration", 8)
     resolution = data.get("resolution") or shot.get("resolution", "1920*1080")
 
