@@ -112,7 +112,7 @@ class DragonPipeline:
 
     def __init__(
         self,
-        router: DragonRouter,
+        router: Optional[DragonRouter] = None,
         dispatcher: DragonDispatcher,
         jury: JuryDebate,
         session_store: SessionStore,
@@ -203,7 +203,10 @@ class DragonPipeline:
         current_turns += 1
 
         # ── Step 2: Route (intent + complexity) ───────────────────────
-        route = await self._router.classify(user_message)
+                if self._router is not None:
+            route = await self._router.classify(user_message)
+        else:
+            route = RouteResult(industry="general", difficulty="easy", difficulty_score=0.0, confidence=1.0)
         metadata["route"] = {
             "industry": route.industry,
             "difficulty": route.difficulty,
@@ -575,7 +578,8 @@ class DragonPipeline:
 
     async def close(self) -> None:
         """Release resources."""
-        await self._router.shutdown()
+        if self._router is not None:
+            await self._router.shutdown()
         await self._dispatcher.close()
 
 

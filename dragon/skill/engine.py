@@ -566,31 +566,90 @@ class SkillEngine:
     # ── Persistence ────────────────────────────────────────────────
 
     def _persist_skill(self, skill: DragonSkill) -> None:
-        """Save a skill to disk as JSON."""
+        """Save a skill to disk as JSON and SKILL.md (Hermes format)."""
+        # 1. JSON format (backward compat)
         skill_file = self.skills_dir / f"{skill.name}.json"
         try:
-            # Atomic write
             tmp = skill_file.with_suffix(".json.tmp")
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(skill.to_dict(), f, ensure_ascii=False, indent=2, default=str)
             os.replace(tmp, skill_file)
         except OSError as e:
-            logger.error("Failed to persist skill '%s': %s", skill.name, e)
+            logger.error("Failed to persist skill '%s' as JSON: %s", skill.name, e)
+
+        # 2. SKILL.md format (Hermes-compatible)
+        skill_md = self.skills_dir / f"{skill.name}.md"
+        try:
+            yaml_tags = "[" + ", ".join(skill.meta.tags) + "]" if skill.meta.tags else "[]"
+            md_content = f"""---
+name: {skill.name}
+description: {skill.meta.description}
+version: {skill.meta.version}
+tags: {yaml_tags}
+---
+
+{skill.content}
+"""
+            tmp_md = skill_md.with_suffix(".md.tmp")
+            with open(tmp_md, "w", encoding="utf-8") as f:
+                f.write(md_content)
+            os.replace(tmp_md, skill_md)
+            logger.debug("Persisted skill '%s' as SKILL.md", skill.name)
+        except OSError as e:
+            logger.error("Failed to persist skill '%s' as SKILL.md: %s", skill.name, e)
 
     def _load_all(self) -> None:
-        """Load all skills from the skills directory."""
+        """Load all skills from the skills directory (JSON + SKILL.md)."""
         if not self.skills_dir.exists():
             return
 
+        loaded = set()
+        # Load JSON first (primary format)
         for skill_file in self.skills_dir.glob("*.json"):
             try:
                 with open(skill_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 skill = DragonSkill.from_dict(data)
                 self._skills[skill.name] = skill
-                logger.debug("Loaded skill: %s (v%s)", skill.name, skill.meta.version)
+                loaded.add(skill.name)
+                logger.debug("Loaded skill: %s (v%s) from JSON", skill.name, skill.meta.version)
             except (json.JSONDecodeError, KeyError) as e:
                 logger.warning("Failed to load skill %s: %s", skill_file, e)
+
+        # Also load SKILL.md files (Hermes format) if not already loaded from JSON
+        import yaml as _yaml
+        for skill_md in self.skills_dir.glob("*.md"):
+            name = skill_md.stem
+            if name in loaded:
+                continue
+            try:
+                with open(skill_md, "r", encoding="utf-8") as f:
+                    md_content = f.read()
+                # Parse YAML frontmatter
+                meta = {}
+                body = md_content
+                if md_content.startswith("---"):
+                    parts = md_content.split("---", 2)
+                    if len(parts) >= 3:
+                        try:
+                            meta = _yaml.safe_load(parts[1]) or {}
+                        except Exception:
+                            pass
+                        body = parts[2].strip()
+                skill = DragonSkill(
+                    meta=SkillMeta(
+                        name=meta.get("name", name),
+                        description=meta.get("description", ""),
+                        tags=meta.get("tags", []),
+                        version=meta.get("version", "1.0.0"),
+                    ),
+                    content=body,
+                )
+                self._skills[skill.name] = skill
+                loaded.add(skill.name)
+                logger.debug("Loaded skill: %s (v%s) from SKILL.md", skill.name, skill.meta.version)
+            except Exception as e:
+                logger.warning("Failed to load SKILL.md %s: %s", skill_md, e)
 
     # ── Stats ──────────────────────────────────────────────────────
 

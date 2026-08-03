@@ -233,6 +233,117 @@ async def tool_install_skill(
         return json.dumps({"error": str(e)})
 
 
+
+async def tool_skill_manage(
+    action: str,
+    name: str,
+    content: str = "",
+    description: str = "",
+    tags: str = "",
+    version: str = "1.0.0",
+) -> str:
+    """Manage skills: create, patch (update), or delete. Hermes-aligned tool.
+
+    Args:
+        action: One of 'create', 'patch', 'delete'.
+        name: Skill name (lowercase, hyphens, max 64 chars).
+        content: Full skill content in markdown (required for create/patch).
+        description: One-line summary (required for create).
+        tags: Comma-separated tags.
+        version: Semantic version (default '1.0.0').
+    """
+    if _skill_engine is None:
+        return json.dumps({"error": "Skill engine not initialized"})
+
+    import re
+    name = name.strip().lower().replace(" ", "-")[:64]
+    if not re.match(r'^[a-z0-9._-]+$', name):
+        return json.dumps({"error": f"Invalid skill name: {name}"})
+
+    if action == "delete":
+        existing = _skill_engine.get(name)
+        if not existing:
+            return json.dumps({"error": f"Skill '{name}' not found"})
+        try:
+            _skill_engine.remove(name)
+            return json.dumps({"status": "success", "message": f"Skill '{name}' deleted"})
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    if action == "patch":
+        existing = _skill_engine.get(name)
+        if not existing:
+            return json.dumps({"error": f"Skill '{name}' not found, use action='create' first"})
+        if not content:
+            return json.dumps({"error": "content is required for patch"})
+        try:
+            parts = existing.meta.version.split(".")
+            parts[-1] = str(int(parts[-1]) + 1)
+            new_ver = ".".join(parts)
+        except Exception:
+            new_ver = existing.meta.version
+        try:
+            _skill_engine.register(
+                name=name, description=existing.meta.description,
+                content=content.strip(), tags=existing.meta.tags,
+                version=new_ver, execution_mode="sequential",
+            )
+            return json.dumps({"status": "success", "name": name, "version": new_ver,
+                "message": f"Skill '{name}' updated to v{new_ver}"})
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    if action == "create":
+        if not content or len(content) < 50:
+            return json.dumps({"error": "Skill content too short (minimum 50 characters)"})
+        existing = _skill_engine.get(name)
+        if existing:
+            return json.dumps({"status": "exists", "name": name, "version": existing.meta.version,
+                "message": f"Skill '{name}' already exists at v{existing.meta.version}. Use action=patch to update."})
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+        try:
+            _skill_engine.register(
+                name=name, description=description.strip(), content=content.strip(),
+                tags=tag_list, version=version, execution_mode="sequential",
+            )
+            return json.dumps({"status": "success", "name": name, "version": version,
+                "message": f"Skill '{name}' created successfully!"})
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    return json.dumps({"error": f"Unknown action '{action}'. Use: create, patch, or delete."})
+
+
+async def tool_skill_view(
+    name: str,
+) -> str:
+    """Load a skill's full content into the conversation. Hermes-aligned tool.
+
+    Use this to get full skill instructions before executing a task.
+
+    Args:
+        name: Skill name to load.
+    """
+    if _skill_engine is None:
+        return json.dumps({"error": "Skill engine not initialized"})
+
+    skill = _skill_engine.get(name.strip().lower())
+    if not skill:
+        try:
+            all_names = list(_skill_engine._skills.keys())
+            similar = [n for n in all_names if name.lower() in n.lower()][:5]
+        except Exception:
+            similar = []
+        return json.dumps({"error": f"Skill '{name}' not found", "suggestions": similar})
+
+    return json.dumps({
+        "name": skill.meta.name,
+        "version": skill.meta.version,
+        "description": skill.meta.description,
+        "tags": skill.meta.tags,
+        "content": skill.content,
+    })
+
 async def tool_create_skill(
     name: str,
     description: str,

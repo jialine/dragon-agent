@@ -1,223 +1,186 @@
-# 🐉 Dragon Agent
+# Dragon Agent 🐉
 
-**Self-Evolving AI Agent Framework** — CLI + TUI + multi-platform gateway.
+> 可自我进化的 AI Agent 框架 — 工具系统 · 技能引擎 · 工作流编排 · 多平台网关
 
-Dragon Agent is the **AgileMind Engine** (灵思引擎) To-C Editor, powered by a local **Qwen2-1.5B** model for routing and inference. Features persistent memory, skill system, scheduled jobs, and multi-platform messaging (Feishu, Telegram, Discord, WeChat).
+Dragon Agent 是一个 Python AI Agent 框架，支持工具调用、技能记忆、工作流编排、以及多平台消息网关（飞书/Lark 等）。
 
-> **Business Model**: Dragon Agent (Editor) → AgileMind API (SaaS) → Sell Tokens  
-> **Architecture**: Qwen2-1.5B (local) + AgileMind API (default) + Cloud API fallback
+## 核心特性
 
----
+| 模块 | 说明 |
+|------|------|
+| 🤖 **Agent Loop** | 多轮推理 + 工具调用，支持 90 轮迭代 |
+| 🔧 **Tool System** | 内置工具：terminal、file、web_search、memory、skills、wan_video 等 |
+| 📚 **Skill Engine** | 可学习的技能系统，支持创建/加载/版本管理 |
+| 🔀 **Workflow Engine** | DAG 工作流编排，支持 LLM → 工具 → 条件分支 |
+| 🌐 **Gateway** | 飞书/Lark WebSocket 网关，实时消息收发 |
+| 🧠 **Multi-Provider** | DeepSeek / OpenAI / Ollama 多模型后端 |
+| 💾 **Memory** | 跨会话持久记忆，支持自动压缩 |
 
-## Quick Start
-
-### 一键安装（推荐）
-
-```bash
-curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash
-```
-
-脚本自动完成：
-1. 系统检查（Python ≥ 3.11 + git）
-2. 拉取最新代码到 `~/dragon-agent`
-3. 创建 `.venv` 并安装全部依赖
-4. 生成默认配置（DeepSeek V4 Pro）
-5. 运行单元测试验证
-
-安装完成后设置 API Key 即可使用：
+## 快速开始
 
 ```bash
-export DEEPSEEK_API_KEY=sk-xxx
-```
-
-### USB Edition (U盘版)
-
-```bash
-# For distributors: build USB package
-bash scripts/make-usb.sh --with-model
-
-# For end users: plug in and run
-bash run.sh        # Linux/Mac
-run.bat            # Windows (double-click)
-```
-
-First run auto-creates venv and launches setup wizard. See `scripts/make-usb.sh --help` for options.
-
-### Manual Install
-
-```bash
-git clone https://gitee.com/jialine/dragon-agent.git ~/dragon-agent
-cd ~/dragon-agent
+# 安装
+git clone git@gitee.com:jialine/dragon-agent.git
+cd dragon-agent
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
+pip install -r requirements.txt
 
-# (Optional) TUI frontend
-cd tui && npm install && cd ..
+# 配置
+cp config.example.yaml config.yaml
+# 编辑 config.yaml，填入你的 API 密钥
+
+# 启动 CLI
+python dragon_agent_loop.py
+
+# 启动飞书网关
+export FEISHU_APP_ID=cli_xxx
+export FEISHU_APP_SECRET=xxx
+dragon gateway --feishu --port 8000
 ```
 
-**Prerequisites:** Python ≥ 3.11, git, (optional) Node.js ≥ 20 for TUI
+## 项目结构
 
-### First Run
+```
+dragon/
+├── cli.py              # CLI 命令行入口
+├── main.py             # Agent 主循环
+├── config.py           # 配置管理
+├── pipeline.py         # 流水线执行器
+├── prompt_builder.py   # Prompt 构建
+├── credential.py       # 凭证管理
+├── web_providers.py    # Web 搜索提供者
+├── identity.py         # Agent 身份
+├── constants.py        # 常量定义
+├── gateway/            # 消息网关
+│   ├── server.py       # FastAPI 服务器
+│   ├── feishu.py       # 飞书/Lark 适配器
+│   └── cli.py          # 网关 CLI
+├── tool/               # 工具系统
+│   ├── registry.py     # 工具注册表
+│   ├── guardrails.py   # 安全护栏
+│   └── builtins/       # 内置工具
+├── skill/              # 技能引擎
+│   └── engine.py       # 技能加载/执行
+├── workflow/           # 工作流引擎
+│   └── planner.py      # 工作流规划器
+├── provider/           # LLM 提供者
+│   └── __init__.py     # 多模型后端注册
+└── orchestrator/       # 多 Agent 编排
+```
+
+## 工具系统
+
+Dragon 拥有丰富的内置工具集：
+
+| 工具 | 功能 |
+|------|------|
+| `terminal` | Shell 命令执行 |
+| `file_read` / `file_write` | 文件读写 |
+| `web_search` | 网页搜索 |
+| `memory` | 持久记忆存储 |
+| `skills` | 技能管理 |
+| `session_search` | 跨会话搜索 |
+| `wan_video` | WAN 2.7 视频生成 |
+| `todo` | 任务管理 |
+| `clarify` | 用户澄清 |
+| `execute_code` | Python 代码执行 |
+| `patch` | 文件精准编辑 |
+| `comfyui_generate` | ComfyUI 图像生成 |
+| `edge_tts` | 文本转语音 |
+| `ffmpeg_composite` | 视频合成 |
+
+## 配置
+
+```yaml
+# config.yaml
+dispatch:
+  global_api:
+    model: deepseek-v4-pro
+    base_url: https://api.andlapi.cn/v1
+    api_key: "sk-你的API密钥"
+
+gateway:
+  enabled: true
+  platforms:
+    feishu:
+      app_id: "cli_xxxxxxxx"
+      app_secret: "xxxxxxxx"
+```
+
+## 测试
+
+Dragon Agent 拥有完整的单元测试覆盖，176+ 测试用例，覆盖 20 个核心模块。
+
+### 运行测试
 
 ```bash
-source ~/dragon-agent/.venv/bin/activate  # or restart shell for alias
+# 安装测试依赖
+pip install -r requirements-dev.txt
 
-dragon setup     # Interactive setup wizard
-dragon chat      # Start chatting
-dragon --help    # See all commands
+# 运行全部测试（纯函数，无需 API key）
+python3 -m pytest tests/ -v
+
+# 运行特定模块
+python3 -m pytest tests/test_tool.py tests/test_rate_limiter.py -v
+
+# 带覆盖率报告
+python3 -m pytest tests/ --cov=dragon --cov-report=term-missing
 ```
 
----
+### 测试覆盖
 
-## CLI Commands
+| 测试文件 | 覆盖模块 | 用例数 |
+|---------|---------|--------|
+| `test_tool.py` | ToolRegistry, ToolDef, CircuitBreaker, Pipeline, 去重 | 57 |
+| `test_rate_limiter.py` | TokenBucket, RateLimiter, CircuitBreaker, parse_retry_after | 23 |
+| `test_credential_pool.py` | Credential, CredentialPool, CredentialManager | 12 |
+| `test_prompt_builder.py` | MiniTemplate, PromptBuilder, CacheEntry | 10 |
+| `test_guardrails.py` | ToolGuardrails, GuardrailCheck, ToolCallSignature | 13 |
+| `test_think_scrubber.py` | strip_think_blocks, StreamingThinkScrubber | 11 |
+| `test_error_classifier.py` | classify_api_error, is_retryable, format_chinese_error | 9 |
+| `test_usage_pricing.py` | get_pricing, get_cost, list_models, format_cost | 10 |
+| `test_redact.py` | mask_secret, redact_sensitive_text, redact_for_logs | 8 |
+| `test_feishu_pure.py` | handle_url_verification, verify_hmac_signature | 5 |
+| `test_file_safety.py` | is_file_extension_safe, sanitize_filename, SafetyValidator | 8 |
+| `test_orch_classifier.py` | classify (orchestrator), Tier, Classification | 5 |
+| `test_factcheck.py` | ClaimExtractor, FactClaim, ClaimType | 5 |
+| `test_hallmetrics.py` | BenchmarkRunner, HallucinationReport | 5 |
 
-| Command | Description |
-|---|---|
-| `dragon chat` | Interactive or single-query chat |
-| `dragon serve` | Start API server (REST) |
-| `dragon gateway` | Multi-platform gateway (Feishu/Telegram/Discord/WeChat) |
-| `dragon mcp` | MCP server for tool integration |
-| `dragon config` | Manage configuration (show/edit/init/validate) |
-| `dragon skills` | Manage self-evolving skills (list/search/create/delete/evolve) |
-| `dragon tools` | Manage tools (list/search/call) |
-| `dragon sessions` | Manage sessions (list/search/get/delete/export/stats) |
-| `dragon cron` | Scheduled jobs (list/add/pause/resume/remove/run) |
-| `dragon profile` | Profile management (list/create/edit/clone/export/import) |
-| `dragon test` | Run tests |
-| `dragon doctor` | Diagnostic checks |
-| `dragon tui` | Start TUI backend server |
-| `dragon setup` | Interactive setup wizard |
+查看更多已有测试文件：`test_gateway.py`, `test_workflow.py`, `test_skill.py`, `test_session.py` 等。
 
----
-
-## Terminal UI (TUI)
-
-```
-┌─ Ink/React TUI ──────────────────────────┐
-│  app.tsx → Chat / Sidebar / ToolCall     │
-│  backend.ts (spawn + stdin/stdout RPC)   │
-└──────────────┬───────────────────────────┘
-               │ JSON-RPC (newline-delimited)
-┌──────────────▼───────────────────────────┐
-│  dragon tui (Python)                      │
-│  server.py: 12 RPC methods              │
-└──────────────────────────────────────────┘
-```
-
-### Start
+### 一键安装+测试脚本
 
 ```bash
-# Install frontend deps (first time)
-cd tui && npm install && cd ..
-
-# Launch full TUI
-npm --prefix tui start
-```
-
-This spawns `python -m dragon.tui.server` automatically via stdin/stdout JSON-RPC.
-
-### RPC Methods
-
-| Method | Description |
-|---|---|
-| `ping` | Health check |
-| `chat.send` | Send message, create/continue session |
-| `chat.history` | Get session message history |
-| `tools.list` | List available tools |
-| `tools.call` | Invoke a tool by name |
-| `sessions.list` | List sessions |
-| `sessions.get` | Get session details |
-| `skills.list` | List skills |
-| `skills.search` | Search skills by query |
-| `config.get` | Get configuration value |
-| `health` | System health check |
-| `doctor` | Full diagnostic report |
-
----
-
-## Deployment
-
-### 一键安装（推荐）
-
-```bash
+# 在任何干净 Linux 上运行（需要 Python 3.11+）
 curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash
 ```
 
-### 手动安装
+脚本会自动：创建虚拟环境 → 安装依赖 → 运行全量测试。
 
-```bash
-# 1. Clone
-git clone git@gitee.com:jialine/dragon-agent.git ~/dragon-agent
-cd ~/dragon-agent
+### 环境要求
 
-# 2. Create venv
-python3 -m venv .venv
-source .venv/bin/activate
+| 依赖 | 最低版本 | 说明 |
+|------|---------|------|
+| Python | 3.11+ | 单元测试不需要 3.12 特性 |
+| pip | 23+ | 虚拟环境自动管理 |
+| 磁盘 | 500MB | venv + 依赖 |
+| 网络 | 出站 | pip install 时需要 |
+| API Key | **不需要** | 纯函数测试全面 mock |
 
-# 3. Install
-pip install -e .
+### 测试哲学
 
-# 4. Configure
-dragon setup --quick
+- **纯函数优先**：TokenBucket、MiniTemplate、mask_secret 等无 IO 模块完整覆盖
+- **边界测试**：空输入、超限、异常路径、并发安全
+- **集成验证**：真实 builtins registry 去重（98 工具→0 重复）
+- **回归保护**：每次 patch 后跑全量 `pytest tests/`
 
-# 5. Run
-dragon chat
-```
 
-### Docker (coming soon)
+见 [LICENSE.md](LICENSE.md)
 
-```bash
-docker build -t dragon-agent .
-docker run -it dragon-agent
-```
+## 贡献
 
-### Headless (server mode)
-
-```bash
-# REST API on port 8000
-dragon serve --host 0.0.0.0 --port 8000
-
-# Multi-platform gateway
-dragon gateway start --feishu --telegram
-```
+欢迎提交 Issue 和 PR。
 
 ---
 
-## Project Structure
-
-```
-dragon-agent/
-├── dragon/                  # Python package
-│   ├── cli.py              # CLI entry (14 commands)
-│   ├── session/            # Session management
-│   ├── skill/              # Self-evolving skills engine
-│   ├── tool/               # Tool registry + builtins
-│   ├── config/             # Configuration management
-│   └── tui/                # TUI backend
-│       ├── __init__.py
-│       └── server.py       # JSON-RPC server (703 lines)
-├── tui/                    # Ink/React TUI frontend
-│   ├── package.json        # Node.js deps
-│   ├── tsconfig.json       # TypeScript config
-│   └── src/
-│       ├── app.tsx         # Main app (406 lines)
-│       ├── backend.ts      # JSON-RPC client (447 lines)
-│       └── components/
-│           ├── Chat.tsx    # Chat panel (206 lines)
-│           ├── Sidebar.tsx # Sidebar (188 lines)
-│           └── ToolCall.tsx # Tool call card (123 lines)
-├── install.sh              # 一键网络安装脚本
-├── scripts/                # Deployment & packaging
-│   ├── deploy.sh           # Local deployment script
-│   └── make-usb.sh         # USB edition packager
-├── docs/                   # Documentation
-│   ├── REQUIREMENTS.md     # Requirements & feature spec
-│   └── DESIGN.md           # Architecture design doc
-└── README.md               # This file
-```
-
----
-
-## License
-
-Apache 2.0 — see [LICENSE](LICENSE)
+**Dragon Agent** — Build agents that learn, remember, and evolve. 🐉

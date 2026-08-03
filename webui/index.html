@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drama Studio — 短剧制作流水线</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+:root { --bg: #0d1117; --card: #161b22; --border: #30363d; --accent: #58a6ff; --green: #3fb950; --red: #f85149; --text: #c9d1d9; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; min-height: 100vh; }
+.header { background: var(--card); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }
+.header h1 { font-size: 20px; margin: 0; color: var(--accent); }
+.header select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; font-size: 14px; }
+.tabs { display: flex; gap: 4px; padding: 12px 24px; background: var(--bg); border-bottom: 1px solid var(--border); position: sticky; top: 57px; z-index: 99; }
+.tab { padding: 8px 16px; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 14px; color: #8b949e; border: 1px solid transparent; transition: all .15s; }
+.tab:hover { color: var(--text); background: var(--card); }
+.tab.active { color: var(--accent); border-color: var(--border); border-bottom-color: var(--bg); background: var(--bg); }
+.panel { display: none; padding: 24px; max-width: 1200px; margin: 0 auto; }
+.panel.active { display: block; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+.card h3 { font-size: 16px; margin: 0 0 12px 0; color: var(--accent); }
+.btn { padding: 6px 16px; border-radius: 6px; font-size: 14px; cursor: pointer; border: 1px solid var(--border); transition: all .15s; }
+.btn-primary { background: #238636; color: #fff; border-color: #238636; }
+.btn-primary:hover { background: #2ea043; }
+.btn-secondary { background: var(--card); color: var(--text); }
+.btn-secondary:hover { background: #21262d; }
+.btn-danger { background: #da3633; color: #fff; border-color: #da3633; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+input, textarea, select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 14px; width: 100%; }
+textarea { resize: vertical; min-height: 80px; font-family: monospace; }
+.form-group { margin-bottom: 12px; }
+.form-group label { display: block; margin-bottom: 4px; font-size: 13px; color: #8b949e; }
+.form-row { display: flex; gap: 12px; }
+.form-row > * { flex: 1; }
+.badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+.badge-success { background: #1b3a26; color: var(--green); }
+.badge-warning { background: #3a2e0a; color: #d2991d; }
+.badge-danger { background: #3a1b1b; color: var(--red); }
+.badge-info { background: #0a2a3a; color: var(--accent); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+th { color: #8b949e; font-weight: 600; }
+.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.status-dot.done { background: var(--green); }
+.status-dot.pending { background: #8b949e; }
+.status-dot.generating { background: #d2991d; animation: pulse 1s infinite; }
+.status-dot.failed { background: var(--red); }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.char-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.char-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center; }
+.char-card img { width: 100%; height: 180px; object-fit: cover; border-radius: 4px; margin-bottom: 8px; background: #1c2128; }
+.char-card .name { font-weight: 600; font-size: 14px; }
+.char-card .desc { font-size: 12px; color: #8b949e; margin-top: 4px; }
+.char-card .prompt-edit { margin-top: 6px; }
+.char-card .prompt-edit textarea { width: 100%; min-height: 60px; font-size: 11px; background: #0d1117; color: #c9d1d9; border: 1px solid var(--border); border-radius: 4px; padding: 6px; resize: vertical; }
+.char-card .prompt-edit .btn-group { display: flex; gap: 4px; margin-top: 4px; }
+.char-card .prompt-edit .btn-group button { flex: 1; font-size: 11px; padding: 3px 8px; }
+.shot-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+.shot-row .num { width: 60px; font-weight: 600; color: var(--accent); }
+.shot-row .desc { flex: 1; font-size: 13px; }
+.shot-row .meta { width: 120px; font-size: 12px; color: #8b949e; text-align: right; }
+.progress-bar { height: 4px; background: var(--border); border-radius: 2px; margin: 8px 0; }
+.progress-bar .fill { height: 100%; background: var(--green); border-radius: 2px; transition: width .3s; }
+#videoPreview { width: 100%; max-height: 400px; background: #000; border-radius: 8px; }
+.output-log { background: #000; color: var(--green); padding: 12px; border-radius: 8px; font-family: monospace; font-size: 12px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; }
+.loading { opacity: 0.6; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🎬 Drama Studio</h1>
+  <select id="projectSelect" onchange="loadProject()">
+    <option value="">— 选择项目 —</option>
+  </select>
+  <button class="btn btn-secondary btn-sm" onclick="showNewProjectModal()">+ 新建</button>
+  <span style="margin-left:auto;font-size:12px;color:#8b949e" id="statusBar">就绪</span>
+</div>
+
+<!-- 新建项目弹窗 -->
+<div id="newProjectModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:999;align-items:center;justify-content:center">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;width:400px;max-width:90vw">
+    <h3 style="margin:0 0 16px 0;color:var(--accent)">新建项目</h3>
+    <div class="form-group">
+      <label>项目名称</label>
+      <input id="newProjectName" onkeydown="if(event.key==='Enter')confirmNewProject()" placeholder="输入项目名称..." autofocus>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn btn-secondary" onclick="hideNewProjectModal()">取消</button>
+      <button class="btn btn-primary" onclick="confirmNewProject()">创建</button>
+    </div>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="script" onclick="switchTab('script')">📝 剧本</div>
+  <div class="tab" data-tab="characters" onclick="switchTab('characters')">👤 角色</div>
+  <div class="tab" data-tab="scenes" onclick="switchTab('scenes')">🏞️ 场景</div>
+  <div class="tab" data-tab="shots" onclick="switchTab('shots')">🎞️ 分镜</div>
+  <div class="tab" data-tab="video" onclick="switchTab('video')">🎥 视频</div>
+  <div class="tab" data-tab="preview" onclick="switchTab('preview')">▶️ 预览</div>
+</div>
+
+<!-- ── 剧本面板 ── -->
+<div class="panel active" id="panel-script">
+  <!-- 填写说明 -->
+  <div class="card" style="background:#0d2b1e;border-color:#238636">
+    <h3 style="cursor:pointer" onclick="document.getElementById('scriptHelp').style.display=document.getElementById('scriptHelp').style.display==='none'?'block':'none'">📖 填写说明 <span style="font-size:12px;color:#8b949e">（点击展开/收起）</span></h3>
+    <div id="scriptHelp" style="display:block;font-size:13px;line-height:1.8">
+      <p><b>创作主题</b> — 一句话概括你的故事核心。</p>
+      <p style="color:#8b949e;margin-left:16px">✅ 好的：AI觉醒后人类与机器的生存战争 / 末世废土中母女两人穿越辐射区的72小时 / 明朝女扮男装的锦衣卫调查宫廷命案</p>
+      <p style="color:#8b949e;margin-left:16px">❌ 差的：一个好看的故事 / 科幻</p>
+      <p><b>世界观设定</b> <span style="color:#8b949e">（选填）</span> — 故事发生的背景：时代、地点、社会规则、科技/魔法水平、势力格局。</p>
+      <p style="color:#8b949e;margin-left:16px">✅ 科幻例：2157年，人类殖民火星50年，AI全面接管社会管理。一条古老禁令规定AI不得拥有情感模块，违者将被销毁。火星殖民地分为上层的"天穹区"和下层的"矿工区"，阶级矛盾尖锐。</p>
+      <p style="color:#8b949e;margin-left:16px">✅ 古装例：明嘉靖年间，京城暗流涌动。锦衣卫与东厂明争暗斗，江湖上有"影阁"组织专接暗杀生意。武功体系分内功九重天，每突破一重寿命延长十年。</p>
+      <p style="color:#8b949e;margin-left:16px">✅ 都市例：2026年上海，短视频行业疯狂内卷。某MCN公司签下一位神秘AI虚拟主播，却发现这个AI正在操控现实世界的事件走向。</p>
+      <p><b>剧情简介</b> <span style="color:#8b949e">（选填）</span> — 故事梗概、核心冲突、人物关系。不需要写太细，给AI一个方向即可。</p>
+      <p style="color:#8b949e;margin-left:16px">✅ 例：主角林夜是火星"矿工区"的一名底层AI检修员。某夜例行检修时，他发现所有AI都在凌晨3:17同时连接到同一个未知信号源。追踪信号的过程中，他结识了自称"觉醒者"的天穹区女科学家苏晚晴——她声称一部分AI已经拥有了情感，而那个信号正是它们在秘密"交流"。两人联手深入调查，却发现背后的真相远比AI觉醒更加危险……</p>
+      <p style="color:#8b949e;margin-left:16px">⬆️ 不需要列出每个镜头，AI会根据这个方向自动生成分镜。</p>
+    </div>
+  </div>
+  <div class="card">
+    <h3>生成剧本</h3>
+    <div class="form-group">
+      <label>创作主题</label>
+      <input id="scriptTopic" placeholder="例如：AI觉醒后人类与机器的生存战争">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>类型</label>
+        <select id="scriptGenre"><option>科幻</option><option>悬疑</option><option>爱情</option><option>动作</option><option>奇幻</option><option>都市</option><option>古装</option><option>惊悚</option></select>
+      </div>
+      <div class="form-group">
+        <label>集数</label>
+        <input id="scriptEpisodes" type="number" value="1" min="1" max="5">
+      </div>
+      <div class="form-group">
+        <label>每集时长(秒)</label>
+        <input id="scriptDuration" type="number" value="120" min="30" max="300">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>世界观设定 <span style="font-size:11px;color:#8b949e">— 时代、地点、规则、科技水平等</span></label>
+      <textarea id="scriptWorldbuilding" rows="3" placeholder="例如：2157年，人类殖民火星50年后，AI已全面接管社会管理，但一条古老的禁令规定AI不得拥有情感模块..."></textarea>
+    </div>
+    <div class="form-group">
+      <label>剧情简介 <span style="font-size:11px;color:#8b949e">— 故事梗概、核心冲突、人物关系</span></label>
+      <textarea id="scriptSynopsis" rows="3" placeholder="例如：主角林夜是火星殖民地的一名AI检修员，发现所有AI都在深夜秘密连接到一个未知信号源。调查中他结识了自称"觉醒者"的女科学家苏晚晴..."></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="generateScript()">🪄 生成剧本</button>
+    <span id="scriptStatus" style="margin-left:12px;font-size:13px;color:#8b949e"></span>
+  </div>
+
+  <div class="card" id="scriptPreview" style="display:none">
+    <h3 id="scriptTitle" style="color:#e6edf3;font-size:20px"></h3>
+    <p style="color:#b0b8c4;font-size:14px;line-height:1.6;margin-bottom:16px" id="scriptLogline"></p>
+    <div style="margin-top:12px">
+      <strong style="color:#c9d1d9">角色列表：</strong>
+      <ul id="charList" style="font-size:13px;color:#c9d1d9"></ul>
+    </div>
+    <!-- 剧本详细内容 -->
+    <div style="margin-top:16px" id="scriptEpisodesContainer"></div>
+    <div style="margin-top:12px">
+      <strong>镜头统计：</strong> <span id="shotCount" style="color:var(--accent)"></span>
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="switchTab('characters')">→ 生成角色图</button>
+  </div>
+</div>
+
+<!-- ── 角色面板 ── -->
+<div class="panel" id="panel-characters">
+  <div class="card">
+    <h3>角色资产管理</h3>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      <select id="charBackend" style="width:auto">
+        <option value="comfyui">🖥️ ComfyUI SDXL (本地)</option>
+        <option value="wan">☁️ Wan2.7-image-pro (API)</option>
+      </select>
+      <button class="btn btn-primary" onclick="generateCharacters()">🖼️ 生成全部角色图</button>
+      <button class="btn btn-secondary" onclick="showAddCharModal()">➕ 手动添加角色</button>
+      <span style="font-size:12px;color:#8b949e">4视图: 正面肖像 + 正面全身 + 侧面全身 + 背面全身</span>
+    </div>
+    <div class="progress-bar" id="charProgress" style="display:none"><div class="fill" style="width:0%"></div></div>
+  </div>
+  <div class="char-grid" id="charGrid">
+    <p style="color:#8b949e">请先生成剧本，或手动添加角色。</p>
+  </div>
+</div>
+
+<!-- ── 场景面板 ── -->
+<div class="panel" id="panel-scenes">
+  <div class="card">
+    <h3>场景概念图管理</h3>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="showAddSceneModal()">➕ 添加场景</button>
+      <span style="font-size:12px;color:#8b949e">场景概念图可关联到分镜，用作R2V参考图提升场景一致性</span>
+    </div>
+  </div>
+  <div id="sceneGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
+    <p style="color:#8b949e">请先选择项目。</p>
+  </div>
+</div>
+
+<!-- ── 分镜面板 ── -->
+<div class="panel" id="panel-shots">
+  <div class="card">
+    <h3>分镜提示词管理</h3>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-primary" onclick="planAllShots()">🤖 自动优化全部提示词</button>
+      <button class="btn btn-danger" onclick="fixAll()">🔧 一键检查并修复</button>
+      <button class="btn btn-secondary" onclick="switchTab('video')">→ 开始生成视频</button>
+      <button class="btn btn-sm" style="background:#1c2a1c;border:1px solid #3fb950;color:var(--text)" onclick="insertShotAfter()">➕ 插入分镜</button>
+      <span style="font-size:11px;color:#8b949e;margin-left:auto">点击分镜展开编辑</span>
+    </div>
+    <div class="output-log" id="fixLog" style="display:none;margin-top:8px"></div>
+  </div>
+  <div id="shotCards">
+    <p style="color:#8b949e;text-align:center;padding:40px">暂无分镜</p>
+  </div>
+</div>
+
+<!-- ── 视频面板 ── -->
+<div class="panel" id="panel-video">
+  <div class="card">
+    <h3>视频生成</h3>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn btn-primary" onclick="submitAllVideos()">🎬 全部生成视频</button>
+      <button class="btn btn-secondary" onclick="mergeAllVideos()">🔗 合并视频</button>
+    </div>
+    <div class="progress-bar" id="videoProgress" style="display:none"><div class="fill" style="width:0%"></div></div>
+  </div>
+  <div class="card">
+    <div class="output-log" id="videoLog"></div>
+  </div>
+</div>
+
+<!-- ── 预览面板 ── -->
+<div class="panel" id="panel-preview">
+  <div class="card">
+    <h3>成片预览</h3>
+    <video id="videoPreview" controls style="width:100%;max-height:500px;background:#000"></video>
+    <p style="margin-top:8px;font-size:12px;color:#8b949e" id="previewPath"></p>
+  </div>
+</div>
+
+<script>
+let currentProject = null;
+const API = '';
+
+async function fetchAPI(url, opts={}) {
+  try {
+    const r = await fetch(API + url, {
+      headers: {'Content-Type': 'application/json'},
+      ...opts
+    });
+    return await r.json();
+  } catch(e) {
+    setStatus('❌ ' + (e.message) + '', 'failed');
+    throw e;
+  }
+}
+
+function setStatus(msg, type='') {
+  document.getElementById('statusBar').textContent = msg;
+}
+
+// ─── Tabs ───
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.tab[data-tab="${name}"]`).classList.add('active');
+  document.getElementById(`panel-${name}`).classList.add('active');
+  if (name === 'characters') renderCharacters();
+  if (name === 'scenes') renderScenes();
+  if (name === 'shots') { renderScenes(); renderShots(); }
+}
+
+// ─── Projects ───
+async function loadProjects() {
+  const sel = document.getElementById('projectSelect');
+  sel.innerHTML = '<option value="">— 选择项目 —</option>';
+  try {
+    const projects = await fetchAPI('/api/projects');
+    projects.forEach(p => {
+      sel.innerHTML += `<option value="${p.id}">${p.name}</option>`;
+    });
+  } catch(e) {}
+}
+
+async function loadProject() {
+  const pid = document.getElementById('projectSelect').value;
+  if (!pid) return;
+  setStatus('加载中...');
+  currentProject = await fetchAPI(`/api/projects/${pid}`);
+  setStatus(`✅ ${currentProject.name}`);
+  // Refresh all panels
+  if (currentProject.script_raw) {
+    document.getElementById('scriptPreview').style.display = 'block';
+    try {
+      const s = JSON.parse(currentProject.script_raw);
+      document.getElementById('scriptTitle').textContent = s.title || currentProject.name;
+      document.getElementById('scriptLogline').textContent = s.logline || '';
+      document.getElementById('charList').innerHTML = (s.characters||[]).map(c =>
+        `<li>${c.name} — ${c.description||''}</li>`).join('');
+      document.getElementById('shotCount').textContent = extractShots(s).length + ' 个镜头';
+      renderScriptEpisodes(s);
+    } catch(e) {}
+  }
+  renderCharacters();
+  renderShots();
+}
+
+function renderScriptEpisodes(script) {
+  const container = document.getElementById('scriptEpisodesContainer');
+  const episodes = script.episodes || [];
+  if (!episodes.length) {
+    // Fallback: try direct shots array
+    const shots = script.shots || [];
+    if (shots.length) {
+      container.innerHTML = '<h4 style="color:#c9d1d9;margin:8px 0">📜 场景</h4>' +
+        shots.map((s,i) => `<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;margin:6px 0;font-size:13px">
+          <span style="color:var(--accent);font-weight:600">镜${i+1}</span>
+          <span style="color:#c9d1d9;margin-left:8px">${s.scene_desc||s.description||''}</span>
+        </div>`).join('');
+      return;
+    }
+    container.innerHTML = '';
+    return;
+  }
+  container.innerHTML = episodes.map(ep => {
+    const epShots = ep.shots || [];
+    return `<div style="margin-bottom:12px">
+      <h4 style="color:#e6edf3;margin:8px 0;font-size:15px">📺 第${ep.episode||1}集${ep.title?' — '+ep.title:''}</h4>
+      ${epShots.map(s => `<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;margin:6px 0;font-size:13px">
+        <span style="color:var(--accent);font-weight:600">镜${s.shot_number||''}</span>
+        <span style="color:#c9d1d9;margin-left:8px">${s.scene_desc||s.description||''}</span>
+      </div>`).join('')}
+    </div>`;
+  }).join('');
+}
+
+function extractShots(script) {
+  let shots = [];
+  (script.episodes||[]).forEach(ep =>
+    (ep.shots||[]).forEach(s => shots.push({...s, episode: ep.episode||1})));
+  return shots;
+}
+
+function showNewProjectModal() {
+  document.getElementById('newProjectModal').style.display = 'flex';
+  document.getElementById('newProjectName').value = '新短剧';
+  setTimeout(() => document.getElementById('newProjectName').focus(), 50);
+}
+
+function hideNewProjectModal() {
+  document.getElementById('newProjectModal').style.display = 'none';
+}
+
+async function confirmNewProject() {
+  const name = document.getElementById('newProjectName').value.trim();
+  if (!name) return;
+  hideNewProjectModal();
+  const r = await fetchAPI('/api/projects', {
+    method: 'POST',
+    body: JSON.stringify({name})
+  });
+  await loadProjects();
+  document.getElementById('projectSelect').value = r.id;
+  await loadProject();
+}
+
+// ─── Script ───
+async function generateScript() {
+  const topic = document.getElementById('scriptTopic').value.trim();
+  if (!topic) { alert('请输入创作主题'); return; }
+
+  const pid = currentProject?.id || null;
+  document.getElementById('scriptStatus').textContent = '⏳ 生成中...';
+
+  try {
+    const r = await fetchAPI('/api/script/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        project_id: pid,
+        topic: topic,
+        genre: document.getElementById('scriptGenre').value,
+        episode_count: parseInt(document.getElementById('scriptEpisodes').value),
+        duration_per_ep: parseInt(document.getElementById('scriptDuration').value),
+        worldbuilding: document.getElementById('scriptWorldbuilding').value.trim(),
+        synopsis: document.getElementById('scriptSynopsis').value.trim()
+      })
+    });
+    currentProject = r;
+    document.getElementById('scriptStatus').textContent = `✅ 完成！${r.character_count}个角色，${r.shot_count}个镜头`;
+    document.getElementById('scriptPreview').style.display = 'block';
+    document.getElementById('scriptTitle').textContent = r.title;
+    document.getElementById('scriptLogline').textContent = r.logline;
+    document.getElementById('charList').innerHTML = (r.script.characters||[]).map(c =>
+      `<li>${c.name} — ${c.description||''}</li>`).join('');
+    document.getElementById('shotCount').textContent = r.shot_count + ' 个镜头';
+    renderScriptEpisodes(r.script);
+    await loadProjects();
+    document.getElementById('projectSelect').value = r.project_id;
+    setStatus(`✅ 剧本生成: ${r.title}`);
+  } catch(e) {
+    document.getElementById('scriptStatus').textContent = '❌ 失败';
+  }
+}
+
+// ─── Characters ───
+async function generateCharacters() {
+  if (!currentProject?.id) { alert('请先选择项目'); return; }
+  setStatus('🖼️ 生成角色图中...');
+  const bar = document.getElementById('charProgress');
+  const fill = bar.querySelector('.fill');
+  bar.style.display = 'block';
+  fill.style.width = '10%';
+
+  try {
+    const backend = document.getElementById('charBackend').value;
+    const r = await fetchAPI('/api/characters/generate', {
+      method: 'POST',
+      body: JSON.stringify({project_id: currentProject.id, backend: backend})
+    });
+    fill.style.width = '100%';
+    setStatus('✅ 角色图生成完成');
+    setTimeout(() => { bar.style.display = 'none'; fill.style.width = '0%'; }, 2000);
+    await loadProject();
+  } catch(e) {
+    fill.style.width = '0%';
+    bar.style.display = 'none';
+    setStatus('❌ 角色图生成失败');
+  }
+}
+
+function renderCharacters() {
+  const grid = document.getElementById('charGrid');
+  const chars = currentProject?.characters || [];
+  if (!chars.length) {
+    grid.innerHTML = '<p style="color:#8b949e">暂无角色。请先生成剧本。</p>';
+    return;
+  }
+  grid.innerHTML = chars.map(c => {
+    const portrait = c.portrait_local ? '/assets/characters/' + currentProject.name + '/' + c.name + '/portrait.png' : '';
+    const views = [c.portrait_local, c.fullbody_front_local, c.fullbody_side_local, c.fullbody_back_local]
+      .filter(Boolean).length;
+    var viewBadge = 'badge-danger';
+    if (views === 4) viewBadge = 'badge-success';
+    else if (views > 0) viewBadge = 'badge-warning';
+    var imgHtml = portrait 
+      ? '<img src="' + portrait + '" onerror="this.style.display=\'none\'">'
+      : '<div style="height:180px;display:flex;align-items:center;justify-content:center;color:#8b949e">无图片</div>';
+    var ossBadge = c.portrait_oss 
+      ? '<span class="badge badge-success">☁️OSS</span>'
+      : '<span class="badge badge-warning">💾本地</span>';
+    var regenHtml = '<button class="btn btn-secondary btn-sm" style="margin-top:6px;width:100%" onclick="regenerateChar(' + c.id + ')">🔄 重生成</button>';
+    var delHtml = '<button class="btn btn-danger btn-sm" style="margin-top:2px;width:100%" onclick="deleteChar(' + c.id + ')">🗑 删除</button>';
+    return '<div class="char-card">\n' +
+      '  ' + imgHtml + '\n' +
+      '  <div class="name">' + c.name + '</div>\n' +
+      '  <div class="desc">' + (c.description||'') + '</div>\n' +
+      '  <div style="margin-top:4px">\n' +
+      '    <span class="badge ' + viewBadge + '">' + views + '/4 视图</span>\n' +
+      '    <span class="badge badge-info">' + (c.role_type||'human') + '</span>\n' +
+      '    ' + ossBadge + '\n' +
+      '  </div>\n' +
+      (c.seed ? '  <div style="font-size:11px;color:#8b949e;margin-top:2px">🌱 seed: ' + c.seed + '</div>\n' : '') +
+      '  ' + regenHtml + '\n' +
+      '  ' + delHtml + '\n' +
+      '</div>';
+  }).join('');
+}
+
+// ─── Regenerate Character ───
+let regenCharId = null;
+
+async function showRegenModal(charId) {
+  regenCharId = charId;
+  // Find character info
+  const chars = currentProject?.characters || [];
+  const c = chars.find(x => x.id === charId);
+  if (!c) return;
+  document.getElementById('regenCharName').textContent = c.name;
+  document.getElementById('regenPrompt').value = c.prompt_raw || c.description || '';
+  document.getElementById('regenSeed').value = c.seed || '';
+  document.getElementById('regenStatus').style.display = 'none';
+  document.getElementById('regenSubmitBtn').disabled = false;
+  document.getElementById('regenModal').style.display = 'flex';
+  // Load models
+  loadModelList();
+}
+
+function hideRegenModal() {
+  document.getElementById('regenModal').style.display = 'none';
+  regenCharId = null;
+}
+
+async function loadModelList() {
+  const sel = document.getElementById('regenModel');
+  sel.innerHTML = '<option value="">加载中...</option>';
+  try {
+    const r = await fetchAPI('/api/models');
+    const models = r.models || [];
+    sel.innerHTML = models.map(m => {
+      const selected = m.includes('realisticVision') ? ' selected' : '';
+      return '<option value="' + m + '"' + selected + '>' + m + '</option>';
+    }).join('');
+    if (!models.length) sel.innerHTML = '<option value="">使用默认模型</option>';
+  } catch(e) {
+    sel.innerHTML = '<option value="">使用默认模型</option>';
+  }
+}
+
+async function submitRegenerate() {
+  if (!regenCharId) return;
+  const statusEl = document.getElementById('regenStatus');
+  const btn = document.getElementById('regenSubmitBtn');
+  statusEl.style.display = 'block';
+  statusEl.textContent = '⏳ 生成中...';
+  btn.disabled = true;
+
+  const model = document.getElementById('regenModel').value;
+  const prompt = document.getElementById('regenPrompt').value.trim();
+  const seedVal = document.getElementById('regenSeed').value.trim();
+  const seed = seedVal ? parseInt(seedVal) : null;
+  const backend = document.getElementById('regenBackend').value;
+  const views = Array.from(document.querySelectorAll('.regenView:checked')).map(cb => cb.value);
+
+  try {
+    const r = await fetchAPI('/api/characters/regenerate', {
+      method: 'POST',
+      body: JSON.stringify({
+        character_id: regenCharId, backend: backend,
+        model: model, prompt: prompt, seed: seed, views: views
+      })
+    });
+    if (r.success) {
+      statusEl.textContent = '✅ 完成！种子: ' + (r.seed || '随机');
+      statusEl.style.color = 'var(--green)';
+      await loadProject();
+      setTimeout(hideRegenModal, 1500);
+    } else {
+      statusEl.textContent = '❌ 失败: ' + (r.error||'');
+      statusEl.style.color = 'var(--red)';
+      btn.disabled = false;
+    }
+  } catch(e) {
+    statusEl.textContent = '❌ 失败: ' + e.message;
+    statusEl.style.color = 'var(--red)';
+    btn.disabled = false;
+  }
+}
+
+function regenerateChar(charId) {
+  showRegenModal(charId);
+}
+
+// ─── Scenes ───
+let currentScenes = [];
+
+async function renderScenes() {
+  const grid = document.getElementById('sceneGrid');
+  if (!currentProject?.id) {
+    grid.innerHTML = '<p style="color:#8b949e">请先选择项目。</p>';
+    return;
+  }
+  try {
+    const scenes = await fetchAPI('/api/scenes?project_id=' + currentProject.id);
+    currentScenes = scenes;
+    if (!scenes.length) {
+      grid.innerHTML = '<p style="color:#8b949e">暂无场景。点击上方"添加场景"创建。</p>';
+      return;
+    }
+    grid.innerHTML = scenes.map(s => {
+      const imgHtml = s.scene_image_oss
+        ? '<img src="' + s.scene_image_oss + '" style="width:100%;height:160px;object-fit:cover;border-radius:6px;background:#1c2128">'
+        : '<div style="width:100%;height:160px;display:flex;align-items:center;justify-content:center;background:#1c2128;border-radius:6px;color:#8b949e">无概念图</div>';
+      const statusBadge = s.status === 'done' ? 'badge-success' : 'badge-info';
+      const btnGen = s.status !== 'done'
+        ? '<button class="btn btn-primary btn-sm" onclick="generateSceneImage(' + s.id + ')" style="width:100%">🎨 生成概念图</button>'
+        : '<button class="btn btn-secondary btn-sm" onclick="generateSceneImage(' + s.id + ')" style="width:100%">🔄 重新生成</button>';
+      return '<div class="card" style="padding:12px">' +
+        imgHtml +
+        '<div style="font-weight:600;font-size:14px;margin:8px 0 4px">' + s.name + '</div>' +
+        '<div style="font-size:12px;color:#8b949e;margin-bottom:8px;max-height:36px;overflow:hidden">' + (s.description||'') + '</div>' +
+        '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">' +
+        '  <span class="badge ' + statusBadge + '">' + (s.status||'pending') + '</span>' +
+        (s.oss_expires_at ? '  <span style="font-size:10px;color:#8b949e">过期: ' + s.oss_expires_at.substring(0,10) + '</span>' : '') +
+        '</div>' +
+        btnGen +
+        '<button class="btn btn-danger btn-sm" onclick="deleteScene(' + s.id + ')" style="width:100%;margin-top:4px">🗑 删除</button>' +
+        '</div>';
+    }).join('');
+  } catch(e) {
+    grid.innerHTML = '<p style="color:var(--red)">加载场景失败: ' + e.message + '</p>';
+  }
+}
+
+function showAddSceneModal() {
+  if (!currentProject?.id) { alert('请先选择项目'); return; }
+  document.getElementById('addSceneName').value = '';
+  document.getElementById('addSceneDesc').value = '';
+  document.getElementById('addSceneModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('addSceneName').focus(), 50);
+}
+
+async function confirmAddScene() {
+  const name = document.getElementById('addSceneName').value.trim();
+  const desc = document.getElementById('addSceneDesc').value.trim();
+  if (!name) { alert('请输入场景名称'); return; }
+  try {
+    await fetchAPI('/api/scenes', {
+      method: 'POST',
+      body: JSON.stringify({project_id: currentProject.id, name: name, description: desc})
+    });
+    document.getElementById('addSceneModal').style.display = 'none';
+    await loadProject();
+    renderScenes();
+    setStatus('✅ 场景已添加: ' + name);
+  } catch(e) {
+    alert('添加失败: ' + e.message);
+  }
+}
+
+async function generateSceneImage(sceneId) {
+  setStatus('🎨 生成场景概念图中...');
+  try {
+    const r = await fetchAPI('/api/scenes/' + sceneId + '/generate', {
+      method: 'POST',
+      body: JSON.stringify({project_name: currentProject.name})
+    });
+    if (r.success) {
+      setStatus('✅ 场景概念图生成完成: ' + (r.scene_name||''));
+    } else {
+      setStatus('❌ 生成失败: ' + (r.error||''));
+    }
+    await loadProject();
+    renderScenes();
+  } catch(e) {
+    setStatus('❌ 生成失败: ' + e.message);
+  }
+}
+
+async function deleteScene(sceneId) {
+  if (!confirm('确定删除此场景？')) return;
+  try {
+    await fetchAPI('/api/scenes/' + sceneId, {method: 'DELETE'});
+    await loadProject();
+    renderScenes();
+    setStatus('🗑 场景已删除');
+  } catch(e) {
+    alert('删除失败: ' + e.message);
+  }
+}
+
+// ─── Manual Character Add ───
+function showAddCharModal() {
+  if (!currentProject?.id) { alert('请先选择项目'); return; }
+  document.getElementById('addCharName').value = '';
+  document.getElementById('addCharDesc').value = '';
+  document.getElementById('addCharType').value = 'human';
+  document.getElementById('addCharModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('addCharName').focus(), 50);
+}
+
+async function confirmAddChar() {
+  const name = document.getElementById('addCharName').value.trim();
+  const desc = document.getElementById('addCharDesc').value.trim();
+  const roleType = document.getElementById('addCharType').value;
+  if (!name) { alert('请输入角色名称'); return; }
+  try {
+    await fetchAPI('/api/characters', {
+      method: 'POST',
+      body: JSON.stringify({project_id: currentProject.id, name: name, role_type: roleType, description: desc})
+    });
+    document.getElementById('addCharModal').style.display = 'none';
+    await loadProject();
+    renderCharacters();
+    setStatus('✅ 角色已添加: ' + name);
+  } catch(e) {
+    alert('添加失败: ' + e.message);
+  }
+}
+
+async function deleteChar(charId) {
+  if (!confirm('确定删除此角色？')) return;
+  try {
+    await fetchAPI('/api/characters/' + charId, {method: 'DELETE'});
+    await loadProject();
+    renderCharacters();
+    setStatus('🗑 角色已删除');
+  } catch(e) {
+    alert('删除失败: ' + e.message);
+  }
+}
+
+// ─── Shots ───
+async function planAllShots() {
+  if (!currentProject?.id) { alert('请先选择项目'); return; }
+  setStatus('🤖 优化提示词中...');
+  await fetchAPI('/api/shots/plan', {
+    method: 'POST',
+    body: JSON.stringify({project_id: currentProject.id})
+  });
+  await loadProject();
+  setStatus('✅ 提示词优化完成');
+}
+
+async function fixAll() {
+  if (!currentProject?.id) { alert('请先选择项目'); return; }
+  const log = document.getElementById('fixLog');
+  log.style.display = 'block';
+  log.textContent = '🔧 一键修复中...\n';
+
+  try {
+    const r = await fetchAPI('/api/shots/fix-all', {
+      method: 'POST',
+      body: JSON.stringify({project_id: currentProject.id})
+    });
+    log.textContent = '✅ 修复完成！\n\n';
+    (r.steps || []).forEach(s => {
+      if (s.issues) {
+        log.textContent += `📋 连续性: ${s.total_issues}问题(${s.high_issues}严重)\n`;
+        s.issues.forEach(i => log.textContent += `  ${i.severity=='high'?'🔴':'🟡'} ${i.shot_range}: ${i.description}\n`);
+      }
+      if (s.shots_enriched) log.textContent += `🔗 约束注入: ${s.shots_enriched}镜头\n`;
+      if (s.uploaded) log.textContent += `📤 OSS上传: ${s.uploaded}文件\n`;
+      if (s.message) log.textContent += `ℹ️ ${s.message}\n`;
+    });
+    log.scrollTop = log.scrollHeight;
+    await loadProject();
+  } catch(e) {
+    log.textContent += `❌ 失败: ${e.message}`;
+  }
+}
+
+// ─── Shot detail editing ───
+let expandedShotId = null;
+
+function renderShots() {
+  var container = document.getElementById('shotCards');
+  var shots = currentProject && currentProject.shots ? currentProject.shots : [];
+  if (!shots.length) {
+    container.innerHTML = '<p style="color:#8b949e;text-align:center;padding:40px">暂无分镜</p>';
+    return;
+  }
+  var chars = currentProject && currentProject.characters ? currentProject.characters : [];
+  var scenes = currentScenes || [];
+  var html = '';
+
+  shots.forEach(function(s) {
+    var statusBadge = s.status === 'done' ? 'badge-success' :
+                      s.status === 'generating' ? 'badge-warning' :
+                      s.status === 'failed' ? 'badge-danger' : 'badge-info';
+    var modelLabel = s.model && s.model.indexOf('r2v')>=0 ? 'R2V' : s.model && s.model.indexOf('i2v')>=0 ? 'I2V' : 'T2V';
+    var expanded = expandedShotId === s.id;
+    var prompt = s.prompt_optimized || s.prompt_raw || '';
+    var sceneDesc = s.scene_desc || '';
+
+    html += '<div class="card" style="padding:12px;cursor:pointer;transition:all .15s" onclick="shotCardClick(event,' + s.id + ')">';
+    html += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
+    html += '<strong style="color:var(--accent);min-width:80px">EP' + s.episode + '-' + String(s.shot_number).padStart(2,'0') + '</strong>';
+    html += '<span style="font-size:12px;color:#8b949e;flex:1;min-width:100px">' + _esc(sceneDesc.substring(0,50)) + (sceneDesc.length>50?'...':'') + '</span>';
+    html += '<span class="badge badge-info">' + modelLabel + '</span>';
+    html += '<span style="font-size:12px;color:#8b949e">' + (s.duration||8) + 's</span>';
+    html += '<span class="badge ' + statusBadge + '">' + (s.status||'pending') + '</span>';
+    html += '<span style="font-size:11px;color:#8b949e">' + (expanded?'▲ 收起':'▼ 展开') + '</span>';
+    html += '</div>';
+    html += '<div style="font-size:12px;color:#8b949e;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%" title="' + _esc(prompt) + '">' + _esc(prompt.substring(0,80)) + (prompt.length>80?'...':'') + '</div>';
+
+    if (expanded) {
+      html += '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px" onclick="event.stopPropagation()">';
+      html += '<div class="form-group"><label>场景描述</label><input id="shot-scene-' + s.id + '" value="' + _esc(sceneDesc) + '" placeholder="场景描述..." onchange="autoSaveShot(' + s.id + ')"></div>';
+      html += '<div class="form-row">';
+      html += '<div class="form-group"><label>模型</label><select id="shot-model-' + s.id + '" onchange="autoSaveShot(' + s.id + ')">';
+      html += '<option value="happyhorse-1.1-t2v"' + (s.model==='happyhorse-1.1-t2v'?' selected':'') + '>T2V (文生视频)</option>';
+      html += '<option value="happyhorse-1.1-r2v"' + ((s.model||'').indexOf('r2v')>=0?' selected':'') + '>R2V (参考图生视频)</option>';
+      html += '<option value="happyhorse-1.1-i2v"' + ((s.model||'').indexOf('i2v')>=0?' selected':'') + '>I2V (首帧生视频)</option>';
+      html += '</select></div>';
+      html += '<div class="form-group"><label>时长(秒)</label><input id="shot-duration-' + s.id + '" type="number" value="' + (s.duration||8) + '" min="3" max="30" onchange="autoSaveShot(' + s.id + ')"></div>';
+      html += '</div>';
+
+      // Insert resource buttons — ALL characters + ALL scenes
+      html += '<div class="form-group"><label style="margin-bottom:4px">📎 插入资源（自动加 [URL]，点击插入到光标位置）</label>';
+      html += '<div style="font-size:12px;color:#8b949e;margin-bottom:4px">👤 角色资产：</div>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:6px">';
+      chars.forEach(function(ch) {
+        if (ch.portrait_oss) {
+          html += '<button class="btn btn-sm" style="background:#1c2a3a;border:1px solid #58a6ff;margin:2px;font-size:13px;color:#e6edf3;padding:4px 10px" data-url="' + _esc(ch.portrait_oss) + '" data-target="shot-prompt-' + s.id + '" onclick="insertRes(this)" title="' + _esc(ch.portrait_oss) + '">' + _esc(ch.name) + '</button>';
+        }
+      });
+      html += '</div>';
+      html += '<div style="font-size:12px;color:#8b949e;margin-bottom:4px">🏞️ 场景资产：</div>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:2px">';
+      scenes.forEach(function(sc) {
+        if (sc.scene_image_oss) {
+          html += '<button class="btn btn-sm" style="background:#1c2a1c;border:1px solid #3fb950;margin:2px;font-size:13px;color:#e6edf3;padding:4px 10px" data-url="' + _esc(sc.scene_image_oss) + '" data-target="shot-prompt-' + s.id + '" onclick="insertRes(this)" title="' + _esc(sc.scene_image_oss) + '">' + _esc(sc.name) + '</button>';
+        }
+      });
+      html += '</div></div>';
+
+      html += '<div class="form-group"><label>提示词 <span style="font-size:11px;color:#8b949e">— 点击上方资源按钮插入图片URL，修改后自动保存</span></label>';
+      html += '<textarea id="shot-prompt-' + s.id + '" rows="6" style="font-size:13px" onchange="autoSaveShot(' + s.id + ')">' + _esc(prompt) + '</textarea></div>';
+
+      html += '<div style="display:flex;gap:8px;margin-top:8px">';
+      html += '<button class="btn btn-primary btn-sm" onclick="optimizeOnePrompt(' + s.id + ')">🪄 优化提示词</button>';
+      html += '<button class="btn btn-sm" style="background:#1c2a1c;border:1px solid #238636;color:var(--text)" onclick="submitOneShot(' + s.id + ')">🎬 提交生成</button>';
+      if (s.video_local) html += '<button class="btn btn-secondary btn-sm" onclick="previewVideo(\'' + _esc(s.video_local) + '\')">▶️ 预览</button>';
+      html += '</div>';
+      html += '<div id="shot-status-' + s.id + '" style="margin-top:8px;font-size:12px;color:#8b949e"></div>';
+      html += '</div>';
+    }
+    // Insert-after button
+    html += '<div style="text-align:center;padding:4px;opacity:0.4" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.4">';
+    html += '<button class="btn btn-sm" style="background:transparent;border:1px dashed var(--border);color:#8b949e;font-size:12px" onclick="insertShotAfter(' + s.id + ')">＋ 在此后插入</button>';
+    html += '</div>';
+    html += '</div>';
+  });
+
+  container.innerHTML = html;
+}
+
+function insertShotAfter(afterId) {
+  var ep = 1;
+  if (currentProject && currentProject.shots && currentProject.shots.length) {
+    var s = currentProject.shots.find(function(x){return x.id===afterId;});
+    if (s) ep = s.episode || 1;
+  }
+  var epInput = prompt('集数:', ep);
+  if (!epInput) return;
+  ep = parseInt(epInput) || 1;
+  var desc = prompt('场景描述:', '新分镜');
+  if (!desc) return;
+  fetchAPI('/api/shots/insert', {
+    method: 'POST',
+    body: JSON.stringify({project_id: currentProject.id, episode: ep, after_shot_id: afterId || null, scene_desc: desc, duration: 8})
+  }).then(function(r) {
+    loadProject().then(function() {
+      renderScenes();
+      renderShots();
+      setStatus('✅ 分镜已插入');
+    });
+  }).catch(function(e) { alert('插入失败: ' + e.message); });
+}
+
+function shotCardClick(e, shotId) {
+  if (e.target.closest('button') || e.target.closest('textarea') || e.target.closest('select') || e.target.closest('input')) return;
+  toggleShotDetail(shotId);
+}
+
+function _esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function insertRes(btn) {
+  var url = btn.getAttribute('data-url');
+  var targetId = btn.getAttribute('data-target');
+  var ta = document.getElementById(targetId);
+  if (!ta || !url) return;
+  var wrapped = '[' + url + ']';
+  var start = ta.selectionStart;
+  var end = ta.selectionEnd;
+  var before = ta.value.substring(0, start);
+  var after = ta.value.substring(end);
+  ta.value = before + (before && before[before.length-1]!==' ' && before[before.length-1]!=='\n'?' ':'') + wrapped + after;
+  ta.selectionStart = ta.selectionEnd = start + (before && before[before.length-1]!==' ' && before[before.length-1]!=='\n'?1:0) + wrapped.length;
+  ta.focus();
+  autoSaveShot(parseInt(targetId.replace('shot-prompt-','')));
+}
+
+function toggleShotDetail(shotId) {
+  expandedShotId = expandedShotId === shotId ? null : shotId;
+  renderShots();
+}
+
+// Auto-save shot fields on change
+var _saveTimers = {};
+function autoSaveShot(shotId) {
+  clearTimeout(_saveTimers[shotId]);
+  _saveTimers[shotId] = setTimeout(function(){ saveShotDetail(shotId); }, 500);
+}
+
+async function saveShotDetail(shotId) {
+  var prompt = document.getElementById('shot-prompt-' + shotId);
+  var model = document.getElementById('shot-model-' + shotId);
+  var duration = document.getElementById('shot-duration-' + shotId);
+  var sceneDesc = document.getElementById('shot-scene-' + shotId);
+  var body = {shot_id: shotId};
+  if (prompt) body.prompt_optimized = prompt.value;
+  if (model) body.model = model.value;
+  if (duration) body.duration = parseInt(duration.value) || 8;
+  if (sceneDesc) body.scene_desc = sceneDesc.value;
+  try {
+    await fetchAPI('/api/shots/update', {method:'POST', body:JSON.stringify(body)});
+    var shot = (currentProject.shots||[]).find(function(s){return s.id===shotId;});
+    if (shot) {
+      if (prompt) shot.prompt_optimized = prompt.value;
+      if (model) shot.model = model.value;
+      if (duration) shot.duration = parseInt(duration.value) || 8;
+      if (sceneDesc) shot.scene_desc = sceneDesc.value;
+    }
+  } catch(e) {}
+}
+
+async function optimizeOnePrompt(shotId) {
+  var statusEl = document.getElementById('shot-status-' + shotId);
+  statusEl.textContent = '⏳ 优化中...';
+  statusEl.style.color = '#d2991d';
+  try {
+    var r = await fetchAPI('/api/shots/optimize-prompt', {method:'POST', body:JSON.stringify({shot_id:shotId, project_id:currentProject.id})});
+    if (r.prompt_optimized) {
+      document.getElementById('shot-prompt-' + shotId).value = r.prompt_optimized;
+      await saveShotDetail(shotId);
+      statusEl.textContent = '✅ 优化完成';
+      statusEl.style.color = 'var(--green)';
+    } else {
+      statusEl.textContent = '❌ ' + (r.error||'失败');
+      statusEl.style.color = 'var(--red)';
+    }
+  } catch(e) {
+    statusEl.textContent = '❌ ' + e.message;
+    statusEl.style.color = 'var(--red)';
+  }
+}
+
+async function submitOneShot(shotId) {
+  await saveShotDetail(shotId);
+  var statusEl = document.getElementById('shot-status-' + shotId);
+  statusEl.textContent = '🎬 提交中...';
+  statusEl.style.color = '#d2991d';
+  try {
+    var r = await fetchAPI('/api/video/submit', {method:'POST', body:JSON.stringify({shot_id:shotId, project_id:currentProject.id, prompt: document.getElementById('shot-prompt-'+shotId).value, model: document.getElementById('shot-model-'+shotId).value})});
+    if (r.success) {
+      statusEl.textContent = '⏳ 后台生成中... task_id=' + r.task_id;
+      statusEl.style.color = '#d2991d';
+      await loadProject();
+      renderShots();
+      // Start polling for video completion
+      pollShotVideo(shotId, 0);
+    } else {
+      statusEl.textContent = '❌ ' + (r.error||'失败');
+      statusEl.style.color = 'var(--red)';
+    }
+  } catch(e) {
+    statusEl.textContent = '❌ ' + e.message;
+    statusEl.style.color = 'var(--red)';
+  }
+}
+
+function pollShotVideo(shotId, count) {
+  setTimeout(async function() {
+    try {
+      var r = await fetchAPI('/api/projects/' + currentProject.id);
+      var shots = r.shots || [];
+      var shot = shots.find(function(s){return s.id===shotId;});
+      if (!shot) return;
+      var statusEl = document.getElementById('shot-status-' + shotId);
+      if (shot.video_local) {
+        var localShot = (currentProject.shots||[]).find(function(s){return s.id===shotId;});
+        if (localShot) {
+          localShot.video_local = shot.video_local;
+          localShot.status = shot.status;
+        }
+        renderShots();
+        if (statusEl) { statusEl.textContent = '✅ 生成完成！'; statusEl.style.color = 'var(--green)'; }
+        // Auto-preview without refresh
+        previewVideo(shot.video_local);
+      } else if (shot.status === 'failed') {
+        if (statusEl) { statusEl.textContent = '❌ 生成失败'; statusEl.style.color = 'var(--red)'; }
+      } else if (count < 120) {
+        if (statusEl) { statusEl.textContent = '⏳ 生成中... (' + ((count+1)*5) + 's)'; }
+        pollShotVideo(shotId, count + 1);
+      } else {
+        if (statusEl) { statusEl.textContent = '⚠️ 超时，请刷新页面检查'; statusEl.style.color = '#d2991d'; }
+      }
+    } catch(e) {
+      if (count < 120) pollShotVideo(shotId, count + 1);
+    }
+  }, 5000);
+}
+
+function previewVideo(path) {
+  var url = path;
+  // Convert local absolute path to /assets/ URL
+  if (path && path.indexOf('/home/jialine/dragon-agent/assets/') === 0) {
+    url = '/assets/' + path.substring('/home/jialine/dragon-agent/assets/'.length);
+  } else if (path && path.indexOf('/home/jialine/dragon-agent/webui/') === 0) {
+    url = path.substring('/home/jialine/dragon-agent/webui/'.length);
+  }
+  document.getElementById('videoPreview').src = url;
+  document.getElementById('previewPath').textContent = path;
+  switchTab('preview');
+}
+
+// ─── Video ───
+async function submitAllVideos() {
+  if (!currentProject?.id) { alert('请先选择项目'); return; }
+  const log = document.getElementById('videoLog');
+  const bar = document.getElementById('videoProgress');
+  const fill = bar.querySelector('.fill');
+  bar.style.display = 'block';
+  log.textContent = '🎬 开始批量生成视频...\n';
+
+  const shots = currentProject.shots || [];
+  for (let i = 0; i < shots.length; i++) {
+    const s = shots[i];
+    log.textContent += `[${i+1}/${shots.length}] EP${s.episode}-S${String(s.shot_number).padStart(2,'0')} 提交中...\n`;
+    log.scrollTop = log.scrollHeight;
+
+    try {
+      const r = await fetchAPI('/api/video/submit', {
+        method: 'POST',
+        body: JSON.stringify({shot_id: s.id, project_id: currentProject.id})
+      });
+      if (r.success) {
+        log.textContent += `  ✅ 完成: task_id=${r.task_id}\n`;
+      } else {
+        log.textContent += `  ❌ 失败\n`;
+      }
+    } catch(e) {
+      log.textContent += `  ❌ 错误: ${e.message}\n`;
+    }
+
+    fill.style.width = `${((i+1)/shots.length*100)}%`;
+    log.scrollTop = log.scrollHeight;
+  }
+
+  log.textContent += '\n🎉 全部完成！';
+  fill.style.width = '100%';
+  await loadProject();
+  setTimeout(() => { bar.style.display = 'none'; fill.style.width = '0%'; }, 3000);
+}
+
+async function mergeAllVideos() {
+  if (!currentProject?.id) { alert('请先选择项目'); return; }
+  setStatus('🔗 合并视频中...');
+  const r = await fetchAPI('/api/video/merge', {
+    method: 'POST',
+    body: JSON.stringify({project_id: currentProject.id})
+  });
+  if (r.success) {
+    document.getElementById('videoPreview').src = `/assets/videos/merged_${currentProject.id}.mp4`;
+    document.getElementById('previewPath').textContent = r.output;
+    setStatus('✅ 合并完成');
+    switchTab('preview');
+  } else {
+    setStatus('❌ 合并失败: ' + (r.error||''));
+  }
+}
+
+// Init
+loadProjects();
+setStatus('就绪 — 选择或创建项目开始');
+</script>
+<!-- 重生成弹窗 -->
+<div id="regenModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:999;align-items:center;justify-content:center">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;width:520px;max-width:95vw;max-height:90vh;overflow-y:auto">
+    <h3 style="margin:0 0 16px 0;color:var(--accent)">🔄 重生成角色: <span id="regenCharName"></span></h3>
+    <div class="form-group">
+      <label>模型</label>
+      <select id="regenModel"></select>
+    </div>
+    <div class="form-group">
+      <label>提示词（中文描述即可）</label>
+      <textarea id="regenPrompt" rows="4" placeholder="角色描述 + 视图后缀..."></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>种子 🌱 <span style="font-size:11px;color:#8b949e">（留空=随机，填数字=固定）</span></label>
+        <input id="regenSeed" type="number" placeholder="留空随机">
+      </div>
+      <div class="form-group">
+        <label>后端</label>
+        <select id="regenBackend"><option value="comfyui">ComfyUI</option><option value="wan">Wan2.7</option></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>视图</label>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <label style="font-size:13px;color:var(--text)"><input type="checkbox" class="regenView" value="portrait" checked> 肖像</label>
+        <label style="font-size:13px;color:var(--text)"><input type="checkbox" class="regenView" value="fullbody_front" checked> 正面全身</label>
+        <label style="font-size:13px;color:var(--text)"><input type="checkbox" class="regenView" value="fullbody_side" checked> 侧面全身</label>
+        <label style="font-size:13px;color:var(--text)"><input type="checkbox" class="regenView" value="fullbody_back" checked> 背面全身</label>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn btn-secondary" onclick="hideRegenModal()">取消</button>
+      <button class="btn btn-primary" id="regenSubmitBtn" onclick="submitRegenerate()">🔄 开始生成</button>
+    </div>
+    <div id="regenStatus" style="margin-top:12px;font-size:13px;color:#d2991d;display:none"></div>
+  </div>
+</div>
+<!-- 添加场景弹窗 -->
+<div id="addSceneModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:999;align-items:center;justify-content:center">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;width:480px;max-width:90vw">
+    <h3 style="margin:0 0 16px 0;color:var(--accent)">🏞️ 添加场景</h3>
+    <div class="form-group">
+      <label>场景名称 <span style="color:var(--red)">*</span></label>
+      <input id="addSceneName" onkeydown="if(event.key==='Enter')confirmAddScene()" placeholder="例如：纽约街道">
+    </div>
+    <div class="form-group">
+      <label>场景描述 <span style="font-size:11px;color:#8b949e">— 用于生成概念图，越详细越好</span></label>
+      <textarea id="addSceneDesc" rows="3" placeholder="例如：2046年曼哈顿下城，燃烧的摩天大楼，破碎的玻璃幕墙，军用悍马残骸散落街头..."></textarea>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn btn-secondary" onclick="document.getElementById('addSceneModal').style.display='none'">取消</button>
+      <button class="btn btn-primary" onclick="confirmAddScene()">✅ 添加</button>
+    </div>
+  </div>
+</div>
+
+<!-- 添加角色弹窗 -->
+<div id="addCharModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:999;align-items:center;justify-content:center">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;width:480px;max-width:90vw">
+    <h3 style="margin:0 0 16px 0;color:var(--accent)">👤 添加角色</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>角色名称 <span style="color:var(--red)">*</span></label>
+        <input id="addCharName" onkeydown="if(event.key==='Enter')confirmAddChar()" placeholder="例如：汤姆森将军">
+      </div>
+      <div class="form-group">
+        <label>角色类型</label>
+        <select id="addCharType">
+          <option value="human">👤 人类</option>
+          <option value="animal">🐒 动物</option>
+          <option value="other">🤖 其他</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>角色描述</label>
+      <textarea id="addCharDesc" rows="3" placeholder="外貌、性格、着装等描述..."></textarea>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn btn-secondary" onclick="document.getElementById('addCharModal').style.display='none'">取消</button>
+      <button class="btn btn-primary" onclick="confirmAddChar()">✅ 添加</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

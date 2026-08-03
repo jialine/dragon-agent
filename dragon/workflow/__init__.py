@@ -50,6 +50,28 @@ class StepType(str, Enum):
     CONDITIONAL = "conditional"
     LOOP = "loop"
     SUB_WORKFLOW = "sub_workflow"
+    # Legacy aliases for backward compatibility
+    LLM = "llm"
+    TOOL = "tool"
+    PLAN = "plan"
+    SKILL = "skill"
+
+
+# Mapping from legacy type strings to canonical StepType
+_LEGACY_TYPE_MAP: Dict[str, StepType] = {
+    "llm": StepType.LLM_CALL,
+    "tool": StepType.TOOL_CALL,
+    "plan": StepType.LLM_CALL,
+    "skill": StepType.LLM_CALL,
+    "tool_call": StepType.TOOL_CALL,
+}
+
+
+def _parse_step_type(raw_type: str) -> StepType:
+    """Parse step type string, handling legacy names."""
+    if raw_type in _LEGACY_TYPE_MAP:
+        return _LEGACY_TYPE_MAP[raw_type]
+    return StepType(raw_type)
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -79,10 +101,20 @@ class WorkflowDefinition:
 
         steps = []
         for s in raw.get("steps", []):
+            # Merge all YAML fields into config (id/type are reserved)
+            config = dict(s)
+            config.pop("id", None)
+            config.pop("type", None)
+            # Merge explicit config block if present
+            explicit_config = s.get("config", {})
+            if isinstance(explicit_config, dict):
+                config.update(explicit_config)
+            config.pop("config", None)
+            
             steps.append(StepDefinition(
                 id=s["id"],
-                type=StepType(s.get("type", "llm_call")),
-                config=s.get("config", {}),
+                type=_parse_step_type(s.get("type", "llm_call")),
+                config=config,
             ))
 
         return cls(
@@ -96,10 +128,18 @@ class WorkflowDefinition:
         """从字典构建工作流定义（用于内嵌子工作流）"""
         steps = []
         for s in data.get("steps", []):
+            config = dict(s)
+            config.pop("id", None)
+            config.pop("type", None)
+            explicit_config = s.get("config", {})
+            if isinstance(explicit_config, dict):
+                config.update(explicit_config)
+            config.pop("config", None)
+            
             steps.append(StepDefinition(
                 id=s["id"],
-                type=StepType(s.get("type", "llm_call")),
-                config=s.get("config", {}),
+                type=_parse_step_type(s.get("type", "llm_call")),
+                config=config,
             ))
         return cls(
             name=data.get("name", "inline"),

@@ -42,3 +42,19 @@ models/
 scripts/feishu_onboard.py
 scripts/generate_qr.py
 scripts/uninstall.sh
+config.yaml
+output/
+
+# Dragon data (user content)
+dragon_data/
+
+# Backup files
+*.bak2
+*.bak
+
+# Config with secrets
+config.yaml
+
+# Drama director (user script, has API paths)
+drama_director.py
+*.bak

@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drama Studio — 短剧制作流水线</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+:root { --bg: #0d1117; --card: #161b22; --border: #30363d; --accent: #58a6ff; --green: #3fb950; --red: #f85149; --text: #c9d1d9; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; min-height: 100vh; }
+.header { background: var(--card); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }
+.header h1 { font-size: 20px; margin: 0; color: var(--accent); }
+.header select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; font-size: 14px; }
+.tabs { display: flex; gap: 4px; padding: 12px 24px; background: var(--bg); border-bottom: 1px solid var(--border); position: sticky; top: 57px; z-index: 99; }
+.tab { padding: 8px 16px; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 14px; color: #8b949e; border: 1px solid transparent; transition: all .15s; }
+.tab:hover { color: var(--text); background: var(--card); }
+.tab.active { color: var(--accent); border-color: var(--border); border-bottom-color: var(--bg); background: var(--bg); }
+.panel { display: none; padding: 24px; max-width: 1200px; margin: 0 auto; }
+.panel.active { display: block; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+.card h3 { font-size: 16px; margin: 0 0 12px 0; color: var(--accent); }
+.btn { padding: 6px 16px; border-radius: 6px; font-size: 14px; cursor: pointer; border: 1px solid var(--border); transition: all .15s; }
+.btn-primary { background: #238636; color: #fff; border-color: #238636; }
+.btn-primary:hover { background: #2ea043; }
+.btn-secondary { background: var(--card); color: var(--text); }
+.btn-secondary:hover { background: #21262d; }
+.btn-danger { background: #da3633; color: #fff; border-color: #da3633; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+input, textarea, select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 14px; width: 100%; }
+textarea { resize: vertical; min-height: 80px; font-family: monospace; }
+.form-group { margin-bottom: 12px; }
+.form-group label { display: block; margin-bottom: 4px; font-size: 13px; color: #8b949e; }
+.form-row { display: flex; gap: 12px; }
+.form-row > * { flex: 1; }
+.badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+.badge-success { background: #1b3a26; color: var(--green); }
+.badge-warning { background: #3a2e0a; color: #d2991d; }
+.badge-danger { background: #3a1b1b; color: var(--red); }
+.badge-info { background: #0a2a3a; color: var(--accent); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+th { color: #8b949e; font-weight: 600; }
+.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.status-dot.done { background: var(--green); }
+.status-dot.pending { background: #8b949e; }
+.status-dot.generating { background: #d2991d; animation: pulse 1s infinite; }
+.status-dot.failed { background: var(--red); }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.char-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.char-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center; }
+.char-card img { width: 100%; height: 180px; object-fit: cover; border-radius: 4px; margin-bottom: 8px; background: #1c2128; }
+.char-card .name { font-weight: 600; font-size: 14px; }
+.char-card .desc { font-size: 12px; color: #8b949e; margin-top: 4px; }
+.shot-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+.shot-row .num { width: 60px; font-weight: 600; color: var(--accent); }
+.shot-row .desc { flex: 1; font-size: 13px; }
+.shot-row .meta { width: 120px; font-size: 12px; color: #8b949e; text-align: right; }
+.progress-bar { height: 4px; background: var(--border); border-radius: 2px; margin: 8px 0; }
+.progress-bar .fill { height: 100%; background: var(--green); border-radius: 2px; transition: width .3s; }
+#videoPreview { width: 100%; max-height: 400px; background: #000; border-radius: 8px; }
+.output-log { background: #000; color: var(--green); padding: 12px; border-radius: 8px; font-family: monospace; font-size: 12px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; }
+.loading { opacity: 0.6; pointer-events: none; }
+
+.shot-grid { display: flex; flex-direction: column; gap: 12px; }
+.shot-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; display: grid; grid-template-columns: 64px 1fr 140px; gap: 16px; align-items: start; }
+.shot-card:hover { border-color: var(--accent); }
+.shot-card.generating { border-color: #ea580c; }
+.shot-num { width: 48px; height: 48px; border-radius: 8px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+.shot-info { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.shot-desc { font-size: 12px; color: #8b949e; line-height: 1.5; }
+.shot-prompt-box textarea { width: 100%; min-height: 60px; font-size: 11px; font-family: monospace; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; resize: vertical; }
+.shot-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.shot-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.shot-actions button { width: 100%; font-size: 11px; padding: 5px 10px; }
+.ep-tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.ep-tab { padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; border: 1px solid var(--border); color: #8b949e; background: transparent; transition: all .15s; }
+.ep-tab:hover { color: var(--text); border-color: var(--accent); }
+.ep-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.shot-toolbar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
+
+/* Override Bootstrap dark-on-dark */
+body, .card, .form-group, input, textarea, table, th, td, p, h1, h2, h3, h4, h5, h6, span, div, button, a, li, label, strong, pre, code {
+  color: var(--text) !important;
+}
+select { color: var(--text) !important; background: var(--card) !important; border-color: var(--border) !important; }
+select option { background: var(--card) !important; color: var(--text) !important; }
+input, textarea {
+  background: var(--bg) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+.card { background: var(--card) !important; border-color: var(--border) !important; }
+table th { color: #8b949e !important; }
+.badge { color: #fff !important; }
+/* Script text */
+#scriptContent { color: var(--text) !important; background: var(--bg) !important; font-size: 13px; line-height: 1.6; max-height: 60vh; overflow-y: auto; }
+#scriptContent pre { color: var(--text) !important; white-space: pre-wrap; font-family: -apple-system, sans-serif; }
+/* Character 4-view grid */
+.char-views-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 8px; }
+.char-views-grid img { width: 100%; height: 100px; object-fit: cover; border-radius: 3px; background: #1c2128; cursor: pointer; transition: transform .15s; }
+.char-views-grid img:hover { transform: scale(1.02); }
+.char-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center; }
+.char-card .portrait-main { width: 100%; height: 200px; object-fit: cover; border-radius: 4px; margin-bottom: 4px; background: #1c2128; }
+
+.shot-model-select { font-size:11px; padding:3px 6px; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:4px; width:100%; }
+.shot-dur-input { width:50px; font-size:11px; padding:2px 4px; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:4px; text-align:center; }
+.char-url-btn { font-size:10px; padding:2px 6px; background:var(--card); border:1px solid var(--border); border-radius:4px; color:var(--accent); cursor:pointer; }
+.char-url-btn:hover { border-color:var(--accent); }
+#charUrlPalette { max-height: 150px; overflow-y: auto; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🎬 Drama Studio</h1>
+  <select id="projectSelect" onchange="loadProject()">
+    <option value="">— 选择项目 —</option>
+  </select>
+  <button class="btn btn-secondary btn-sm" onclick="newProject()">+ 新建</button>
+  <span style="margin-left:auto;font-size:12px;color:#8b949e" id="statusBar">就绪</span>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="script" onclick="switchTab('script')">📝 剧本</div>
+  <div class="tab" data-tab="characters" onclick="switchTab('characters')">👤 角色</div>
+  <div class="tab" data-tab="shots" onclick="switchTab('shots')">🎞️ 分镜</div>
+  <div class="tab" data-tab="video" onclick="switchTab('video')">🎥 视频</div>
+  <div class="tab" data-tab="preview" onclick="switchTab('preview')">▶️ 预览</div>
+</div>
+
+<!-- ── 剧本面板 ── -->
+<div class="panel active" id="panel-script">
+  <div class="card">
+    <h3>生成剧本</h3>
+    <div class="form-group">
+      <label>创作主题</label>
+      <input id="scriptTopic" placeholder="例如：AI觉醒后人类与机器的生存战争">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>类型</label>
+        <select id="scriptGenre"><option>科幻</option><option>悬疑</option><option>爱情</option><option>动作</option><option>奇幻</option></select>
+      </div>
+      <div class="form-group">
+        <label>集数</label>
+        <input id="scriptEpisodes" type="number" value="1" min="1" max="5">
+      </div>
+      <div class="form-group">
+        <label>每集时长(秒)</label>
+        <input id="scriptDuration" type="number" value="120" min="30" max="300">
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="generateScript()">🪄 生成剧本</button>
+    <span id="scriptStatus" style="margin-left:12px;font-size:13px;color:#8b949e"></span>
+  </div>
+
+  <div class="card" id="scriptPreview" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 id="scriptTitle" style="margin:0"></h3>
+      <button class="btn btn-sm btn-secondary" onclick="toggleScriptFull()">📄 展开完整剧本</button>
+    </div>
+    <p style="color:#8b949e;font-size:13px" id="scriptLogline"></p>
+    <div style="margin:8px 0"><strong>角色列表：</strong>
+      <ul id="charList" style="font-size:13px"></ul>
+    </div>
+    <div style="margin:8px 0">
+      <strong>镜头统计：</strong> <span id="shotCount" style="color:var(--accent)"></span>
+    </div>
+    <div id="scriptContent" style="display:none;margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:8px"></div>
+    <h3 id="scriptTitle"></h3>
+    <p style="color:#8b949e;font-size:13px" id="scriptLogline"></p>
+    <div style="margin-top:12px">
+      <strong>角色列表：</strong>
+      <ul id="charList" style="font-size:13px"></ul>
+    </div>
+    <div style="margin-top:12px">
+      <strong>镜头统计：</strong> <span id="shotCount" style="color:var(--accent)"></span>
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="switchTab('characters')">→ 生成角色图</button>
+  </div>
+</div>
+
+<!-- ── 角色面板 ── -->
+<div class="panel" id="panel-characters">
+  <div class="card">
+    <h3>角色资产管理</h3>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+      <select id="charBackend" style="width:auto">
+        <option value="comfyui">🖥️ ComfyUI SDXL (本地)</option>
+        <option value="wan">☁️ Wan2.7-image-pro (API)</option>
+      </select>
+      <button class="btn btn-primary" onclick="generateCharacters()">🖼️ 生成全部角色图</button>
+      <span style="font-size:12px;color:#8b949e">4视图: 正面肖像 + 正面全身 + 侧面全身 + 背面全身</span>
+    </div>
+    <div class="progress-bar" id="charProgress" style="display:none"><div class="fill" style="width:0%"></div></div>
+  </div>
+  <div class="char-grid" id="charGrid">
+    <p style="color:#8b949e">请先生成剧本，然后回到这里生成角色图。</p>
+  </div>
+</div>
+
+<!-- ── 分镜面板 ── -->
+<div class="panel" id="panel-shots">
+  <div class="card">
+    <h3>&#127916; 分镜管理</h3>
+    <div class="ep-tabs" id="epTabs"></div>
+    <div class="shot-toolbar">
+      <button class="btn btn-primary btn-sm" onclick="optimizeEpisodePrompts()">&#129302; 自动填充本期提示词</button>
+      <button class="btn btn-primary btn-sm" onclick="submitEpisodeShots()" style="background:#ea580c">&#127916; 提交本期生成</button>
+      <button class="btn btn-secondary btn-sm" onclick="addNewShot()">+ 插入分镜</button>
+      <span style="font-size:12px;color:#8b949e;margin-left:auto" id="shotEpStatus"></span>
+    </div>
+    <div id="charUrlPalette" style="display:none;margin-bottom:12px;padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:11px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <strong style="color:#8b949e">角色素材URL：</strong>
+        <button class="btn btn-sm" style="font-size:10px;padding:2px 8px;background:var(--accent);color:#fff;border-radius:4px;border:none" onclick="uploadCharactersToOSS()" id="btnUploadOSS">☁️ 上传到OSS</button>
+        <span style="font-size:10px;color:#6b7280" id="ossStatus"></span>
+      </div>
+      <div id="charUrlList" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px"></div>
+    </div>
+  </div>
+  <div class="shot-grid" id="shotGrid">
+    <p style="color:#8b949e;padding:24px">暂无分镜。请先生成剧本。</p>
+  </div>
+</div><!-- ── 视频面板 ── -->
+<div class="panel" id="panel-video">
+  <div class="card">
+    <h3>视频生成</h3>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn btn-primary" onclick="submitAllVideos()">🎬 全部生成视频</button>
+      <button class="btn btn-secondary" onclick="mergeAllVideos()">🔗 合并视频</button>
+    </div>
+    <div class="progress-bar" id="videoProgress" style="display:none"><div class="fill" style="width:0%"></div></div>
+  </div>
+  <div class="card">
+    <div class="output-log" id="videoLog"></div>
+  </div>
+</div>
+
+<!-- ── 预览面板 ── -->
+<div class="panel" id="panel-preview">
+  <div class="card">
+    <h3>成片预览</h3>
+    <video id="videoPreview" controls style="width:100%;max-height:500px;background:#000"></video>
+    <p style="margin-top:8px;font-size:12px;color:#8b949e" id="previewPath"></p>
+  </div>
+</div>
+
+<script>
+let currentProject = null;
+let lastPromptTA = null;
+const API = '';
+
+async function fetchAPI(url, opts={}) {
+  try {
+    const r = await fetch(API + url, {
+      headers: {'Content-Type': 'application/json'},
+      ...opts
+    });
+    return await r.json();
+  } catch(e) {
+    setStatus(`❌ ${e.message}`, 'failed');
+    throw e;
+  }
+}
+
+function setStatus(msg, type='') {
+  document.getElementById('statusBar').textContent = msg;
+}
+
+function uploadCharactersToOSS() {
+  if (!currentProject?.id) { alert('请先选择项目'); return; }
+  var btn = document.getElementById('btnUploadOSS');
+  var st = document.getElementById('ossStatus');
+  btn.disabled = true; btn.textContent = '⏳ 上传中...'; st.textContent = '';
+  setStatus('☁️ 上传到OSS中...');
+  fetchAPI('/api/characters/upload-oss', {
+    method: 'POST',
+    body: JSON.stringify({project_id: currentProject.id})
+  }).then(r => {
+    var total = 0, ok = 0;
+    for (var cn in (r.characters||{})) {
+      for (var vn in r.characters[cn]) {
+        total++;
+        if (r.characters[cn][vn].status === 'uploaded') ok++;
+      }
+    }
+    st.textContent = '✅ ' + ok + '/' + total + ' 成功';
+    setStatus('✅ OSS上传完成: ' + ok + '/' + total);
+    // Reload project to get fresh character data
+    return loadProjectData(currentProject.id);
+  }).then(() => {
+    renderShots();
+  }).catch(e => {
+    st.textContent = '❌ ' + e.message;
+    setStatus('❌ OSS上传失败');
+  }).finally(() => {
+    btn.disabled = false; btn.textContent = '☁️ 上传到OSS';
+  });
+}
+
+function loadProjectData(pid) {
+  return fetchAPI('/api/projects/' + pid).then(p => {
+    currentProject = p;
+    return p;
+  });
+}
+
+function insertCharUrl(url) {
+  const ta = lastPromptTA || document.activeElement;
+  if (!ta || !(ta.tagName === 'TEXTAREA' || ta.tagName === 'INPUT')) {
+    alert('请先点击要插入的提示词输入框');
+    return;
+  }
+  const start = ta.selectionStart || ta.value.length;
+  const end = ta.selectionEnd || start;
+  const before = ta.value.substring(0, start);
+  const after = ta.value.substring(end);
+  const insert = (before && !before.endsWith(' ') ? ' ' : '') + url + (after && !after.startsWith(' ') ? ' ' : '');
+  ta.value = before + insert + after;
+  const newPos = start + insert.length;
+  ta.setSelectionRange(newPos, newPos);
+  ta.focus();
+  ta.dispatchEvent(new Event('change', {bubbles: true}));
+  setStatus('✅ 已插入: ' + url.substring(url.lastIndexOf('/')+1));
+}
+// ─── Tabs ───
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.tab[data-tab="${name}"]`).classList.add('active');
+  document.getElementById(`panel-${name}`).classList.add('active');
+  if (name === 'characters') renderCharacters();
+  if (name === 'shots') renderShots();
+}
+
+// ─── Projects ───
+async function loadProjects() {
+  const sel = document.getElementById('projectSelect');
+  sel.innerHTML = '<option value="">— 选择项目 —</option>';
+  try {
+    const projects = await fetchAPI('/api/projects');
+    projects.forEach(p => {
+      sel.innerHTML += `<option value="${p.id}">${p.name}</option>`;
+    });
+  } catch(e) {}
+}
+
+async function loadProject() {
+  const pid = document.getElementById('projectSelect').value;
+  if (!pid) return;
+  setStatus('加载中...');
+  currentProject = await fetchAPI(`/api/projects/${pid}`);
+  setStatus(`✅ ${currentProject.name}`);
+  // Refresh all panels
+  if (currentProject.script_raw) {
+    document.getElementById('scriptPreview').style.display = 'block';
+    try {
+      const s = JSON.parse(currentProject.script_raw);
+      document.getElementById('scriptTitle').textContent = s.title || currentProject.name;
+      document.getElementById('scriptLogline').textContent = s.logline || '';
+      document.getElementById('charList').innerHTML = (s.characters||[]).map(c =>
+        `<li>${c.name} — ${c.description||''}</li>`).join('');
+      document.getElementById('shotCount').textContent = extractShots(s).length + ' 个镜头';
+    } catch(e) {}
+  }
+  renderCharacters();
+  renderShots();
+}
+
+function extractShots(script) {
+  let shots = [];
+  (script.episodes||[]).forEach(ep =>
+    (ep.shots||[]).forEach(s => shots.push({...s, episode: ep.episode||1})));
+  return shots;
+}
+
+async function newProject() {
+  const name = prompt('项目名称：', '新短剧');
+  if (!name) return;
+  const r = await fetchAPI('/api/projects', {
+    method: 'POST',
+    body: JSON.stringify({name})
+  });
+  await loadProjects();
+  document.getElementById('projectSelect').value = r.id;
+  await loadProject();
+}
+
+// ─── Script ───
+async function generateScript() {
+  const topic = document.getElementById('scriptTopic').value.trim();
+  if (!topic) { alert('请输入创作主题'); return; }
+
+  const pid = currentProject?.id || null;
+  document.getElementById('scriptStatus').textContent = '⏳ 生成中...';
+
+  try {
+    const r = await fetchAPI('/api/script/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        project_id: pid,
+        topic: topic,
+        genre: document.getElementById('scriptGenre').value,
+        episode_count: parseInt(document.getElementById('scriptEpisodes').value),
+        duration_per_ep: parseInt(document.getElementById('scriptDuration').value)
+      })
+    });
+    currentProject = r;
+    document.getElementById('scriptStatus').textContent = `✅ 完成！${r.character_count}个角色，${r.shot_count}个镜头`;
+    document.getElementById('scriptPreview').style.display = 'block';
+    document.getElementById('scriptTitle').textContent = r.title;
+    document.getElementById('scriptLogline').textContent = r.logline;
+    document.getElementById('charList').innerHTML = (r.script.characters||[]).map(c =>
+      `<li>${c.name} — ${c.description||''}</li>`).join('');
+    document.getElementById('shotCount').textContent = r.shot_count + ' 个镜头';
+    await loadProjects();
+    document.getElementById('projectSelect').value = r.project_id;
+    setStatus(`✅ 剧本生成: ${r.title}`);
+  } catch(e) {
+    document.getElementById('scriptStatus').textContent = '❌ 失败';
+  }
+}
+
+// ─── Characters ───
+async function generateCharacters() {
+  if (!currentProject?.id) { alert('请先选择项目'); return; }
+  setStatus('🖼️ 生成角色图中...');
+  const bar = document.getElementById('charProgress');
+  const fill = bar.querySelector('.fill');
+  bar.style.display = 'block';
+  fill.style.width = '10%';
+
+  try {
+    const backend = document.getElementById('charBackend').value;
+    const r = await fetchAPI('/api/characters/generate', {
+      method: 'POST',
+      body: JSON.stringify({project_id: currentProject.id, backend: backend})
+    });
+    fill.style.width = '100%';
+    setStatus('✅ 角色图生成完成');
+    setTimeout(() => { bar.style.display = 'none'; fill.style.width = '0%'; }, 2000);
+    await loadProject();
+  } catch(e) {
+    fill.style.width = '0%';
+    bar.style.display = 'none';
+    setStatus('❌ 角色图生成失败');
+  }
+}
+
+function renderCharacters() {
+  const grid = document.getElementById('charGrid');
+  const chars = currentProject?.characters || [];
+  if (!chars.length) {
+    grid.innerHTML = '<p style="color:#8b949e">暂无角色。请先生成剧本。</p>';
+    return;
+  }
+  grid.innerHTML = chars.map(c => {
+    const portrait = c.portrait_local ? `/assets/characters/${currentProject.name}/${c.name}/portrait.png` : '';
+    const views = [c.portrait_local, c.fullbody_front_local, c.fullbody_side_local, c.fullbody_back_local]
+      .filter(Boolean).length;
+    const projName = currentProject?.name || '';
+    const base = `/assets/characters/${projName}/${c.name}`;
+    const views_html = ['portrait','fullbody_front','fullbody_side','fullbody_back'].map(v =>
+      `<img src="${base}/${v}.png" onerror="this.style.opacity='0.2'" title="${v}" onclick="window.open('${base}/${v}.png')">`
+    ).join('');
+    return `<div class="char-card">
+      ${portrait ? `<img src="${portrait}" class="portrait-main" onerror="this.style.display='none'">` : '<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#8b949e">无图片</div>'}
+      <div class="name">${c.name}</div>
+      <div class="desc">${(c.description||'').substring(0,40)}</div>
+      <div class="char-views-grid">${views_html}</div>
+      <div style="margin-top:6px;display:flex;gap:4px;justify-content:center;flex-wrap:wrap">
+        <span class="badge ${views===4?'badge-success':views>0?'badge-warning':'badge-danger'}">${views}/4</span>
+        <span class="badge badge-info">${c.role_type||'human'}</span>
+      </div>
+      <button class="btn btn-sm btn-secondary" style="margin-top:6px;width:100%;font-size:11px" onclick="regenCharacter('${c.name}')">🔄 重新生成</button>
+    </div>`;
+  }).join('');
+}
+
+
+function toggleScriptFull() {
+  const el = document.getElementById('scriptContent');
+  if (!el) return;
+  if (el.style.display === 'none' || !el.style.display) {
+    let script = null;
+    try { script = JSON.parse(currentProject?.script_raw || 'null'); } catch(e) {}
+    if (!script) { el.innerHTML = '<p style="color:#8b949e">暂无剧本数据。请先生成剧本。</p>'; }
+    else {
+      let html_s = '<h4 style="color:var(--accent)">' + (script.title||'') + '</h4>';
+      html_s += '<p style="color:#8b949e">' + (script.logline||'') + '</p>';
+      html_s += '<p>共 ' + ((script.episodes||[]).length) + ' 集</p>';
+      for (const ep of (script.episodes||[])) {
+        html_s += '<details style="margin:8px 0"><summary style="cursor:pointer;color:var(--accent);font-weight:600">第' + ep.episode + '集：' + (ep.title||'') + ' — ' + (ep.summary||'') + '</summary>';
+        html_s += '<div style="padding:8px;font-size:12px;color:#8b949e">';
+        for (const s of (ep.shots||[])) {
+          html_s += '<p style="margin:4px 0"><b>S' + String(s.shot_number).padStart(2,'0') + '</b> [' + (s.camera||'中景') + '] ' + (s.scene_desc||'') + '</p>';
+          if (s.dialogue) html_s += '<p style="margin:2px 0 8px 16px;color:var(--green)">' + s.dialogue + '</p>';
+        }
+        html_s += '</div></details>';
+      }
+      el.innerHTML = html_s;
+    }
+    el.style.display = 'block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+async function regenCharacter(name) {
+  if (!currentProject?.id) return;
+  setStatus('🔄 重新生成 ' + name + '...');
+  try {
+    await fetchAPI('/api/characters/generate', {
+      method: 'POST',
+      body: JSON.stringify({project_id: currentProject.id, character_name: name, backend: document.getElementById('charBackend')?.value || 'comfyui'})
+    });
+    setStatus('✅ ' + name + ' 重新生成完成');
+    await loadProject();
+    renderCharacters();
+  } catch(e) {
+    setStatus('❌ 失败: ' + e.message);
+  }
+}
+
+// ─── Shots ───
+let currentEpisode = 1;
+
+function getShotsForEpisode(ep) {
+  return (currentProject?.shots || []).filter(s => s.episode === ep).sort((a,b) => a.shot_number - b.shot_number);
+}
+
+function buildEpisodeTabs() {
+  const shots = currentProject?.shots || [];
+  const episodes = [...new Set(shots.map(s => s.episode))].sort();
+  const tabs = document.getElementById('epTabs');
+  if (episodes.length === 0) { tabs.innerHTML = ''; currentEpisode = 1; return; }
+  if (!episodes.includes(currentEpisode)) currentEpisode = episodes[0];
+  tabs.innerHTML = episodes.map(ep => {
+    const cls = ep === currentEpisode ? 'ep-tab active' : 'ep-tab';
+    return `<div class="${cls}" onclick="switchEpisode(${ep})">第${ep}集</div>`;
+  }).join('');
+}
+
+function switchEpisode(ep) {
+  currentEpisode = ep;
+  buildEpisodeTabs();
+  renderShots();
+}
+
+function buildCharUrlPalette() {
+  const chars = currentProject?.characters || [];
+  const projName = currentProject?.name || '';
+  const list = document.getElementById('charUrlList');
+  const palette = document.getElementById('charUrlPalette');
+  if (!chars.length) { palette.style.display = 'none'; return; }
+  palette.style.display = 'block';
+  const views = ['portrait','fullbody_front','fullbody_side','fullbody_back'];
+  const labels = {portrait:'正脸', fullbody_front:'全身正', fullbody_side:'全身侧', fullbody_back:'全身背'};
+  const baseUrl = window.location.origin;
+  var hasAnyOss = false;
+  list.innerHTML = chars.map(c => {
+    const localBase = baseUrl + '/assets/characters/' + encodeURIComponent(projName) + '/' + encodeURIComponent(c.name);
+    return views.map(v => {
+      var ossKey = v + '_oss';
+      var hasOss = c[ossKey] && c[ossKey].startsWith('http');
+      if (hasOss) hasAnyOss = true;
+      var url = hasOss ? c[ossKey] : (localBase + '/' + encodeURIComponent(v) + '.png');
+      var style = hasOss ? 'border-color:#16a34a;box-shadow:0 0 4px rgba(22,163,74,0.4)' : 'opacity:0.6';
+      var tip = c.name.substring(0,2) + ' ' + labels[v] + (hasOss ? ' OSS' : ' 本地');
+      return '<button class="char-url-btn" style="' + style + '" onclick="insertCharUrl(\'' + url + '\')" title="' + c.name + ' - ' + v + '">' + tip + '</button>';
+    }).join('');
+  }).join('');
+  var expInfo = '';
+  if (chars[0] && chars[0].oss_expires_at) {
+    expInfo = ' · 有效期至 ' + chars[0].oss_expires_at.substring(0,10);
+  }
+  list.innerHTML += '<span style="font-size:10px;color:#8b949e;width:100%;margin-top:4px">半透明=本地 | 绿边框=OSS公网' + expInfo + '</span>';
+}
+
+function renderShots() {
+  const grid = document.getElementById('shotGrid');
+  const allShots = currentProject?.shots || [];
+  if (!allShots.length) {
+    grid.innerHTML = '<p style="color:#8b949e;padding:24px">暂无分镜。请先生成剧本。</p>';
+    document.getElementById('epTabs').innerHTML = '';
+    document.getElementById('charUrlPalette').style.display = 'none';
+    return;
+  }
+
+  buildEpisodeTabs();
+  buildCharUrlPalette();
+
+  const shots = getShotsForEpisode(currentEpisode);
+  if (!shots.length) {
+    grid.innerHTML = `<p style="color:#8b949e;padding:24px">第${currentEpisode}集暂无分镜。</p>`;
+    return;
+  }
+
+  grid.innerHTML = shots.map((s, idx) => {
+    const sc = {done:'#16a34a',generating:'#ea580c',failed:'#ef4444',pending:'#6b7280'}[s.status] || '#6b7280';
+    const sl = {done:'已完成',generating:'生成中',failed:'失败',pending:'待处理'}[s.status] || s.status;
+    const prompt = s.prompt_optimized || s.prompt_raw || s.scene_desc || '';
+    const hasVideo = !!(s.video_local || s.video_oss);
+    const t2vSel = (s.model||'').includes('t2v') ? 'selected' : '';
+    const r2vSel = (s.model||'').includes('r2v') ? 'selected' : '';
+    const i2vSel = (s.model||'').includes('i2v') ? 'selected' : '';
+    return `<div class="shot-card" id="shot-${s.id}">
+      <div class="shot-num" style="background:${sc}">${String(s.shot_number).padStart(2,'0')}</div>
+      <div class="shot-info">
+        <div class="shot-desc" style="display:flex;gap:8px;align-items:center">
+          <span style="flex:1">${(s.scene_desc||'').substring(0,100)}</span>
+          <button class="btn btn-sm" style="font-size:10px;padding:2px 6px;background:var(--card);border:1px solid var(--border);color:var(--red);border-radius:4px" onclick="deleteShot(${s.id})" title="删除此分镜">✕</button>
+        </div>
+        <div class="shot-prompt-box">
+          <textarea id="prompt-${s.id}" onchange="saveShotField(${s.id},'prompt_optimized')" onfocus="lastPromptTA=this">${prompt.replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>
+        </div>
+        <div class="shot-meta" style="align-items:center">
+          <select class="shot-model-select" onchange="saveShotField(${s.id},'model',this.value)" style="width:auto">
+            <option value="happyhorse-1.1-t2v" ${t2vSel}>T2V</option>
+            <option value="happyhorse-1.1-r2v" ${r2vSel}>R2V</option>
+            <option value="happyhorse-1.1-i2v" ${i2vSel}>I2V</option>
+          </select>
+          <span style="font-size:11px">时长</span>
+          <input class="shot-dur-input" type="number" value="${s.duration||8}" min="1" max="30" onchange="saveShotField(${s.id},'duration',parseInt(this.value))">s
+          <span class="badge" style="background:${sc};color:#fff">${sl}</span>
+          ${hasVideo ? `<button class="btn btn-sm" style="font-size:10px;padding:2px 6px;background:var(--accent);color:#fff;border-radius:4px" onclick="previewShot('${s.video_local||s.video_oss}')">▶ 预览</button>` : ''}
+        </div>
+      </div>
+      <div class="shot-actions">
+        <button class="btn btn-secondary btn-sm" onclick="optimizeSinglePrompt(${s.id})">&#129302; 优化提示词</button>
+        <button class="btn btn-primary btn-sm" onclick="submitOneShot(${s.id})" style="background:#ea580c">&#127916; 提交</button>
+        <button class="btn btn-sm" style="font-size:10px;padding:2px 6px;background:var(--card);border:1px solid var(--border);color:var(--accent);border-radius:4px" onclick="addNewShot(${s.id})">+ 在此后插入</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('shotEpStatus').textContent =
+    `第${currentEpisode}集 · ${shots.length} 个镜头`;
+}
+
+async function saveShotField(sid, field, value) {
+  try {
+    await fetchAPI('/api/shots/update', {
+      method: 'POST',
+      body: JSON.stringify({shot_id: sid, [field]: value, project_id: currentProject?.id})
+    });
+    const shot = (currentProject.shots||[]).find(s => s.id === sid);
+    if (shot) shot[field] = value;
+  } catch(e) { console.error(e); }
+}
+
+async function optimizeSinglePrompt(sid) {
+  const card = document.getElementById('shot-'+sid);
+  if (card) card.style.opacity = '0.6';
+  setStatus('🤖 优化中...');
+  try {
+    const r = await fetchAPI('/api/shots/optimize-batch', {
+      method: 'POST',
+      body: JSON.stringify({shot_ids:[sid], project_id:currentProject?.id})
+    });
+    console.log('optimize result:', r);
+    if (r && r.shots && r.shots[0] && r.shots[0].prompt_optimized) {
+      const ta = document.getElementById('prompt-'+sid);
+      if (ta) {
+        ta.value = r.shots[0].prompt_optimized;
+        setStatus('✅ 提示词已优化');
+      } else {
+        setStatus('⚠️ 找不到输入框 prompt-'+sid);
+      }
+    } else {
+      setStatus('⚠️ API返回异常: '+JSON.stringify(r).substring(0,100));
+    }
+  } catch(e) {
+    setStatus('❌ 优化失败: '+e.message);
+    alert('优化失败: '+e.message);
+  }
+  if (card) card.style.opacity = '1';
+}
+
+async function optimizeEpisodePrompts() {
+  const shots = getShotsForEpisode(currentEpisode);
+  if (!shots.length) { alert('本集暂无分镜'); return; }
+  setStatus('🤖 优化中...');
+  const ids = shots.map(s => s.id);
+  try {
+    const r = await fetchAPI('/api/shots/optimize-batch', {
+      method: 'POST',
+      body: JSON.stringify({shot_ids:ids, project_id:currentProject?.id})
+    });
+    console.log('batch optimize result:', r);
+    let count = 0;
+    for (const s of (r.shots||[])) {
+      const ta = document.getElementById('prompt-'+s.id);
+      if (ta) { ta.value = s.prompt_optimized||''; count++; }
+    }
+    setStatus(`✅ ${count}/${r.shots?.length||0} 个提示词已优化`);
+  } catch(e) {
+    setStatus('❌ 优化失败: '+e.message);
+    alert('优化失败: '+e.message);
+  }
+}
+
+async function submitOneShot(sid) {
+  if (!currentProject?.id) return;
+  const card = document.getElementById('shot-'+sid);
+  if (card) card.style.opacity = '0.6';
+  setStatus('🎬 提交中...');
+  try {
+    const r = await fetchAPI('/api/video/submit', {
+      method: 'POST',
+      body: JSON.stringify({shot_id:sid, project_id:currentProject.id})
+    });
+    if (r.success) {
+      setStatus('✅ 已提交: '+r.task_id);
+      await loadProject();
+      renderShots();
+    } else {
+      setStatus('❌ 失败: '+(r.error||''));
+      alert('提交失败');
+    }
+  } catch(e) {
+    setStatus('❌ 错误: '+e.message);
+    alert('提交错误');
+  }
+  if (card) card.style.opacity = '1';
+}
+
+async function submitEpisodeShots() {
+  const shots = getShotsForEpisode(currentEpisode);
+  if (!shots.length) { alert('本集暂无分镜'); return; }
+  setStatus('🎬 批量提交...');
+  for (let i=0;i<shots.length;i++) {
+    setStatus(`[${i+1}/${shots.length}] EP${shots[i].episode}-S${String(shots[i].shot_number).padStart(2,'0')}...`);
+    try { await fetchAPI('/api/video/submit',{method:'POST',body:JSON.stringify({shot_id:shots[i].id,project_id:currentProject?.id})}); }
+    catch(e) { console.error(e); }
+  }
+  setStatus('✅ 全部提交完成');
+  await loadProject();
+  renderShots();
+}
+
+async function addNewShot(afterId=null) {
+  if (!currentProject?.id) return;
+  const r = await fetchAPI('/api/shots/insert', {
+    method: 'POST',
+    body: JSON.stringify({project_id:currentProject.id, episode:currentEpisode, after_shot_id:afterId, scene_desc:'新分镜', duration:8, model:'happyhorse-1.1-t2v'})
+  });
+  setStatus('+ 分镜已插入');
+  await loadProject();
+  renderShots();
+}
+
+async function deleteShot(sid) {
+  if (!confirm('确定删除这个分镜？')) return;
+  try {
+    await fetchAPI('/api/shots/delete', {
+      method: 'POST',
+      body: JSON.stringify({shot_id:sid, project_id:currentProject?.id, episode:currentEpisode})
+    });
+    setStatus('🗑 分镜已删除');
+    await loadProject();
+    renderShots();
+  } catch(e) {
+    setStatus('❌ 删除失败: '+e.message);
+    alert('删除失败: '+e.message);
+  }
+}
+
+function previewShot(url) {
+  if (!url) return;
+  // Switch to preview tab and play
+  switchTab('preview');
+  const vid = document.getElementById('videoPreview');
+  vid.src = url.startsWith('http') ? url : `/assets/videos/${url.replace(/.*\//,'')}`;
+  document.getElementById('previewPath').textContent = url;
+  vid.play();
+}
+
+async function planAllShots() {
+  await optimizeEpisodePrompts();
+}
+
+// ─── Video ───
+async function submitAllVideos() {
+  if (!currentProject?.id) { alert('请先选择项目'); return; }
+  const log = document.getElementById('videoLog');
+  const bar = document.getElementById('videoProgress');
+  const fill = bar.querySelector('.fill');
+  bar.style.display = 'block';
+  log.textContent = '🎬 开始批量生成视频...\n';
+
+  const shots = currentProject.shots || [];
+  for (let i = 0; i < shots.length; i++) {
+    const s = shots[i];
+    log.textContent += `[${i+1}/${shots.length}] EP${s.episode}-S${String(s.shot_number).padStart(2,'0')} 提交中...\n`;
+    log.scrollTop = log.scrollHeight;
+
+    try {
+      const r = await fetchAPI('/api/video/submit', {
+        method: 'POST',
+        body: JSON.stringify({shot_id: s.id, project_id: currentProject.id})
+      });
+      if (r.success) {
+        log.textContent += `  ✅ 完成: task_id=${r.task_id}\n`;
+      } else {
+        log.textContent += `  ❌ 失败\n`;
+      }
+    } catch(e) {
+      log.textContent += `  ❌ 错误: ${e.message}\n`;
+    }
+
+    fill.style.width = `${((i+1)/shots.length*100)}%`;
+    log.scrollTop = log.scrollHeight;
+  }
+
+  log.textContent += '\n🎉 全部完成！';
+  fill.style.width = '100%';
+  await loadProject();
+  setTimeout(() => { bar.style.display = 'none'; fill.style.width = '0%'; }, 3000);
+}
+
+async function mergeAllVideos() {
+  if (!currentProject?.id) { alert('请先选择项目'); return; }
+  setStatus('🔗 合并视频中...');
+  const r = await fetchAPI('/api/video/merge', {
+    method: 'POST',
+    body: JSON.stringify({project_id: currentProject.id})
+  });
+  if (r.success) {
+    document.getElementById('videoPreview').src = `/assets/videos/merged_${currentProject.id}.mp4`;
+    document.getElementById('previewPath').textContent = r.output;
+    setStatus('✅ 合并完成');
+    switchTab('preview');
+  } else {
+    setStatus('❌ 合并失败: ' + (r.error||''));
+  }
+}
+
+// Init
+loadProjects();
+setStatus('就绪 — 选择或创建项目开始');
+</script>
+</body>
+</html>

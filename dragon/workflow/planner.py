@@ -116,7 +116,8 @@ async def _call_llm(prompt: str, dispatcher: Any, route_result: Any) -> str:
         import os
         from openai import AsyncOpenAI
 
-        base_url = os.getenv("DRAGON_API_BASE", "https://api.sangyuye.com/v1")
+        from dragon.constants import API_BASE_URL  # noqa: E402
+        base_url = API_BASE_URL
         api_key = os.getenv("DRAGON_API_KEY", "")
 
         client = AsyncOpenAI(base_url=base_url, api_key=api_key)

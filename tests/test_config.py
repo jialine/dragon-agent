@@ -9,7 +9,7 @@ import pytest
 import yaml
 from dragon.config import (
     DragonConfig, RouterConfig, MemoryConfig, GuardConfig, ServerConfig,
-    BackupConfig, DispatchConfig, ProviderConfig,
+    BackupConfig, DispatchConfig, IndustryConfig,
 )
 
 
@@ -157,33 +157,18 @@ class TestServerConfigDefaults:
         assert sc.log_level == "debug"
 
 
-class TestProviderConfigDefaults:
-    """Test all ProviderConfig default values and overrides."""
+class TestIndustryConfigDefaults:
+    """Test IndustryConfig — per-industry system prompt config."""
 
     def test_defaults(self):
-        pc = ProviderConfig()
-        assert pc.provider == "openrouter"
-        assert pc.model == "openai/gpt-4o-mini"
-        assert pc.api_key_env == "DRAGON_GENERAL_API_KEY"
-        assert pc.base_url is None
+        pc = IndustryConfig()
         assert pc.system_prompt == "You are a helpful assistant."
-        assert pc.timeout_secs == 60
-        assert pc.max_retries == 2
 
     def test_custom_values(self):
-        pc = ProviderConfig(
-            provider="openai",
-            model="gpt-4",
-            api_key_env="OPENAI_KEY",
-            base_url="https://api.openai.com/v1",
-            system_prompt="You are an expert.",
-            timeout_secs=120,
-            max_retries=5,
+        pc = IndustryConfig(
+            system_prompt="You are a financial expert.",
         )
-        assert pc.provider == "openai"
-        assert pc.model == "gpt-4"
-        assert pc.base_url == "https://api.openai.com/v1"
-        assert pc.timeout_secs == 120
+        assert pc.system_prompt == "You are a financial expert."
 
 
 class TestDispatchConfigDefaults:
@@ -195,12 +180,12 @@ class TestDispatchConfigDefaults:
 
     def test_custom_industries(self):
         dc = DispatchConfig(industries={
-            "finance": ProviderConfig(provider="openai", model="gpt-4"),
-            "health": ProviderConfig(provider="anthropic", model="claude-3"),
+            "finance": IndustryConfig(system_prompt="Financial expert"),
+            "health": IndustryConfig(system_prompt="Medical expert"),
         })
         assert len(dc.industries) == 2
-        assert dc.industries["finance"].model == "gpt-4"
-        assert dc.industries["health"].provider == "anthropic"
+        assert dc.industries["finance"].system_prompt == "Financial expert"
+        assert dc.industries["health"].system_prompt == "Medical expert"
 
 
 class TestRouterConfigCustomValues:

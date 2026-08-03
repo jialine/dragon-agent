@@ -1,6 +1,6 @@
 # Dragon Agent — 待完成事项
 
-> 更新: 2026-06-26 | 代码量: 50,696 LOC | 模块: 111 文件 | 测试: 28 文件
+> 更新: 2026-06-27 | 代码量: 50,696 LOC | 模块: 111 文件 | 测试: 28 文件
 
 ---
 
@@ -31,6 +31,19 @@
 
 20/20 工具已实现，涵盖 Vision/TTS/Browser/Documents/Email/...
 
+### Gateway 实时交互增强 — 全部完成 ✅ (2026-06-27)
+
+| 模块 | 说明 | 状态 |
+|------|------|------|
+| Multi-turn Agent Loop | 90轮工具调用循环，steer + queue + progress | ✅ |
+| Steer 中断注入 | 忙时消息排队，下轮以 `[新指令]` 注入历史 | ✅ |
+| 消息队列 | 主任务完成后处理最多3条排队消息 | ✅ |
+| Progress Reporter | 每180秒 `⏳ 执行中...` 状态推送 | ✅ |
+| Processing Reactions | Hermes对齐 ✍️ Typing / ❌ CrossMark | ✅ |
+| Critical/Alert Push | `[CRITICAL]`/`[ALERT]`/`!!!` 即时推送 | ✅ |
+| Edit Past Messages | `[EDIT:target]` 原地编辑已发消息 | ✅ |
+
+
 ### Gateway — 全部完成 ✅
 
 16 平台适配器：飞书/Telegram/Discord/微信/企业微信/钉钉/Slack/...
@@ -43,7 +56,7 @@
 
 | 项目 | 状态 | 估价 |
 |------|------|------|
-| **Monitoring** | ⚠️ 18 LOC stub，需 Prometheus metrics | 2 天 |
+| **Monitoring** | ✅ 147 LOC, 9枚Prometheus指标+8录制函数 | ✅ 已完成 |
 | **Docker/Docker Compose** | ❌ 未开始 | 2 天 |
 | **CI/CD (Gitee Actions)** | ❌ 未开始 | 1 天 |
 | **测试修复** | ⚠️ 28 测试文件，2 个 import 错误 | 1 天 |

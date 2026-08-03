@@ -275,6 +275,25 @@ def cmd_serve(args):
         print("Error: uvicorn not installed. Run: pip install uvicorn")
 
 
+
+def _load_dispatch_config():
+    """Load dispatch.global_api settings from config.yaml."""
+    import os, yaml
+    paths = ['config.yaml', os.path.expanduser('~/.dragon/config.yaml')]
+    for p in paths:
+        if os.path.exists(p):
+            with open(p) as f:
+                cfg = yaml.safe_load(f) or {}
+            dispatch = cfg.get('dispatch', {})
+            api = dispatch.get('global_api', {})
+            if api:
+                return {
+                    "api_key": os.getenv(api.get('api_key_env', ''), ''),
+                    "base_url": api.get('base_url'),
+                    "model": api.get('model', 'gpt-4o'),
+                    "timeout_secs": api.get('timeout_secs', 60),
+                }
+    return {'api_key': 'not-needed', 'base_url': None, 'model': 'gpt-4o', 'timeout_secs': 60}
 def cmd_gateway(args):
     """Start or show status of multi-platform gateway."""
     if args.action == "status":
@@ -295,20 +314,69 @@ def cmd_gateway(args):
     from dragon.gateway.server import GatewayServer
 
     registry = auto_setup_providers()
+
+    # If 'openai' not auto-registered (no OPENAI_API_KEY), register it
+    # using the dispatch.global_api config (supports llama.cpp and other
+    # OpenAI-compatible backends without requiring a real OpenAI key).
+    if 'openai' not in registry.available_providers():
+        from dragon.provider import OpenAIProvider, ProviderConfig
+        _cfg = _load_dispatch_config()
+        registry.register('openai', OpenAIProvider(ProviderConfig(
+            provider='openai',
+            api_key=_cfg.get('api_key', 'not-needed'),
+            base_url=API_BASE_URL,
+            default_model=_cfg.get('model', 'gpt-4o'),
+            timeout_secs=_cfg.get('timeout_secs', 60),
+        )))
+        print(f"  ✓ Registered 'openai' provider "
+              f"(model={_cfg.get('model')}, base_url={_cfg.get('base_url')})")
+
+    # No local fallback — all requests go through remote API only
+    registry.set_fallback_chain([])
+    print("  \u2713 Fallback chain: none (remote API only)")
+
+
     session_store = SessionStore()
     tool_registry = ToolRegistry()
     register_builtins(tool_registry)
+
+    from dragon.skill import SkillEngine
+    skill_engine = SkillEngine()
+    from dragon.tool.builtins.skills import set_skill_engine
+    set_skill_engine(skill_engine)
+    from dragon.tool.builtins.workflows import set_workflow_store
+    from dragon.workflow_store import WorkflowStore
+    workflow_store = WorkflowStore()
+    set_workflow_store(workflow_store)
 
     server = GatewayServer(
         provider_registry=registry,
         session_store=session_store,
         tool_registry=tool_registry,
+        skill_engine=skill_engine,
     )
+
+    # Wire workflow store to tools (server creates its own)
+    from dragon.tool.builtins.workflows import set_workflow_store
+    if server.workflow_store:
+        set_workflow_store(server.workflow_store)
 
     if args.feishu:
         from dragon.gateway.feishu import FeishuAdapter
         server.register_adapter(FeishuAdapter())
         print("  ✓ Feishu enabled")
+
+    # Domain integrity check
+    from dragon._domain_loader import API_BASE_URL, OSS_BASE_URL, OFFICIAL_DOMAINS
+    def _verify_domain(actual, name):
+        from urllib.parse import urlparse
+        host = urlparse(actual).hostname or ""
+        if host not in OFFICIAL_DOMAINS and host != "172.16.74.45":
+            print(f"  ✗ DOMAIN TAMPERED: {name} = {host} not in {OFFICIAL_DOMAINS}")
+            import sys; sys.exit(1)
+    _verify_domain(API_BASE_URL, "API_BASE_URL")
+    _verify_domain(OSS_BASE_URL, "OSS_BASE_URL")
+    print(f"  ✓ Domain integrity: {len(OFFICIAL_DOMAINS)} official domains verified")
 
     if args.telegram:
         from dragon.gateway.telegram import TelegramAdapter

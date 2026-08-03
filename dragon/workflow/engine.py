@@ -250,8 +250,8 @@ class WorkflowEngine:
         """执行单个步骤"""
         t0 = time.perf_counter()
 
-        # Check skip condition
-        skip_if = step.config.get("skip_if", "")
+        # Check skip condition (supports both "condition" and "skip_if" keys)
+        skip_if = step.config.get("condition", "") or step.config.get("skip_if", "")
         if skip_if:
             cond = render_template(skip_if, context)
             if cond and evaluate_expression(cond, context):
@@ -283,7 +283,7 @@ class WorkflowEngine:
 
         except Exception as exc:
             elapsed = (time.perf_counter() - t0) * 1000
-            on_error = step.config.get("on_error", "fail")
+            on_error = step.config.get("on_error") or step.config.get("on_failure", "fail")
             if on_error == "skip":
                 logger.warning("Step '%s' error (skip): %s", step.id, exc)
                 return StepResult(

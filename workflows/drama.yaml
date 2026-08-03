@@ -10,6 +10,8 @@ timeout_secs: 300
 toolbox:
   tools:
     - web_search
+    - comfyui_generate
+    - edge_tts
   skills:
     - jury_debate
 
@@ -208,7 +210,34 @@ steps:
       - 🎵 BGM：...
     on_failure: skip
 
-  # 步骤 8：最终合成
+  # 步骤 8：AI生成场景图（通过 ComfyUI）
+  - id: ai_generate_images
+    name: AI场景图生成
+    condition: "plan.need_visual == true"
+    type: tool_call
+    tool: comfyui_generate
+    input: '{"prompt": "cinematic night scene, rain, neon lights, dramatic lighting, 8k", "steps": 20, "width": 512, "height": 768}'
+    on_failure: skip
+
+  # 步骤 9：AI配音（通过 Edge TTS）
+  - id: ai_generate_voice
+    name: AI配音
+    condition: "plan.need_visual == true"
+    type: tool_call
+    tool: edge_tts
+    input: '{"text": "深夜的便利店，灯光昏黄。一个失眠的程序员推门走进来。", "voice": "zh-CN-XiaoxiaoNeural", "output": "/tmp/drama_voice_output.mp3"}'
+    on_failure: skip
+
+  # 步骤 10：视频合成
+  - id: video_composite
+    name: 视频合成
+    condition: "plan.need_visual == true"
+    type: tool
+    tool: ffmpeg_composite
+    input_from: ai_generate_images
+    on_failure: skip
+
+  # 步骤 11：最终合成
   - id: final_package
     name: 最终输出
     type: llm

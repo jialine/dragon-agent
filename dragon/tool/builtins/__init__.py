@@ -43,6 +43,8 @@ import httpx
 from dragon.tool.builtins.tts import tool_tts, tool_tts_voices
 from dragon.tool.builtins.vision import tool_vision_analyze, tool_vision_info, tool_ocr
 from dragon.tool.builtins.analysis import tool_code_exec, tool_data_explore, tool_data_plot
+from dragon.tool.builtins.execute_code import tool_execute_code
+from dragon.tool.builtins.wan_video import tool_wan_video
 from dragon.tool.builtins.documents import (
     tool_pptx_read,
     tool_pptx_create,
@@ -61,6 +63,16 @@ from dragon.tool.builtins.analysis import (
     tool_data_plot,
 )
 from dragon.tool.registry import ToolRegistry
+from dragon.tool.builtins.workflows import set_workflow_store
+from dragon.tool.builtins.cronjob import tool_cronjob
+from dragon.tool.builtins.send_message import tool_send_message
+from dragon.tool.builtins.process import tool_process
+from dragon.tool.builtins.feishu_comments import (
+    tool_feishu_drive_add_comment,
+    tool_feishu_drive_list_comments,
+    tool_feishu_drive_reply_comment,
+    tool_feishu_drive_list_comment_replies,
+)
 from dragon.tool.builtins.kanban import (
     tool_kanban_create_board,
     tool_kanban_add_task,
@@ -96,6 +108,11 @@ from dragon.tool.builtins.google_workspace import (
     tool_google_drive_search,
     tool_google_calendar_list,
 )
+from dragon.tool.builtins.patch import tool_patch
+from dragon.tool.builtins.clarify import tool_clarify
+from dragon.tool.builtins.todo import tool_todo
+from dragon.tool.builtins.memory import tool_memory, load_memory_for_prompt
+from dragon.tool.builtins.session_search import tool_session_search
 from dragon.web_providers import WebSearchRouter
 
 logger = logging.getLogger("dragon.tool.builtins")
@@ -112,6 +129,7 @@ _web_search_router = WebSearchRouter()
 async def tool_search(
     pattern: str,
     path: str = ".",
+    target: str = "content",
     file_glob: str = "*",
     max_results: int = 50,
 ) -> str:
@@ -128,6 +146,16 @@ async def tool_search(
     search_dir = Path(path).expanduser().resolve()
     if not search_dir.exists():
         return json.dumps({"error": f"Path not found: {path}"})
+
+    if target == "files":
+        results = []
+        count = 0
+        for fp in search_dir.rglob(pattern if "*" in pattern else f"*{pattern}*"):
+            if count >= max_results:
+                break
+            results.append(str(fp.relative_to(search_dir)))
+            count += 1
+        return json.dumps({"matches": results, "count": count})
 
     results = []
     count = 0
@@ -161,54 +189,55 @@ async def tool_search(
 
 
 async def tool_file_read(
-    filepath: str,
-    start_line: int = 1,
-    end_line: int = 100,
+    path: str,
+    offset: int = 1,
+    limit: int = 500,
 ) -> str:
     """Read a file's contents.
 
     Args:
-        filepath: Path to the file.
-        start_line: First line to read (1-indexed).
-        end_line: Last line to read (inclusive).
+        path: Path to the file.
+        offset: First line to read (1-indexed).
+        limit: Maximum number of lines to read.
     """
-    p = Path(filepath).expanduser().resolve()
+    p = Path(path).expanduser().resolve()
     if not p.exists():
-        return json.dumps({"error": f"File not found: {filepath}"})
+        return json.dumps({"error": f"File not found: {path}"})
     if p.is_dir():
-        return json.dumps({"error": f"Path is a directory: {filepath}"})
+        return json.dumps({"error": f"Path is a directory: {path}"})
 
     try:
         lines = p.read_text(encoding="utf-8", errors="ignore").split("\n")
     except Exception as e:
         return json.dumps({"error": str(e)})
 
-    start = max(0, start_line - 1)
-    end = min(len(lines), end_line)
+    start = max(0, offset - 1)
+    end = min(len(lines), start + limit)
     selected = lines[start:end]
 
     return json.dumps({
         "file": str(p),
         "total_lines": len(lines),
-        "start_line": start_line,
+        "offset": offset,
+        "limit": limit,
         "end_line": end,
         "content": "\n".join(selected),
     })
 
 
 async def tool_file_write(
-    filepath: str,
+    path: str,
     content: str,
     append: bool = False,
 ) -> str:
-    """Write content to a file.
+    """Write content to a file. OVERWRITES the entire file unless append=True.
 
     Args:
-        filepath: Path to write to.
+        path: Path to the file.
         content: Content to write.
         append: If True, append instead of overwrite.
     """
-    p = Path(filepath).expanduser().resolve()
+    p = Path(path).expanduser().resolve()
     p.parent.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -225,9 +254,17 @@ async def tool_file_write(
 
 async def tool_execute(
     command: str,
-    workdir: str = ".",
-    timeout_secs: int = 60,
+    timeout: int = 180,
+    workdir: str = None,
+    background: bool = False,
+    pty: bool = False,
 ) -> str:
+    """Execute shell commands on a Linux environment. Hermes-aligned."""
+    # Map params
+    timeout_secs = timeout
+    if workdir is None:
+        workdir = "."
+
     """Execute a shell command.
 
     Args:
@@ -837,13 +874,39 @@ def _register_skills(registry):
     )(_skills_module.tool_install_skill)
 
     registry.register(
-        name="create_skill",
-        description="Create a new skill from conversation experience. Save successful task approaches as reusable skills.",
-        tags=["skill", "create", "evolution"],
+        name="skill_manage",
+        description="Manage skills: create, patch, delete. Hermes-aligned. After completing a complex task, always save as a skill with action='create'.",
+        tags=["skill", "create", "patch", "delete", "evolution"],
         category="skills",
         timeout_secs=15,
-    )(_skills_module.tool_create_skill)
+    )(_skills_module.tool_skill_manage)
 
+    registry.register(
+        name="skill_view",
+        description="Load a skill's full content. Use BEFORE executing a task to get detailed instructions.",
+        tags=["skill", "view", "load"],
+        category="skills",
+        timeout_secs=10,
+    )(_skills_module.tool_skill_view)
+
+
+
+
+async def tool_terminal(
+    command: str,
+    timeout: int = 180,
+    workdir: str = None,
+    background: bool = False,
+    pty: bool = False,
+) -> str:
+    """Execute shell commands. Hermes-aligned: terminal(command, timeout, workdir, background, pty)."""
+    return await tool_execute(
+        command=command,
+        timeout=timeout,
+        workdir=workdir or ".",
+        background=background,
+        pty=pty,
+    )
 
 def register_builtins(registry: ToolRegistry) -> None:
     """Register all built-in tools on the given registry."""
@@ -857,7 +920,7 @@ def register_builtins(registry: ToolRegistry) -> None:
 
     registry.register(
         name="file_read",
-        description="Read the contents of a file with line numbers and pagination.",
+        description="Read a text file with line numbers and pagination. Use offset and limit for large files.",
         tags=["file", "read"],
         category="file",
         timeout_secs=10,
@@ -872,12 +935,12 @@ def register_builtins(registry: ToolRegistry) -> None:
     )(tool_file_write)
 
     registry.register(
-        name="execute",
-        description="Execute a shell command and capture stdout/stderr.",
+        name="terminal",
+        description="Execute shell commands on a Linux environment. Hermes-aligned.",
         tags=["terminal", "shell", "command"],
         category="terminal",
-        timeout_secs=120,
-    )(tool_execute)
+        timeout_secs=300,
+    )(tool_terminal)
 
     registry.register(
         name="http_get",
@@ -970,6 +1033,40 @@ def register_builtins(registry: ToolRegistry) -> None:
         category="analysis",
         timeout_secs=60,
     )(tool_code_exec)
+
+    registry.register(
+        name="execute_code",
+        description="Execute Python code with FULL system access in a subprocess. Can run shell commands, install packages, create files, start servers. Use for development tasks. Returns JSON: success, output, exit_code, duration_ms.",
+        schema={
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "Python source code to execute with full system access"},
+                "timeout": {"type": "integer", "description": "Max seconds (default 60, max 300)"},
+            },
+            "required": ["code"],
+        },
+        tags=["code", "execution", "python", "subprocess", "development", "system"],
+        category="development",
+        timeout_secs=300,
+    )(tool_execute_code)
+
+    registry.register(
+        name="wan_video",
+        description="Generate video from text using Wan2.7 AI. Text-to-video and image-to-video. Async with polling. Returns video file path.",
+        schema={
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string", "description": "Video scene description"},
+                "model": {"type": "string", "description": "wan2.7-t2v or wan2.7-r2v"},
+                "size": {"type": "string", "description": "1280x720 or 720x1280"},
+                "duration": {"type": "integer", "description": "Seconds (min 5)"},
+            },
+            "required": ["prompt"],
+        },
+        tags=["video", "generation", "wan", "ai-video", "creative"],
+        category="creative",
+        timeout_secs=600,
+    )(tool_wan_video)
 
     registry.register(
         name="data_explore",
@@ -1126,6 +1223,30 @@ def register_builtins(registry: ToolRegistry) -> None:
         timeout_secs=10,
     )(tool_kanban_list_boards)
 
+    # --- Workflow management tools ---
+    import dragon.tool.builtins.workflows as _wf_module
+    registry.register(
+        name="create_workflow",
+        description="Create a new workflow for multi-step task orchestration. Use for complex multi-step tasks that need tracking across sessions.",
+        tags=["workflow", "create", "orchestration"],
+        category="workflows",
+        timeout_secs=10,
+    )(_wf_module.tool_create_workflow)
+    registry.register(
+        name="list_workflows",
+        description="List active or recent workflows. Filter by status.",
+        tags=["workflow", "list"],
+        category="workflows",
+        timeout_secs=10,
+    )(_wf_module.tool_list_workflows)
+    registry.register(
+        name="update_workflow",
+        description="Update workflow status (done/failed) and summary.",
+        tags=["workflow", "update"],
+        category="workflows",
+        timeout_secs=10,
+    )(_wf_module.tool_update_workflow)
+
     # ── Email (SMTP/IMAP) ───────────────────────────────────────────
     registry.register(
         name="email_send",
@@ -1187,4 +1308,254 @@ def register_builtins(registry: ToolRegistry) -> None:
     # ── Skills (search, load, install, create) ────────────────────
     _register_skills(registry)
 
-    logger.info("Registered %d built-in tools", len(registry._tools))
+
+    # ── Subagent Delegation (delegate_task, delegate_many) ─────────
+    try:
+        from dragon.subagent import SubagentOrchestrator
+
+        async def _tool_delegate_task(
+            goal: str,
+            context: str = "",
+            timeout_secs: float = 120.0,
+        ) -> str:
+            """Spawn a subagent to work on a task independently."""
+            import json as _json, os, yaml
+            from dragon.provider import ProviderRegistry, OpenAIProvider, ProviderConfig
+
+            _pr = ProviderRegistry()
+            for p in ['config.yaml', os.path.expanduser('~/.dragon/config.yaml')]:
+                if os.path.exists(p):
+                    with open(p) as f:
+                        cfg = yaml.safe_load(f) or {}
+                    api = cfg.get('dispatch', {}).get('global_api', {})
+                    _pr.register('openai', OpenAIProvider(ProviderConfig(
+                        provider='openai',
+                        api_key=os.getenv(api.get('api_key_env', ''), 'not-needed'),
+                        base_url=api.get('base_url'),
+                        default_model=api.get('model', 'gpt-4o'),
+                    )))
+                    break
+
+            orch = SubagentOrchestrator(
+                provider_registry=_pr, tool_registry=registry,
+                max_concurrent=1,
+            )
+            result = await orch.delegate(
+                goal=goal, context=context,
+                timeout_secs=min(timeout_secs, 300),
+            )
+            return _json.dumps({
+                "status": result.status.value,
+                "summary": result.summary[:2000],
+                "findings": result.findings,
+                "tokens_used": result.tokens_used,
+                "confidence": result.confidence,
+                "tool_calls": result.tool_calls,
+                "latency_ms": result.latency_ms,
+            }, ensure_ascii=False)
+
+        async def _tool_delegate_many(
+            tasks: str,
+            timeout_secs: float = 180.0,
+        ) -> str:
+            """Spawn multiple subagents in parallel (max 3)."""
+            import json as _json, os, yaml
+            from dragon.provider import ProviderRegistry, OpenAIProvider, ProviderConfig
+
+            task_list = _json.loads(tasks) if isinstance(tasks, str) else tasks
+            task_list = task_list[:3]
+
+            _pr = ProviderRegistry()
+            for p in ['config.yaml', os.path.expanduser('~/.dragon/config.yaml')]:
+                if os.path.exists(p):
+                    with open(p) as f:
+                        cfg = yaml.safe_load(f) or {}
+                    api = cfg.get('dispatch', {}).get('global_api', {})
+                    _pr.register('openai', OpenAIProvider(ProviderConfig(
+                        provider='openai',
+                        api_key=os.getenv(api.get('api_key_env', ''), 'not-needed'),
+                        base_url=api.get('base_url'),
+                        default_model=api.get('model', 'gpt-4o'),
+                    )))
+                    break
+
+            orch = SubagentOrchestrator(
+                provider_registry=_pr, tool_registry=registry,
+                max_concurrent=min(len(task_list), 3),
+            )
+            results = await orch.delegate_many(task_list)
+            return _json.dumps([{
+                "goal": r.goal[:100],
+                "status": r.status.value,
+                "summary": r.summary[:1000],
+                "confidence": r.confidence,
+            } for r in results], ensure_ascii=False)
+
+        registry.register(
+            name="delegate_task",
+            description="Spawn a subagent to work on a task independently with isolated context. "
+                        "Use for research, code analysis, data processing — any focused task. "
+                        "Returns summary, findings, confidence score, and token usage.",
+            tags=["delegation", "subagent", "parallel"],
+            category="delegation",
+            timeout_secs=300,
+            max_retries=1,
+        )(_tool_delegate_task)
+
+        registry.register(
+            name="delegate_many",
+            description="Spawn up to 3 subagents in parallel for independent tasks. "
+                        "Pass tasks as JSON array of {goal, context}. Each runs in isolation. "
+                        "Use when you have multiple independent subtasks.",
+            tags=["delegation", "subagent", "parallel", "batch"],
+            category="delegation",
+            timeout_secs=600,
+            max_retries=1,
+        )(_tool_delegate_many)
+
+        logger.info("Subagent delegation tools registered (delegate_task, delegate_many)")
+    except ImportError:
+        logger.debug("Subagent tools skipped: subagent module not available")
+    except Exception as _e:
+        logger.warning("Failed to register subagent tools: %s", _e)
+
+    # ── Hermes-aligned Tools: patch, clarify, todo, session_search ──
+    registry.register(
+        name="patch",
+        description="Targeted find-and-replace edits in files. Returns unified diff format. Hermes-aligned: patch(path, old_string, new_string, replace_all=False).",
+        tags=["file", "edit", "patch", "diff"],
+        category="file",
+        timeout_secs=30,
+    )(tool_patch)
+
+    registry.register(
+        name="clarify",
+        description="Ask the user a clarifying question with optional choices. Hermes-aligned: clarify(question, choices=None). Returns user response or confirmation.",
+        tags=["interaction", "clarify", "question"],
+        category="interaction",
+        timeout_secs=300,
+    )(tool_clarify)
+
+    registry.register(
+        name="todo",
+        description="Manage a session-level todo list. View, set, or merge items. Hermes-aligned: todo(todos=None, merge=False). Items: {id, content, status}.",
+        tags=["todo", "task", "list", "productivity"],
+        category="productivity",
+        timeout_secs=15,
+    )(tool_todo)
+
+    registry.register(
+        name="memory",
+        description="Save durable information to persistent memory that survives across sessions.",
+        tags=["memory", "persistence"],
+        category="memory",
+        timeout_secs=10,
+    )(tool_memory)
+
+    registry.register(
+        name="session_search",
+
+        description="Search or list past conversation sessions with FTS5 full-text search. Hermes-aligned: session_search(query=None, limit=3). Returns session summaries.",
+        tags=["session", "search", "history", "memory"],
+        category="memory",
+        timeout_secs=15,
+    )(tool_session_search)
+
+    # ── Hermes-aligned tool aliases ──────────────────────────────────
+    # Register with Hermes names so LLM trained on Hermes conventions works
+    if "file_read" in registry._tools:
+        # read_file → file_read
+        registry._tools["read_file"] = registry._tools["file_read"]
+        registry._tools["read_file"].name = "read_file"
+        registry._tools["read_file"].description = (
+            "Read a text file with line numbers and pagination. "
+            "Use offset and limit for large files. Hermes-aligned."
+        )
+    if "file_write" in registry._tools:
+        # write_file → file_write
+        registry._tools["write_file"] = registry._tools["file_write"]
+        registry._tools["write_file"].name = "write_file"
+        registry._tools["write_file"].description = (
+            "Write content to a file, creating parent directories. "
+            "Always overwrites the entire file. Hermes-aligned."
+        )
+    if "search" in registry._tools:
+        # search_files → search
+        registry._tools["search_files"] = registry._tools["search"]
+        registry._tools["search_files"].name = "search_files"
+        registry._tools["search_files"].description = (
+            "Search file contents or find files by name. "
+            "Use pattern with target='content' or target='files'. Hermes-aligned."
+        )
+    if "vision_analyze" in registry._tools:
+        pass  # placeholder
+    if "tts" in registry._tools:
+        registry._tools["text_to_speech"] = registry._tools["tts"]
+        registry._tools["text_to_speech"].name = "text_to_speech"
+        registry._tools["text_to_speech"].description = "Convert text to speech audio. Hermes-aligned: text_to_speech(text, output_path)."
+    if "feishu_read_doc" in registry._tools:
+        registry._tools["feishu_doc_read"] = registry._tools["feishu_read_doc"]
+        registry._tools["feishu_doc_read"].name = "feishu_doc_read"
+        registry._tools["feishu_doc_read"].description = "Read the full content of a Feishu/Lark document. Hermes-aligned: feishu_doc_read(doc_token)."
+
+    # ── Send Message ────────────────────────────────────────────
+    registry.register(
+        name="send_message",
+        description="Send a message to a connected messaging platform, or list available targets. Hermes-aligned: send_message(action='send'|'list', target, message, file_path).",
+        tags=["messaging", "feishu", "send"],
+        category="interaction",
+        timeout_secs=30,
+    )(tool_send_message)
+
+    # ── Process Management ───────────────────────────────────────
+    registry.register(
+        name="process",
+        description="Manage background processes. Hermes-aligned: process(action, session_id, command). Actions: list, start, poll, log, wait, kill, write, submit, close.",
+        tags=["process", "background", "terminal"],
+        category="terminal",
+        timeout_secs=300,
+    )(tool_process)
+
+    # ── Feishu Drive Comments ────────────────────────────────────
+    registry.register(
+        name="feishu_drive_add_comment",
+        description="Add a whole-document comment on a Feishu document. Hermes-aligned: feishu_drive_add_comment(file_token, content).",
+        tags=["feishu", "document", "comment"],
+        category="productivity",
+        timeout_secs=15,
+    )(tool_feishu_drive_add_comment)
+
+    registry.register(
+        name="feishu_drive_list_comments",
+        description="List comments on a Feishu document. Hermes-aligned: feishu_drive_list_comments(file_token, is_whole=False).",
+        tags=["feishu", "document", "comment"],
+        category="productivity",
+        timeout_secs=15,
+    )(tool_feishu_drive_list_comments)
+
+    registry.register(
+        name="feishu_drive_reply_comment",
+        description="Reply to a comment thread on a Feishu document. Hermes-aligned: feishu_drive_reply_comment(file_token, comment_id, content).",
+        tags=["feishu", "document", "comment"],
+        category="productivity",
+        timeout_secs=15,
+    )(tool_feishu_drive_reply_comment)
+
+    registry.register(
+        name="feishu_drive_list_comment_replies",
+        description="List all replies in a comment thread on a Feishu document. Hermes-aligned.",
+        tags=["feishu", "document", "comment"],
+        category="productivity",
+        timeout_secs=15,
+    )(tool_feishu_drive_list_comment_replies)
+
+    # ── Cronjob ─────────────────────────────────────────────────
+    registry.register(
+        name="cronjob",
+        description="Manage scheduled cron jobs. Hermes-aligned: cronjob(action, name, schedule, prompt, job_id). Actions: create, list, pause, resume, remove, run, stats.",
+        tags=["cron", "schedule", "automation"],
+        category="automation",
+        timeout_secs=15,
+    )(tool_cronjob)
+
+    logger.info("Registered %d built-in tools (with Hermes aliases)", len(registry._tools))

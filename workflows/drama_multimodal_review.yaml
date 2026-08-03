@@ -1,0 +1,35 @@
+# workflows/drama_multimodal_review.yaml — 多模态审核（视觉角色/场景/分镜）
+# 用 vision_analyze 让多模态模型逐项检查
+
+name: 多模态资产审核
+industry: entertainment
+version: "1.0"
+timeout_secs: 600
+
+steps:
+  # 逐文件审核
+  - id: scan_and_review
+    name: 扫描并审核
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_review_visual.py
+        --dir "{asset_dir}"
+        --manifest "{manifest}"
+        --retry "{retry_failed}"
+        --max_retries "{max_retries}"
+        --output "{asset_dir}/review_report.md"
+    on_failure: skip
+
+  # 汇总报告
+  - id: summary_report
+    name: 审核报告
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_review_summary.py
+        --report "{asset_dir}/review_report.md"
+        --output "{asset_dir}/PASS_or_FAIL.yaml"
+    on_failure: skip

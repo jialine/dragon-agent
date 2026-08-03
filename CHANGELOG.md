@@ -2,6 +2,24 @@
 
 All notable changes to Dragon Agent will be documented in this file.
 
+## [1.0.1] — 2026-06-28
+
+### 🔧 Fixes
+- **andlapi.cn SSL fix**: Added `verify=False` to httpx client in `dragon/auxiliary.py` — andlapi.cn has self-signed/invalid SSL certificate.
+- **Provider switch**: Gateway server now routes through `andlapi` provider instead of `openai` (both classify and chat paths).
+
+### ✨ Features
+- **OpenAI provider env override**: `OPENAI_BASE_URL` and `OPENAI_MODEL` env vars now supported, enabling DeepSeek/andlapi compatibility without code changes.
+
+### 🔨 gen_video.py Refactor
+- **HTTP API polling**: Replaced SSH+MySQL task querying with proper HTTP API calls (`GET /v1/video/generations/{task_id}`).
+- **New arguments**: `--duration` (default 15s), `--ref-image` (multiple allowed, for R2V reference image input).
+- **New model**: `happyhorse-1.1-r2v` added to model choices.
+- **Timeout**: Increased from 300s to 600s for longer video generation.
+
+### 📝 Skills
+- **video_generation.md**: Updated HappyHorse pricing info, added explicit note that HappyHorse supports Chinese prompts directly (no translation needed).
+
 ## [1.0.0] — 2026-06-25
 
 ### 🎉 First Release — Dragon Agent v1.0
