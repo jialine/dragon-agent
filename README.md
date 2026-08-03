@@ -107,6 +107,14 @@ gateway:
       app_secret: "xxxxxxxx"
 ```
 
+### 获取 API Key
+
+前往 **[api.andlapi.cn](https://api.andlapi.cn)** 注册账号，即可获取 DeepSeek V4 Pro 等模型的 API 密钥。注册后在控制台复制 `sk-` 开头的 Key，填入 `config.yaml` 或设置环境变量：
+
+```bash
+export DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxx
+```
+
 ## 测试
 
 Dragon Agent 拥有完整的单元测试覆盖，176+ 测试用例，覆盖 20 个核心模块。

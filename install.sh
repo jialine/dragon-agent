@@ -66,6 +66,7 @@ echo -e "\n${BOLD}[4/5]${NC} 默认配置 (DeepSeek V4 Pro)..."
 if [ ! -f "config.yaml" ]; then
     cat > config.yaml << 'YAML'
 # Dragon Agent — 默认 DeepSeek V4 Pro
+# 前往 https://api.andlapi.cn 注册获取 API Key
 gateway:
   host: "0.0.0.0"
   port: 8090
@@ -73,13 +74,14 @@ gateway:
 providers:
   deepseek:
     api_key: "${DEEPSEEK_API_KEY:-sk-your-key}"
-    base_url: "https://api.deepseek.com/v1"
+    base_url: "https://api.andlapi.cn/v1"
     model: "deepseek-chat"
 
 # 本地模型已弃用，统一走云端 API
 YAML
     echo -e "  ${GREEN}✓${NC} config.yaml 已创建"
-    echo -e "  ${YELLOW}⚠${NC}  请设置: export DEEPSEEK_API_KEY=sk-xxx"
+    echo -e "  ${YELLOW}⚠${NC}  前往 https://api.andlapi.cn 注册获取 API Key"
+    echo -e "  ${YELLOW}⚠${NC}  然后: export DEEPSEEK_API_KEY=sk-xxx"
 else
     echo -e "  ${GREEN}✓${NC} config.yaml 已存在"
 fi
@@ -116,4 +118,6 @@ echo -e "  ${BOLD}目录:${NC} ${CYAN}$INSTALL_DIR${NC}"
 echo -e "  ${DIM}激活:${NC}   source $INSTALL_DIR/.venv/bin/activate"
 echo -e "  ${DIM}测试:${NC}   python3 -m pytest tests/ -v"
 echo -e "  ${DIM}启动:${NC}   python3 -m dragon gateway start"
-echo -e "  ${DIM}Key:${NC}    export DEEPSEEK_API_KEY=sk-xxx"
+echo -e ""
+echo -e "  ${BOLD}🔑 获取 API Key:${NC} ${CYAN}https://api.andlapi.cn${NC}"
+echo -e "  ${DIM}注册后设置:${NC} export DEEPSEEK_API_KEY=sk-xxx"
