@@ -11,19 +11,24 @@ Dragon Agent is the **AgileMind Engine** (灵思引擎) To-C Editor, powered by 
 
 ## Quick Start
 
-### One-Click Install (网络版)
+### 一键安装（推荐）
 
 ```bash
-curl -fsSL https://gitee.com/jialine/dragon-agent/raw/main/scripts/install.sh | bash
+curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash
 ```
 
-This script will:
-1. Clone / update the repo to `~/dragon-agent`
-2. Create Python virtual environment and install dependencies
-3. Install TUI frontend (Node.js, if available)
-4. Create data directories (`~/.dragon/`)
-5. Add `dragon` alias to your shell rc file
-6. **Auto-detect AgileMind API Key** — set as default if configured
+脚本自动完成：
+1. 系统检查（Python ≥ 3.11 + git）
+2. 拉取最新代码到 `~/dragon-agent`
+3. 创建 `.venv` 并安装全部依赖
+4. 生成默认配置（DeepSeek V4 Pro）
+5. 运行单元测试验证
+
+安装完成后设置 API Key 即可使用：
+
+```bash
+export DEEPSEEK_API_KEY=sk-xxx
+```
 
 ### USB Edition (U盘版)
 
@@ -132,13 +137,13 @@ This spawns `python -m dragon.tui.server` automatically via stdin/stdout JSON-RP
 
 ## Deployment
 
-### One-Click (Recommended)
+### 一键安装（推荐）
 
 ```bash
-curl -fsSL https://gitee.com/jialine/dragon-agent/raw/main/scripts/install.sh | bash
+curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash
 ```
 
-### Linux / WSL
+### 手动安装
 
 ```bash
 # 1. Clone
@@ -201,8 +206,8 @@ dragon-agent/
 │           ├── Chat.tsx    # Chat panel (206 lines)
 │           ├── Sidebar.tsx # Sidebar (188 lines)
 │           └── ToolCall.tsx # Tool call card (123 lines)
+├── install.sh              # 一键网络安装脚本
 ├── scripts/                # Deployment & packaging
-│   ├── install.sh          # One-click network installer
 │   ├── deploy.sh           # Local deployment script
 │   └── make-usb.sh         # USB edition packager
 ├── docs/                   # Documentation

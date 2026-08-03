@@ -19,3 +19,4 @@ tenacity>=9.1.4
 networkx>=3.2
 llama-cpp-python>=0.3.8
 psutil>=6.1.0
+prometheus_client>=0.21.0
