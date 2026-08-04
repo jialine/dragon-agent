@@ -38,7 +38,7 @@ if [ ! -d "$INSTALL_DIR" ]; then
 fi
 
 # ── 1. 停止 WebUI ──────────────────────────────────────────────
-echo -e "\n${BOLD}[1/3]${NC} 停止 WebUI 进程..."
+echo -e "\n${BOLD}[1/4]${NC} 停止 WebUI 进程..."
 WEBUI_KILLED=0
 # 查找 webui/app.py 进程
 while IFS= read -r pid; do
@@ -62,7 +62,7 @@ else
 fi
 
 # ── 2. 清理文件 ────────────────────────────────────────────────
-echo -e "\n${BOLD}[2/3]${NC} 清理文件..."
+echo -e "\n${BOLD}[2/4]${NC} 清理文件..."
 
 if [ "$KEEP_CONFIG" = "1" ]; then
     # 只保留配置文件
@@ -85,8 +85,28 @@ else
     echo -e "  ${GREEN}✓${NC} 已删除 $INSTALL_DIR"
 fi
 
-# ── 3. 清理日志 ────────────────────────────────────────────────
-echo -e "\n${BOLD}[3/3]${NC} 清理日志..."
+# ── 3. 清理运行时数据 ──────────────────────────────────────────
+echo -e "\n${BOLD}[3/4]${NC} 清理运行时数据..."
+
+DATA_DIRS=("$HOME/.dragon" "$HOME/dragon_data" "$HOME/panda_data")
+CLEANED=0
+for d in "${DATA_DIRS[@]}"; do
+    if [ -d "$d" ]; then
+        if [ "$KEEP_CONFIG" = "1" ] && [ "$d" = "$HOME/.dragon" ]; then
+            echo -e "  ${YELLOW}  保留 ~/.dragon/ (--keep-config)${NC}"
+        else
+            rm -rf "$d"
+            echo -e "  ${GREEN}✓${NC} 已删除 $d"
+            CLEANED=$((CLEANED + 1))
+        fi
+    fi
+done
+if [ "$CLEANED" -eq 0 ] && [ "$KEEP_CONFIG" != "1" ]; then
+    echo -e "  没有运行时数据需要清理"
+fi
+
+# ── 4. 清理日志 ────────────────────────────────────────────────
+echo -e "\n${BOLD}[4/4]${NC} 清理日志..."
 rm -f "$INSTALL_DIR/webui.log" nohup.out 2>/dev/null || true
 echo -e "  ${GREEN}✓${NC} 完成"
 
