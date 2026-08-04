@@ -37,6 +37,7 @@ Thumbs.db
 # Temp
 *.tmp
 *.bak
+webui.log
 models/
 *.png
 scripts/feishu_onboard.py

@@ -165,6 +165,14 @@ curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash
 
 脚本会自动：创建虚拟环境 → 安装依赖 → 运行全量测试。
 
+```bash
+# 安装完成后自动启动 WebUI（端口 5000）
+curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash -s -- --start-webui
+
+# 自定义 WebUI 端口
+curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash -s -- --start-webui --webui-port 8080
+```
+
 ### 环境要求
 
 | 依赖 | 最低版本 | 说明 |

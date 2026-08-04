@@ -15,13 +15,16 @@ echo "  ╚═══════════════════════
 echo -e "${NC}"
 
 INSTALL_DIR="${INSTALL_DIR:-$HOME/dragon-agent}"; BRANCH="${BRANCH:-main}"
-SKIP_TEST="${SKIP_TEST:-0}"
+SKIP_TEST="${SKIP_TEST:-0}"; START_WEBUI="${START_WEBUI:-0}"
+WEBUI_PORT="${WEBUI_PORT:-5000}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dir) INSTALL_DIR="$2"; shift 2 ;;
         --branch) BRANCH="$2"; shift 2 ;;
         --skip-test) SKIP_TEST=1; shift ;;
-        -h|--help) echo "用法: curl -fsSL <url> | bash [--dir PATH] [--skip-test]"; exit 0 ;;
+        --start-webui) START_WEBUI=1; shift ;;
+        --webui-port) WEBUI_PORT="$2"; shift 2 ;;
+        -h|--help) echo "用法: curl -fsSL <url> | bash [--dir PATH] [--skip-test] [--start-webui] [--webui-port PORT]"; exit 0 ;;
         *) echo -e "${RED}未知参数: $1${NC}"; exit 1 ;;
     esac
 done
@@ -109,6 +112,24 @@ else
         -q --tb=line 2>&1
 fi
 
+# ── 6. WebUI (可选) ──────────────────────────────────────────
+if [ "$START_WEBUI" = "1" ]; then
+    echo -e "\n${BOLD}[6/6]${NC} 启动 WebUI (端口 $WEBUI_PORT)..."
+    if [ -f "webui/app.py" ]; then
+        nohup python3 webui/app.py --port "$WEBUI_PORT" > webui.log 2>&1 &
+        WEBUI_PID=$!
+        sleep 1
+        if kill -0 "$WEBUI_PID" 2>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} WebUI 已启动 (PID: $WEBUI_PID)"
+            echo -e "  ${GREEN}✓${NC} 地址: ${CYAN}http://localhost:$WEBUI_PORT${NC}"
+        else
+            echo -e "  ${RED}✗${NC} WebUI 启动失败，查看 webui.log"
+        fi
+    else
+        echo -e "  ${YELLOW}⚠${NC}  webui/app.py 不存在"
+    fi
+fi
+
 # ── 完成 ──────────────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}${BOLD}╔══════════════════════════════════════╗${NC}"
@@ -118,6 +139,11 @@ echo -e "  ${BOLD}目录:${NC} ${CYAN}$INSTALL_DIR${NC}"
 echo -e "  ${DIM}激活:${NC}   source $INSTALL_DIR/.venv/bin/activate"
 echo -e "  ${DIM}测试:${NC}   python3 -m pytest tests/ -v"
 echo -e "  ${DIM}启动:${NC}   python3 -m dragon gateway start"
+echo -e "  ${DIM}WebUI:${NC}  python3 webui/app.py --port 5000"
+if [ "$START_WEBUI" = "1" ] && [ -n "${WEBUI_PID:-}" ] && kill -0 "$WEBUI_PID" 2>/dev/null; then
+    echo -e ""
+    echo -e "  ${BOLD}🌐 WebUI 运行中:${NC} ${CYAN}http://localhost:$WEBUI_PORT${NC} (PID: $WEBUI_PID)"
+fi
 echo -e ""
 echo -e "  ${BOLD}🔑 获取 API Key:${NC} ${CYAN}https://api.andlapi.cn${NC}"
 echo -e "  ${DIM}注册后设置:${NC} export DEEPSEEK_API_KEY=sk-xxx"
