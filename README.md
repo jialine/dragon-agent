@@ -176,12 +176,18 @@ curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash -
 ### 卸载
 
 ```bash
-# 完全卸载
+# 完全卸载（删除所有内容）
 curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/scripts/uninstall.sh | bash
 
-# 保留配置文件
-curl -fsSL .../uninstall.sh | bash -s -- --keep-config
+# 保留数据资产（剧本、数据库、媒体、配置）
+curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/scripts/uninstall.sh | bash -s -- --keep-data
 ```
+
+`--keep-data` 会保护：
+- 📝 剧本（`~/episodes/`）
+- 🗄️ 分镜头数据库（`drama.db`）
+- 🎬 生成的视频/图片（`~/.hermes/media/`）
+- ⚙️ 配置文件 + 技能（`~/.dragon/`）
 
 ### 环境要求
 
