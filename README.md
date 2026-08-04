@@ -173,6 +173,16 @@ curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash -
 curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash -s -- --start-webui --webui-port 8080
 ```
 
+### 卸载
+
+```bash
+# 完全卸载
+curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/scripts/uninstall.sh | bash
+
+# 保留配置文件
+curl -fsSL .../uninstall.sh | bash -s -- --keep-config
+```
+
 ### 环境要求
 
 | 依赖 | 最低版本 | 说明 |

@@ -41,8 +41,6 @@ webui.log
 models/
 *.png
 scripts/feishu_onboard.py
-scripts/generate_qr.py
-scripts/uninstall.sh
 config.yaml
 output/
 
