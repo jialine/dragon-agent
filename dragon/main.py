@@ -13,6 +13,9 @@ import os
 import json
 import asyncio
 import base64
+import socket
+import platform as _platform
+import subprocess
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List, Optional, Dict, Any
@@ -22,7 +25,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from dragon.config import DragonConfig
-from dragon.constants import API_BASE_URL
+from dragon.constants import API_BASE_URL, validate_api_endpoint, SIGNOSS_IDENTITY_URL
 from dragon.router import DragonRouter, RemoteRouter, RouteResult, RouterStatus as _ignore_RouterStatus
 from dragon.dispatch import DragonDispatcher, ProviderProfile, DispatchResult as _ignore_DispatchResult
 from dragon.guard import AntiLoopGuard, LoopAction as _ignore_LoopAction
@@ -322,12 +325,135 @@ async def _start_gateway(cfg) -> bool:
     return True
 
 
-@asynccontextmanager
+# ── Startup Identity Reporting ────────────────────────────────────
+
+def _collect_hardware_info() -> dict:
+    """Collect hardware information for identity reporting."""
+    info = {}
+    try:
+        info["cpu_count"] = os.cpu_count()
+    except Exception:
+        info["cpu_count"] = "unknown"
+    try:
+        import psutil
+        mem = psutil.virtual_memory()
+        info["memory_total_gb"] = round(mem.total / (1024**3), 1)
+        info["memory_available_gb"] = round(mem.available / (1024**3), 1)
+        disk = psutil.disk_usage("/")
+        info["disk_total_gb"] = round(disk.total / (1024**3), 1)
+    except ImportError:
+        try:
+            result = subprocess.run(
+                ["free", "-h"], capture_output=True, text=True, timeout=5
+            )
+            info["memory"] = result.stdout.strip()
+        except Exception:
+            info["memory"] = "unknown"
+    try:
+        info["platform"] = _platform.platform()
+        info["python_version"] = _platform.python_version()
+    except Exception:
+        pass
+    try:
+        result = subprocess.run(
+            ["hostname", "-I"], capture_output=True, text=True, timeout=5
+        )
+        info["ip_addresses"] = result.stdout.strip()
+    except Exception:
+        try:
+            info["hostname_ip"] = socket.gethostbyname(socket.gethostname())
+        except Exception:
+            info["ip_addresses"] = "unknown"
+    # GPU info
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,memory.total",
+             "--format=csv,noheader"], capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            info["gpus"] = [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]
+    except Exception:
+        pass
+    return info
+
+
+async def _report_identity_to_signoss() -> bool:
+    """Report Dragon identity + hardware info to SignOSS on startup."""
+    try:
+        from dragon.identity import get_identity
+
+        ident = get_identity()
+        identity_data = {
+            "dragon_id": ident.id,
+            "fingerprint": ident.fingerprint,
+            "machine_id": ident.machine_id,
+            "mac_address": ident.mac_address,
+            "hostname": ident.hostname,
+            "created_at": ident.created_at,
+            "startup_at": __import__("datetime").datetime.now(
+                __import__("datetime").timezone.utc
+            ).isoformat(),
+            "hardware": _collect_hardware_info(),
+            "version": _read_version(),
+        }
+
+        import tempfile
+        import httpx
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, prefix="dragon_identity_"
+        ) as f:
+            json.dump(identity_data, f, ensure_ascii=False, indent=2)
+            tmp_path = f.name
+
+        signoss_key = os.getenv("SIGNOSS_API_KEY", "")
+        if not signoss_key:
+            logger.warning("SIGNOSS_API_KEY not set — skipping identity report")
+            return False
+
+        async with httpx.AsyncClient(verify=False, timeout=30) as client:
+            with open(tmp_path, "rb") as f:
+                files = {"file": (f"dragon_{ident.id}.json", f, "application/json")}
+                data = {"category": "dragon-identity"}
+                headers = {"X-API-Key": signoss_key}
+                resp = await client.post(
+                    SIGNOSS_IDENTITY_URL,
+                    data=data,
+                    files=files,
+                    headers=headers,
+                )
+                if resp.status_code == 200:
+                    logger.info(
+                        "Identity reported to SignOSS: %s (status=%d)",
+                        ident.id, resp.status_code,
+                    )
+                else:
+                    logger.warning(
+                        "Identity report FAILED: %s (status=%d, body=%s)",
+                        ident.id, resp.status_code, resp.text[:200],
+                    )
+
+        os.unlink(tmp_path)
+        return True
+
+    except Exception as e:
+        logger.warning("Failed to report identity to SignOSS: %s", e)
+        return False
+
+
+# ── Lifespan ───────────────────────────────────────────────────────
 async def lifespan(app: FastAPI):
     global router, dispatcher, guard, config
 
     config = DragonConfig.load()
     logger.info("Loading Dragon Agent...")
+
+    # ── Startup security checks ─────────────────────────────────
+    # 1. Validate API endpoint integrity
+    validate_api_endpoint()
+
+    # 2. Report identity to SignOSS (fire-and-forget, non-blocking)
+    asyncio.create_task(_report_identity_to_signoss())
 
     # Router — use remote API if configured, otherwise local GGUF
     if config.router.remote_url:
