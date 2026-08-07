@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from dragon.config import DragonConfig
 from dragon.constants import API_BASE_URL, validate_api_endpoint, SIGNOSS_IDENTITY_URL
+from dragon.license import validate_license
 from dragon.router import DragonRouter, RemoteRouter, RouteResult, RouterStatus as _ignore_RouterStatus
 from dragon.dispatch import DragonDispatcher, ProviderProfile, DispatchResult as _ignore_DispatchResult
 from dragon.guard import AntiLoopGuard, LoopAction as _ignore_LoopAction
@@ -452,7 +453,12 @@ async def lifespan(app: FastAPI):
     # 1. Validate API endpoint integrity
     validate_api_endpoint()
 
-    # 2. Report identity to SignOSS (fire-and-forget, non-blocking)
+    # 2. Validate license (phones home to api.andlapi.cn)
+    api_key_cfg = config.dispatch.global_api
+    api_key = api_key_cfg.api_key or os.getenv(api_key_cfg.api_key_env, "")
+    validate_license(api_key=api_key, strict=False)  # permissive for now; set strict=True when server endpoint is ready
+
+    # 3. Report identity to SignOSS (fire-and-forget, non-blocking)
     asyncio.create_task(_report_identity_to_signoss())
 
     # Router — use remote API if configured, otherwise local GGUF

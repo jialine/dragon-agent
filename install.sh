@@ -50,6 +50,59 @@ fi
 cd "$INSTALL_DIR"
 echo -e "  ${GREEN}✓${NC} $(git rev-parse --short HEAD 2>/dev/null || echo latest)"
 
+# ── 2.5 安装指纹注入 ─────────────────────────────────────────
+echo -e "\n${BOLD}[2.5/5]${NC} 生成安装指纹..."
+LICENSE_FILE="dragon/license.py"
+if [ -f "$LICENSE_FILE" ]; then
+    # 生成唯一安装 ID: DRAGON-INST-{base32(sha256(machine_id+timestamp+random))}
+    MACHINE_ID=$(cat /etc/machine-id 2>/dev/null | head -c16 || echo "unknown")
+    INSTALL_SEED=$(python3 -c "
+import hashlib, uuid, time, platform
+seed = hashlib.sha256(f'${MACHINE_ID}|{platform.node()}|{time.time()}|{uuid.uuid4()}'.encode()).hexdigest()
+import base64
+install_id = 'DRAGON-INST-' + base64.b32encode(hashlib.sha256(seed.encode()).digest())[:12].decode().upper()
+print(install_id)
+print(seed)
+")
+    INSTALL_ID=$(echo "$INSTALL_SEED" | head -1)
+    INSTALL_SEED_VAL=$(echo "$INSTALL_SEED" | tail -1)
+
+    # 注入到 dragon/license.py
+    sed -i "s/__DRAGON_INSTALL_ID__/${INSTALL_ID}/g" "$LICENSE_FILE"
+    sed -i "s/__DRAGON_INSTALL_SEED__/${INSTALL_SEED_VAL}/g" "$LICENSE_FILE"
+
+    # 计算完整性哈希并注入（排除哈希行自身，避免循环依赖）
+    INTEGRITY_HASH=$(python3 -c "
+import hashlib
+source = open('${LICENSE_FILE}').read().replace('\r\n','\n')
+lines = source.split('\n')
+cleaned = []
+for line in lines:
+    if '_INTEGRITY_HASH = ' in line and '\"__DRAGON' not in line:
+        continue
+    cleaned.append(line)
+cleaned_source = '\n'.join(cleaned).strip()
+h = hashlib.sha256(f'DRAGON_INTEGRITY_V2_{cleaned_source}_SALT'.encode()).hexdigest()
+print(h)
+")
+    sed -i "s/__DRAGON_INTEGRITY_HASH__/${INTEGRITY_HASH}/g" "$LICENSE_FILE"
+
+    echo -e "  ${GREEN}✓${NC} 安装指纹: ${INSTALL_ID}"
+    echo -e "  ${GREEN}✓${NC} 完整性锁已嵌入"
+
+    # 编译关键文件为 .pyc（反篡改）
+    python3 -c "
+import py_compile, os, sys
+files = ['dragon/license.py', 'dragon/constants.py', 'dragon/identity.py']
+for f in files:
+    if os.path.exists(f):
+        py_compile.compile(f, cfile=f+'c', doraise=False)
+        print(f'  compiled: {f}c')
+" 2>/dev/null && echo -e "  ${GREEN}✓${NC} 关键文件已编译保护" || echo -e "  ${YELLOW}⚠${NC} 编译跳过（非关键）"
+else
+    echo -e "  ${YELLOW}⚠${NC}  ${LICENSE_FILE} 不存在，跳过指纹注入"
+fi
+
 # ── 3. 依赖 ──────────────────────────────────────────────────
 echo -e "\n${BOLD}[3/5]${NC} 安装依赖..."
 [ ! -d ".venv" ] && python3 -m venv .venv
