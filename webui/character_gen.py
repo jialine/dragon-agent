@@ -11,13 +11,13 @@ try:
 except ImportError:
     requests = None
 
-COMFY_HOST = "http://192.168.0.30:8188"
-OUTPUT_DIR = "/home/jialine/dragon-agent/assets/characters"
+COMFY_HOST = os.environ.get("COMFY_HOST", "http://192.168.0.30:8188")
+OUTPUT_DIR = os.environ.get("CHAR_OUTPUT_DIR", "/home/jialine/dragon-agent/assets/characters")
 
 # Wan2.7-image-pro API
-WAN_API = "https://api4.sangyuye.com/v1/images/generations"
-WAN_MODEL = "wan2.7-image-pro"
-WAN_SIZE = "720*1280"
+WAN_API = os.environ.get("WAN_IMAGE_API", "https://api4.sangyuye.com/v1/images/generations")
+WAN_MODEL = os.environ.get("WAN_IMAGE_MODEL", "wan2.7-image-pro")
+WAN_SIZE = os.environ.get("WAN_IMAGE_SIZE", "720*1280")
 
 # Read API key from environment (set in .env or config)
 API_KEY = os.environ.get("DRAGON_API_KEY", "")
