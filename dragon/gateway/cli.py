@@ -311,6 +311,7 @@ def cmd_gateway(args):
     # ── run: foreground (renamed from old "start") ──
     print(f"Starting Dragon Gateway on {args.host}:{args.port}...")
 
+    from dragon._domain_loader import API_BASE_URL, OSS_BASE_URL, OFFICIAL_DOMAINS
     from dragon.provider import auto_setup_providers
     from dragon.session import SessionStore
     from dragon.tool import ToolRegistry
@@ -371,7 +372,6 @@ def cmd_gateway(args):
         print("  ✓ Feishu enabled")
 
     # Domain integrity check
-    from dragon._domain_loader import API_BASE_URL, OSS_BASE_URL, OFFICIAL_DOMAINS
     def _verify_domain(actual, name):
         from urllib.parse import urlparse
         host = urlparse(actual).hostname or ""
