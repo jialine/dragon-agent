@@ -65,9 +65,10 @@ def main():
     serve_p.add_argument("--reload", action="store_true", help="Auto-reload")
 
     # ── gateway ───────────────────────────────────────────────────
-    gw_p = sub.add_parser("gateway", help="Start or check multi-platform gateway")
-    gw_p.add_argument("action", nargs="?", default="start", choices=["start", "status", "install"],
-                      help="start=启动网关, status=查看状态, install=安装配置")
+    gw_p = sub.add_parser("gateway", help="Multi-platform gateway (run|start|stop|restart|status|install)")
+    gw_p.add_argument("action", nargs="?", default="status", 
+                      choices=["run", "start", "stop", "restart", "status", "install"],
+                      help="run=前台运行, start=启动服务, stop=停止, restart=重启, status=状态, install=安装服务")
     gw_p.add_argument("--host", default="0.0.0.0")
     gw_p.add_argument("--port", type=int, default=8000)
     gw_p.add_argument("--feishu", action="store_true", help="Enable Feishu")
@@ -295,16 +296,19 @@ def _load_dispatch_config():
                 }
     return {'api_key': 'not-needed', 'base_url': None, 'model': 'gpt-4o', 'timeout_secs': 60}
 def cmd_gateway(args):
-    """Start or show status of multi-platform gateway."""
+    """Start, stop, or show status of multi-platform gateway (Hermes-aligned)."""
+    
+    # ── service control (systemd on Linux, PID-file on Windows) ──
+    if args.action in ("start", "stop", "restart"):
+        return _cmd_gateway_service(args.action)
+    
     if args.action == "status":
-        _cmd_gateway_status()
-        return
-
+        return _cmd_gateway_status()
+    
     if args.action == "install":
-        _cmd_gateway_install()
-        return
-
-    # ── start ──
+        return _cmd_gateway_install()
+    
+    # ── run: foreground (renamed from old "start") ──
     print(f"Starting Dragon Gateway on {args.host}:{args.port}...")
 
     from dragon.provider import auto_setup_providers
@@ -402,6 +406,75 @@ def cmd_gateway(args):
     uvicorn.run(server.app, host=args.host, port=args.port, log_level="info")
 
 
+def _cmd_gateway_service(action):
+    """Control Dragon Gateway as a background service (Hermes-aligned).
+
+    Linux: systemd user service
+    Windows: PID-file + subprocess
+    """
+    import subprocess
+    import sys
+    import platform
+
+    SERVICE_NAME = "dragon-gateway"
+    
+    if platform.system() == "Windows":
+        pid_file = Path.home() / ".dragon" / "gateway.pid"
+        if action == "start":
+            if pid_file.exists():
+                pid = int(pid_file.read_text().strip())
+                try:
+                    import ctypes
+                    kernel32 = ctypes.windll.kernel32
+                    handle = kernel32.OpenProcess(0x0400, False, pid)
+                    if handle:
+                        kernel32.CloseHandle(handle)
+                        print(f"Gateway 已在运行 (PID: {pid})")
+                        return
+                except:
+                    pass
+            print("启动 Gateway 后台服务...")
+            pid_file.parent.mkdir(parents=True, exist_ok=True)
+            proc = subprocess.Popen(
+                [sys.executable, "-m", "dragon", "gateway", "run", "--feishu"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+            )
+            pid_file.write_text(str(proc.pid))
+            print(f"✓ Gateway 已启动 (PID: {proc.pid})")
+        elif action == "stop":
+            if not pid_file.exists():
+                print("Gateway 未在运行")
+                return
+            pid = int(pid_file.read_text().strip())
+            try:
+                import ctypes
+                kernel32 = ctypes.windll.kernel32
+                handle = kernel32.OpenProcess(1, False, pid)
+                kernel32.TerminateProcess(handle, 0)
+                kernel32.CloseHandle(handle)
+                pid_file.unlink()
+                print(f"✓ Gateway 已停止 (PID: {pid})")
+            except Exception as e:
+                print(f"停止失败: {e}")
+        elif action == "restart":
+            _cmd_gateway_service("stop")
+            import time; time.sleep(1)
+            _cmd_gateway_service("start")
+        return
+    
+    # Linux: systemd user service
+    if action == "start":
+        subprocess.run(["systemctl", "--user", "start", SERVICE_NAME], check=False)
+        print(f"✓ Gateway 服务已启动")
+    elif action == "stop":
+        subprocess.run(["systemctl", "--user", "stop", SERVICE_NAME], check=False)
+        print(f"✓ Gateway 服务已停止")
+    elif action == "restart":
+        subprocess.run(["systemctl", "--user", "restart", SERVICE_NAME], check=False)
+        print(f"✓ Gateway 服务已重启")
+
+
 def _cmd_gateway_status():
     """Show gateway status — active adapters, config, and session stats."""
     print("Dragon Gateway Status")
@@ -462,6 +535,37 @@ def _cmd_gateway_status():
 
     print(f"\n端点 (Endpoint): http://0.0.0.0:8000")
     print(f"健康检查: GET /health")
+
+
+def _register_systemd_service():
+    """Register Dragon Gateway as a systemd user service (Hermes-aligned)."""
+    import sys
+    service_dir = Path.home() / ".config" / "systemd" / "user"
+    service_dir.mkdir(parents=True, exist_ok=True)
+    
+    python_path = sys.executable
+    service_content = f"""[Unit]
+Description=Dragon Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart={python_path} -m dragon gateway run --feishu
+Restart=always
+RestartSec=10
+Environment=HOME={Path.home()}
+Environment=XDG_RUNTIME_DIR=/run/user/{os.getuid()}
+
+[Install]
+WantedBy=default.target
+"""
+    service_file = service_dir / "dragon-gateway.service"
+    service_file.write_text(service_content)
+    print(f"\n✓ systemd 服务已注册: {service_file}")
+    print(f"  systemctl --user enable dragon-gateway   # 开机自启")
+    print(f"  systemctl --user start dragon-gateway    # 启动")
+    print(f"  sudo loginctl enable-linger $(whoami)    # 退出登录后保持运行")
 
 
 def _cmd_gateway_install():
@@ -542,7 +646,18 @@ def _cmd_gateway_install():
         env_vars = plat["env_vars"]
         ready = all(configured.get(v) or os.getenv(v) for v in env_vars)
         print(f"  {'✓' if ready else '○'} {plat['name']}")
-    print(f"\n启动网关: dragon gateway start --feishu")
+
+    # Register as systemd service (Linux)
+    import platform as _plat
+    if _plat.system() != "Windows":
+        _register_systemd_service()
+    
+    print(f"\n命令参考 (Hermes-aligned):")
+    print(f"  dragon gateway run      前台运行")
+    print(f"  dragon gateway start    启动后台服务")
+    print(f"  dragon gateway stop     停止服务")
+    print(f"  dragon gateway restart  重启服务")
+    print(f"  dragon gateway status   查看状态")
 
 
 def cmd_mcp(args):

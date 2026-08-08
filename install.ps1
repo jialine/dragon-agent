@@ -81,7 +81,8 @@ Write-Host "║   🐉 Dragon Agent 部署完成！        ║" -ForegroundColor
 Write-Host "╚══════════════════════════════════════╝" -ForegroundColor Green
 Write-Host "  获取 Key: https://andlapi.cn（注册送 ¥10）"
 Write-Host "  激活: .venv\Scripts\Activate.ps1"
-Write-Host "  启动: python dragon_agent_loop.py"
+Write-Host "  前台运行: python dragon_agent_loop.py"
+Write-Host "  后台服务: dragon gateway start"
 Write-Host "  Key:  `$env:ANDLAPI_API_KEY = 'sk-...'"
 
 # WebUI 自动启动
