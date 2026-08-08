@@ -5,7 +5,9 @@
 param(
     [string]$InstallDir = "$env:USERPROFILE\dragon-agent",
     [string]$Branch = "master",
-    [switch]$SkipTest
+    [switch]$SkipTest,
+    [switch]$StartWebUI,
+    [int]$WebUIPort = 5000
 )
 
 Write-Host ""
@@ -81,3 +83,21 @@ Write-Host "  获取 Key: https://andlapi.cn（注册送 ¥10）"
 Write-Host "  激活: .venv\Scripts\Activate.ps1"
 Write-Host "  启动: python dragon_agent_loop.py"
 Write-Host "  Key:  `$env:ANDLAPI_API_KEY = 'sk-...'"
+
+# WebUI 自动启动
+if ($StartWebUI) {
+    Write-Host ""
+    Write-Host "════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "  启动 WebUI（端口 $WebUIPort）..." -ForegroundColor Cyan
+
+    $webuiDir = Join-Path $InstallDir "webui\完成"
+    if (Test-Path (Join-Path $webuiDir "app.py")) {
+        Set-Location $webuiDir
+        Start-Process -NoNewWindow python -ArgumentList "app.py", "--port", $WebUIPort
+        Start-Sleep -Seconds 3
+        Write-Host "  ✓ WebUI 已启动: http://localhost:$WebUIPort" -ForegroundColor Green
+        Start-Process "http://localhost:$WebUIPort"
+    } else {
+        Write-Host "  ✗ WebUI 目录不存在: $webuiDir" -ForegroundColor Red
+    }
+}

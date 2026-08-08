@@ -43,7 +43,7 @@ curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash -
 
 ```powershell
 # Windows PowerShell（右键管理员运行）
-irm https://gitee.com/jialine/dragon-agent/raw/master/install.ps1 | iex
+irm https://gitee.com/jialine/dragon-agent/raw/master/install.ps1 -OutFile install.ps1; .\install.ps1 -StartWebUI
 ```
 
 ---
