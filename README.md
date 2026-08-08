@@ -34,9 +34,16 @@ cp config.example.yaml config.yaml
 python dragon_agent_loop.py
 ```
 
-**WebUI 一键安装：**
+**一键安装（推荐）：**
+
 ```bash
+# Linux / macOS
 curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash -s -- --start-webui
+```
+
+```powershell
+# Windows PowerShell（右键管理员运行）
+irm https://gitee.com/jialine/dragon-agent/raw/master/install.ps1 | iex
 ```
 
 ---

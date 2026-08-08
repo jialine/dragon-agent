@@ -62,20 +62,22 @@ gateway:
   host: "0.0.0.0"
   port: 8090
 
-providers:
-  deepseek:
-    api_key: "${env:DEEPSEEK_API_KEY}"
-    base_url: "https://api.deepseek.com/v1"
-    model: "deepseek-chat"
+dispatch:
+  global_api:
+    model: "deepseek-v4-pro"
+    base_url: "https://api.andlapi.cn/v1"
+    api_key: "${env:ANDLAPI_API_KEY}"
 "@ | Out-File -Encoding utf8 config.yaml
     Write-Host "  ✓ config.yaml" -ForegroundColor Green
-    Write-Host "  ⚠ 设置 Key: `$env:DEEPSEEK_API_KEY = 'sk-...'" -ForegroundColor Yellow
+    Write-Host "  ⚠ 获取 Key: https://andlapi.cn（注册送 ¥10）" -ForegroundColor Yellow
+    Write-Host "  ⚠ 设置 Key: `$env:ANDLAPI_API_KEY = 'sk-...'" -ForegroundColor Yellow
 }
 
 Write-Host ""
 Write-Host "╔══════════════════════════════════════╗" -ForegroundColor Green
 Write-Host "║   🐉 Dragon Agent 部署完成！        ║" -ForegroundColor Green
 Write-Host "╚══════════════════════════════════════╝" -ForegroundColor Green
+Write-Host "  获取 Key: https://andlapi.cn（注册送 ¥10）"
 Write-Host "  激活: .venv\Scripts\Activate.ps1"
-Write-Host "  启动: python -m dragon gateway start"
-Write-Host "  Key:  `$env:DEEPSEEK_API_KEY = 'sk-...'"
+Write-Host "  启动: python dragon_agent_loop.py"
+Write-Host "  Key:  `$env:ANDLAPI_API_KEY = 'sk-...'"
