@@ -1,76 +1,113 @@
-# Dragon Agent 🐉
+# Dragon Agent 🐉 —— 你的全能 AI 员工
 
-> 可自我进化的 AI Agent 框架 — 工具系统 · 技能引擎 · 工作流编排 · 多平台网关
+> 短剧、写代码、做硬件。一句话，全搞定。
 
-Dragon Agent 是一个 Python AI Agent 框架，支持工具调用、技能记忆、工作流编排、以及多平台消息网关（飞书/Lark 等）。
+[![Stars](https://img.shields.io/github/stars/jialine/dragon-agent?style=social)](https://github.com/jialine/dragon-agent)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE.md)
+[![Powered by andlapi](https://img.shields.io/badge/API-andlapi.cn-ff6b35)](https://andlapi.cn)
+[![Python](https://img.shields.io/badge/Python-3.11+-green)]()
 
-## 核心特性
+---
 
-| 模块 | 说明 |
-|------|------|
-| 🤖 **Agent Loop** | 多轮推理 + 工具调用，支持 90 轮迭代 |
-| 🔧 **Tool System** | 内置工具：terminal、file、web_search、memory、skills、wan_video 等 |
-| 📚 **Skill Engine** | 可学习的技能系统，支持创建/加载/版本管理 |
-| 🔀 **Workflow Engine** | DAG 工作流编排，支持 LLM → 工具 → 条件分支 |
-| 🌐 **Gateway** | 飞书/Lark WebSocket 网关，实时消息收发 |
-| 🧠 **Multi-Provider** | DeepSeek / OpenAI / Ollama 多模型后端 |
-| 💾 **Memory** | 跨会话持久记忆，支持自动压缩 |
+## 🤯 它能做什么
 
-## 快速开始
+| 🎬 短剧生产 | 💻 写代码 | 🔧 硬件开发 |
+|------------|----------|------------|
+| 剧本→分镜→角色图→视频→配音→合成 | 需求→拆任务→写代码→测试→PR | 方案→选型→画板子→BOM→固件 |
+| **30 分钟一集** | **40 分钟一个完整应用** | **半小时出完整方案** |
+
+---
+
+## ⚡ 30 秒上手
 
 ```bash
 # 安装
 git clone git@gitee.com:jialine/dragon-agent.git
 cd dragon-agent
-python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# 配置
+# 配置 API Key（去 andlapi.cn 注册就送 ¥10）
 cp config.example.yaml config.yaml
-# 编辑 config.yaml，填入你的 API 密钥
+# 编辑 config.yaml，填入你的 API Key
 
-# 启动 CLI
+# 开始干活
 python dragon_agent_loop.py
-
-# 启动飞书网关
-export FEISHU_APP_ID=cli_xxx
-export FEISHU_APP_SECRET=xxx
-dragon gateway --feishu --port 8000
 ```
 
-## 项目结构
-
-```
-dragon/
-├── cli.py              # CLI 命令行入口
-├── main.py             # Agent 主循环
-├── config.py           # 配置管理
-├── pipeline.py         # 流水线执行器
-├── prompt_builder.py   # Prompt 构建
-├── credential.py       # 凭证管理
-├── web_providers.py    # Web 搜索提供者
-├── identity.py         # Agent 身份
-├── constants.py        # 常量定义
-├── gateway/            # 消息网关
-│   ├── server.py       # FastAPI 服务器
-│   ├── feishu.py       # 飞书/Lark 适配器
-│   └── cli.py          # 网关 CLI
-├── tool/               # 工具系统
-│   ├── registry.py     # 工具注册表
-│   ├── guardrails.py   # 安全护栏
-│   └── builtins/       # 内置工具
-├── skill/              # 技能引擎
-│   └── engine.py       # 技能加载/执行
-├── workflow/           # 工作流引擎
-│   └── planner.py      # 工作流规划器
-├── provider/           # LLM 提供者
-│   └── __init__.py     # 多模型后端注册
-└── orchestrator/       # 多 Agent 编排
+**WebUI 一键安装：**
+```bash
+curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash -s -- --start-webui
 ```
 
-## 工具系统
+---
 
-Dragon 拥有丰富的内置工具集：
+## 🔥 为什么用 Dragon
+
+| | 传统方式 | Dragon Agent |
+|--|---------|-------------|
+| 短剧一集 | 5 人 × 2 天 | 1 人 × 30 分钟 |
+| 一个功能 | 开发 3 天 | 一句话 + 等 10 分钟 |
+| 硬件方案 | 团队 1 周 | 1 人 × 1 小时 |
+| API 成本 | 5 个平台来回切 | 一个 andlapi Key 全搞定 |
+
+---
+
+## 🎬 短剧生产全流程
+
+```
+剧本 → Dragon 自动分镜 → 角色图生成 → 场景图生成 → 视频生成 → TTS 配音 → 合成输出
+```
+
+实际案例：**猩族纪元**——50 集科幻短剧系列，Dragon Agent 全流程自动生产。
+
+- 自动解析剧本，拆分为分镜
+- 为每个角色生成统一形象图
+- 为每个场景生成背景图
+- 调用视频生成模型，将静态素材转为动态视频
+- TTS 配音 + 音效 + 合成
+- 支持竖屏（9:16）和横屏（16:9）
+
+---
+
+## 💻 写代码能力
+
+给需求，出完整项目：
+
+```bash
+dragon run --mode code --prompt "做一个短剧项目管理后台，支持创建项目、上传剧本、查看分镜状态、预览视频"
+```
+
+Dragon 自动完成：技术选型 → 架构设计 → 前后端代码 → 测试 → 可运行的完整应用。
+
+---
+
+## 🔧 硬件开发能力
+
+```bash
+dragon run --mode hardware --prompt "设计一个低功耗温湿度传感器，ESP32 + SHT30，MQTT 上报，电池供电 6 个月"
+```
+
+输出：芯片选型对比表 + 电路原理图草案 + BOM 清单（含价格和链接）+ 固件框架代码 + 功耗估算。
+
+---
+
+## 🛠 技术架构
+
+Dragon Agent 是一个完整的 AI Agent 框架：
+
+| 模块 | 说明 |
+|------|------|
+| 🤖 **Agent Loop** | 多轮推理 + 工具调用，支持 90 轮迭代 |
+| 🔧 **Tool System** | terminal、file、web_search、memory、skills、视频生成等 15+ 工具 |
+| 📚 **Skill Engine** | 可学习的技能系统，支持创建/加载/版本管理 |
+| 🔀 **Workflow Engine** | DAG 工作流编排，支持 LLM → 工具 → 条件分支 |
+| 🌐 **Gateway** | 飞书/Lark WebSocket 网关，实时消息收发 |
+| 🧠 **Multi-Provider** | 支持 andlapi / DeepSeek / OpenAI / Ollama 等多模型后端 |
+| 💾 **Memory** | 跨会话持久记忆，支持自动压缩 |
+
+---
+
+## 📦 内置工具
 
 | 工具 | 功能 |
 |------|------|
@@ -80,16 +117,33 @@ Dragon 拥有丰富的内置工具集：
 | `memory` | 持久记忆存储 |
 | `skills` | 技能管理 |
 | `session_search` | 跨会话搜索 |
-| `wan_video` | WAN 2.7 视频生成 |
-| `todo` | 任务管理 |
-| `clarify` | 用户澄清 |
-| `execute_code` | Python 代码执行 |
-| `patch` | 文件精准编辑 |
+| `wan_video` | 视频生成 |
 | `comfyui_generate` | ComfyUI 图像生成 |
 | `edge_tts` | 文本转语音 |
 | `ffmpeg_composite` | 视频合成 |
+| `execute_code` | Python 代码执行 |
+| `todo` | 任务管理 |
 
-## 配置
+---
+
+## 🧪 测试
+
+176+ 测试用例，覆盖 20 个核心模块。纯函数测试，无需 API Key。
+
+```bash
+pip install -r requirements-dev.txt
+python3 -m pytest tests/ -v
+```
+
+---
+
+## 🚀 API 服务
+
+Dragon Agent 底层模型调用全部走 **[andlapi.cn](https://andlapi.cn)**：
+
+- 一个 Key，跑所有模型（DeepSeek V4 Pro / GPT-4o / Claude / 文生图 / 文生视频 / TTS）
+- 比直连便宜 60%
+- 注册送 ¥10 体验金，充 200 到手 350
 
 ```yaml
 # config.yaml
@@ -98,121 +152,26 @@ dispatch:
     model: deepseek-v4-pro
     base_url: https://api.andlapi.cn/v1
     api_key: "sk-你的API密钥"
-
-gateway:
-  enabled: true
-  platforms:
-    feishu:
-      app_id: "cli_xxxxxxxx"
-      app_secret: "xxxxxxxx"
 ```
-
-### 获取 API Key
-
-前往 **[api.andlapi.cn](https://api.andlapi.cn)** 注册账号，即可获取 DeepSeek V4 Pro 等模型的 API 密钥。注册后在控制台复制 `sk-` 开头的 Key，填入 `config.yaml` 或设置环境变量：
-
-```bash
-export DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxx
-```
-
-## 测试
-
-Dragon Agent 拥有完整的单元测试覆盖，176+ 测试用例，覆盖 20 个核心模块。
-
-### 运行测试
-
-```bash
-# 安装测试依赖
-pip install -r requirements-dev.txt
-
-# 运行全部测试（纯函数，无需 API key）
-python3 -m pytest tests/ -v
-
-# 运行特定模块
-python3 -m pytest tests/test_tool.py tests/test_rate_limiter.py -v
-
-# 带覆盖率报告
-python3 -m pytest tests/ --cov=dragon --cov-report=term-missing
-```
-
-### 测试覆盖
-
-| 测试文件 | 覆盖模块 | 用例数 |
-|---------|---------|--------|
-| `test_tool.py` | ToolRegistry, ToolDef, CircuitBreaker, Pipeline, 去重 | 57 |
-| `test_rate_limiter.py` | TokenBucket, RateLimiter, CircuitBreaker, parse_retry_after | 23 |
-| `test_credential_pool.py` | Credential, CredentialPool, CredentialManager | 12 |
-| `test_prompt_builder.py` | MiniTemplate, PromptBuilder, CacheEntry | 10 |
-| `test_guardrails.py` | ToolGuardrails, GuardrailCheck, ToolCallSignature | 13 |
-| `test_think_scrubber.py` | strip_think_blocks, StreamingThinkScrubber | 11 |
-| `test_error_classifier.py` | classify_api_error, is_retryable, format_chinese_error | 9 |
-| `test_usage_pricing.py` | get_pricing, get_cost, list_models, format_cost | 10 |
-| `test_redact.py` | mask_secret, redact_sensitive_text, redact_for_logs | 8 |
-| `test_feishu_pure.py` | handle_url_verification, verify_hmac_signature | 5 |
-| `test_file_safety.py` | is_file_extension_safe, sanitize_filename, SafetyValidator | 8 |
-| `test_orch_classifier.py` | classify (orchestrator), Tier, Classification | 5 |
-| `test_factcheck.py` | ClaimExtractor, FactClaim, ClaimType | 5 |
-| `test_hallmetrics.py` | BenchmarkRunner, HallucinationReport | 5 |
-
-查看更多已有测试文件：`test_gateway.py`, `test_workflow.py`, `test_skill.py`, `test_session.py` 等。
-
-### 一键安装+测试脚本
-
-```bash
-# 在任何干净 Linux 上运行（需要 Python 3.11+）
-curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash
-```
-
-脚本会自动：创建虚拟环境 → 安装依赖 → 运行全量测试。
-
-```bash
-# 安装完成后自动启动 WebUI（端口 5000）
-curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash -s -- --start-webui
-
-# 自定义 WebUI 端口
-curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash -s -- --start-webui --webui-port 8080
-```
-
-### 卸载
-
-```bash
-# 完全卸载（删除所有内容）
-curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/scripts/uninstall.sh | bash
-
-# 保留数据资产（剧本、数据库、媒体、配置）
-curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/scripts/uninstall.sh | bash -s -- --keep-data
-```
-
-`--keep-data` 会保护：
-- 📝 剧本（`~/episodes/`）
-- 🗄️ 分镜头数据库（`drama.db`）
-- 🎬 生成的视频/图片（`~/.hermes/media/`）
-- ⚙️ 配置文件 + 技能（`~/.dragon/`）
-
-### 环境要求
-
-| 依赖 | 最低版本 | 说明 |
-|------|---------|------|
-| Python | 3.11+ | 单元测试不需要 3.12 特性 |
-| pip | 23+ | 虚拟环境自动管理 |
-| 磁盘 | 500MB | venv + 依赖 |
-| 网络 | 出站 | pip install 时需要 |
-| API Key | **不需要** | 纯函数测试全面 mock |
-
-### 测试哲学
-
-- **纯函数优先**：TokenBucket、MiniTemplate、mask_secret 等无 IO 模块完整覆盖
-- **边界测试**：空输入、超限、异常路径、并发安全
-- **集成验证**：真实 builtins registry 去重（98 工具→0 重复）
-- **回归保护**：每次 patch 后跑全量 `pytest tests/`
-
-
-见 [LICENSE.md](LICENSE.md)
-
-## 贡献
-
-欢迎提交 Issue 和 PR。
 
 ---
 
-**Dragon Agent** — Build agents that learn, remember, and evolve. 🐉
+## ⭐ 支持我们
+
+如果 Dragon 帮到了你，给个 Star ⭐
+
+- Star 破 **500** → 开源短剧视频流水线
+- Star 破 **1000** → 开源 SDK
+- Star 破 **5000** → 全开源
+
+---
+
+## 📄 协议
+
+见 [LICENSE.md](LICENSE.md)
+
+---
+
+**Dragon Agent** — 2025 年，AI 员工来了。🐉
+
+*Powered by [andlapi.cn](https://andlapi.cn)*
