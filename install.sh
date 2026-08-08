@@ -15,8 +15,8 @@ echo "  ╚═══════════════════════
 echo -e "${NC}"
 
 INSTALL_DIR="${INSTALL_DIR:-$HOME/dragon-agent}"; BRANCH="${BRANCH:-main}"
-SKIP_TEST="${SKIP_TEST:-0}"; START_WEBUI="${START_WEBUI:-0}"
-WEBUI_PORT="${WEBUI_PORT:-5000}"
+SKIP_TEST="${SKIP_TEST:-0}"; START_WEBUI="${START_WEBUI:-0}"; START_GATEWAY="${START_GATEWAY:-0}"
+WEBUI_PORT="${WEBUI_PORT:-5000}"; GATEWAY_PORT="${GATEWAY_PORT:-8090}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dir) INSTALL_DIR="$2"; shift 2 ;;
@@ -24,7 +24,9 @@ while [[ $# -gt 0 ]]; do
         --skip-test) SKIP_TEST=1; shift ;;
         --start-webui) START_WEBUI=1; shift ;;
         --webui-port) WEBUI_PORT="$2"; shift 2 ;;
-        -h|--help) echo "用法: curl -fsSL <url> | bash [--dir PATH] [--skip-test] [--start-webui] [--webui-port PORT]"; exit 0 ;;
+        --start-gateway) START_GATEWAY=1; shift ;;
+        --gateway-port) GATEWAY_PORT="$2"; shift 2 ;;
+        -h|--help) echo "用法: curl -fsSL <url> | bash [--start-webui] [--start-gateway] [--skip-test]"; exit 0 ;;
         *) echo -e "${RED}未知参数: $1${NC}"; exit 1 ;;
     esac
 done
@@ -114,7 +116,14 @@ pip install pytest pytest-asyncio -q 2>/dev/null
 
 # 核心依赖（无 llama-cpp，秒装）
 pip install -r requirements.txt -q 2>/dev/null
-pip install -e . -q 2>/dev/null || true
+if ! pip install -e . -q 2>/tmp/dragon-pip-err.log; then
+    echo -e "  ${RED}✗${NC} pip install -e . 失败"
+    echo -e "  ${DIM}错误日志:${NC}"
+    tail -10 /tmp/dragon-pip-err.log
+    echo -e "  ${YELLOW}⚠${NC}  'dragon' CLI 可能不可用，请用 python3 -m dragon 代替"
+else
+    echo -e "  ${GREEN}✓${NC} dragon CLI 已安装"
+fi
 echo -e "  ${GREEN}✓${NC} 依赖完成"
 
 # ── 4. 配置 ──────────────────────────────────────────────────
@@ -190,6 +199,58 @@ if [ "$START_WEBUI" = "1" ]; then
     fi
 fi
 
+# ── 7. Gateway (可选) ──────────────────────────────────────
+if [ "$START_GATEWAY" = "1" ]; then
+    echo -e "\n${BOLD}[7/7]${NC} 启动 Dragon Gateway (端口 $GATEWAY_PORT)..."
+    
+    # Create config.yaml with gateway port if not exists
+    if ! grep -q "port: $GATEWAY_PORT" config.yaml 2>/dev/null; then
+        sed -i "s/port: 8090/port: $GATEWAY_PORT/" config.yaml 2>/dev/null || true
+    fi
+    
+    PORT="$GATEWAY_PORT" nohup python3 -m dragon gateway start > gateway.log 2>&1 &
+    GW_PID=$!
+    sleep 3
+    if kill -0 "$GW_PID" 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} Gateway 已启动 (PID: $GW_PID)"
+        echo -e "  ${GREEN}✓${NC} 地址: ${CYAN}http://localhost:$GATEWAY_PORT${NC}"
+        
+        # Install systemd service for auto-start on boot
+        SERVICE_FILE="/etc/systemd/system/dragon-gateway.service"
+        if [ ! -f "$SERVICE_FILE" ]; then
+            echo -e "  ${BOLD}安装 systemd 服务...${NC}"
+            sudo tee "$SERVICE_FILE" > /dev/null << SERVEOF
+[Unit]
+Description=Dragon Agent Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$INSTALL_DIR
+Environment=PATH=$INSTALL_DIR/.venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-sk-your-key}
+Environment=PORT=$GATEWAY_PORT
+ExecStart=$INSTALL_DIR/.venv/bin/python3 -m dragon gateway start
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+SERVEOF
+            sudo systemctl daemon-reload
+            sudo systemctl enable dragon-gateway
+            echo -e "  ${GREEN}✓${NC} systemd 服务已安装 (开机自启)"
+            echo -e "  ${DIM}管理:${NC} sudo systemctl {start|stop|restart|status} dragon-gateway"
+        fi
+    else
+        echo -e "  ${RED}✗${NC} Gateway 启动失败，查看 gateway.log"
+        echo -e "  ${DIM}最后20行日志:${NC}"
+        tail -20 gateway.log
+    fi
+fi
+
 # ── 完成 ──────────────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}${BOLD}╔══════════════════════════════════════╗${NC}"
@@ -198,8 +259,8 @@ echo -e "${GREEN}${BOLD}╚═════════════════�
 echo -e "  ${BOLD}目录:${NC} ${CYAN}$INSTALL_DIR${NC}"
 echo -e "  ${DIM}激活:${NC}   source $INSTALL_DIR/.venv/bin/activate"
 echo -e "  ${DIM}测试:${NC}   python3 -m pytest tests/ -v"
-echo -e "  ${DIM}启动:${NC}   python3 -m dragon gateway start"
-echo -e "  ${DIM}WebUI:${NC}  python3 webui/app.py --port 5000"
+echo -e "  ${DIM}启动:${NC}   dragon gateway start"
+echo -e "  ${DIM}WebUI:${NC}  PORT=5000 python3 webui/app.py"
 if [ "$START_WEBUI" = "1" ] && [ -n "${WEBUI_PID:-}" ] && kill -0 "$WEBUI_PID" 2>/dev/null; then
     echo -e ""
     echo -e "  ${BOLD}🌐 WebUI 运行中:${NC} ${CYAN}http://localhost:$WEBUI_PORT${NC} (PID: $WEBUI_PID)"
