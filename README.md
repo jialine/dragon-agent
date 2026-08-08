@@ -20,30 +20,39 @@
 
 ## ⚡ 30 秒上手
 
-```bash
-# 安装
-git clone git@gitee.com:jialine/dragon-agent.git
-cd dragon-agent
-pip install -r requirements.txt
-
-# 配置 API Key（去 andlapi.cn 注册就送 ¥10）
-cp config.example.yaml config.yaml
-# 编辑 config.yaml，填入你的 API Key
-
-# 开始干活
-python dragon_agent_loop.py
-```
-
 **一键安装（推荐）：**
 
 ```bash
-# Linux / macOS
+# 同时启动 Gateway + WebUI
+curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash -s -- --start-gateway --start-webui
+
+# 仅 Gateway
+curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash -s -- --start-gateway
+
+# 仅 WebUI
 curl -fsSL https://gitee.com/jialine/dragon-agent/raw/master/install.sh | bash -s -- --start-webui
 ```
 
+**Windows PowerShell（右键管理员运行）：**
+
 ```powershell
-# Windows PowerShell（右键管理员运行）
 irm https://gitee.com/jialine/dragon-agent/raw/master/install.ps1 -OutFile install.ps1; .\install.ps1 -StartWebUI
+```
+
+**手动安装：**
+
+```bash
+git clone https://gitee.com/jialine/dragon-agent.git
+cd dragon-agent
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt && pip install -e .
+
+# 配置 API Key（去 andlapi.cn 注册就送 ¥10）
+export DEEPSEEK_API_KEY=sk-你的key
+
+# 启动
+dragon gateway start              # 启动 Gateway
+PORT=5000 python3 webui/app.py    # 启动 WebUI（另一个终端）
 ```
 
 ---
@@ -95,6 +104,48 @@ dragon run --mode hardware --prompt "设计一个低功耗温湿度传感器，E
 ```
 
 输出：芯片选型对比表 + 电路原理图草案 + BOM 清单（含价格和链接）+ 固件框架代码 + 功耗估算。
+
+---
+
+## 🚀 服务管理
+
+安装脚本会自动写入 systemd 服务，支持开机自启：
+
+```bash
+sudo systemctl start dragon-gateway      # 启动
+sudo systemctl stop dragon-gateway       # 停止
+sudo systemctl restart dragon-gateway    # 重启
+sudo systemctl status dragon-gateway     # 查看状态
+journalctl -u dragon-gateway -f          # 实时日志
+```
+
+手动安装 systemd 服务：
+
+```bash
+sudo tee /etc/systemd/system/dragon-gateway.service > /dev/null << 'EOF'
+[Unit]
+Description=Dragon Agent Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$HOME/dragon-agent
+Environment=PATH=$HOME/dragon-agent/.venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=DEEPSEEK_API_KEY=sk-你的key
+Environment=PORT=8090
+ExecStart=$HOME/dragon-agent/.venv/bin/python3 -m dragon gateway start
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now dragon-gateway
+```
 
 ---
 
