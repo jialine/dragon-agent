@@ -167,16 +167,23 @@ fi
 
 # ── 6. WebUI (可选) ──────────────────────────────────────────
 if [ "$START_WEBUI" = "1" ]; then
-    echo -e "\n${BOLD}[6/6]${NC} 启动 WebUI (端口 $WEBUI_PORT)..."
+    echo -e "\n${BOLD}[6/6]${NC} 安装 WebUI 依赖..."
+    if [ -f "webui/requirements.txt" ]; then
+        pip install -r webui/requirements.txt -q 2>/dev/null
+        echo -e "  ${GREEN}✓${NC} Flask + Flask-CORS"
+    fi
+    echo -e "${BOLD}[6/6]${NC} 启动 WebUI (端口 $WEBUI_PORT)..."
     if [ -f "webui/app.py" ]; then
-        nohup python3 webui/app.py --port "$WEBUI_PORT" > webui.log 2>&1 &
+        PORT="$WEBUI_PORT" nohup python3 webui/app.py > webui.log 2>&1 &
         WEBUI_PID=$!
-        sleep 1
+        sleep 2
         if kill -0 "$WEBUI_PID" 2>/dev/null; then
             echo -e "  ${GREEN}✓${NC} WebUI 已启动 (PID: $WEBUI_PID)"
             echo -e "  ${GREEN}✓${NC} 地址: ${CYAN}http://localhost:$WEBUI_PORT${NC}"
         else
             echo -e "  ${RED}✗${NC} WebUI 启动失败，查看 webui.log"
+            echo -e "  ${DIM}最后20行日志:${NC}"
+            tail -20 webui.log
         fi
     else
         echo -e "  ${YELLOW}⚠${NC}  webui/app.py 不存在"
