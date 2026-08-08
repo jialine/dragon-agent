@@ -76,12 +76,14 @@ def api_generate_script():
     genre = data.get("genre", "科幻")
     episode_count = data.get("episode_count", 1)
     duration = data.get("duration_per_ep", 120)
+    worldview = data.get("worldview", "")
+    synopsis = data.get("synopsis", "")
 
     if not topic:
         return jsonify({"error": "topic is required"}), 400
 
     try:
-        script = generate_script(topic, genre, episode_count, duration)
+        script = generate_script(topic, genre, episode_count, duration, worldview=worldview, synopsis=synopsis)
     except Exception as e:
         return jsonify({"error": f"Script generation failed: {str(e)}"}), 500
 
@@ -90,7 +92,9 @@ def api_generate_script():
         project_id = create_project(
             name=script.get("title", topic),
             genre=script.get("genre", genre),
-            logline=script.get("logline", "")
+            logline=script.get("logline", ""),
+            worldview=script.get("worldbuilding", worldview),
+            synopsis=script.get("synopsis", synopsis)
         )
 
     # Store script

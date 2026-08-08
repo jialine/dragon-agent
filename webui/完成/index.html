@@ -167,6 +167,14 @@ table th { color: #8b949e !important; }
         <input id="scriptDuration" type="number" value="120" min="30" max="300">
       </div>
     </div>
+    <div class="form-group">
+      <label>世界观</label>
+      <textarea id="scriptWorldview" rows="3" placeholder="项目的世界设定，可从项目信息自动填充..."></textarea>
+    </div>
+    <div class="form-group">
+      <label>剧情简介</label>
+      <textarea id="scriptSynopsis" rows="3" placeholder="剧情概要，可从项目信息自动填充..."></textarea>
+    </div>
     <button class="btn btn-primary" onclick="generateScript()">🪄 生成剧本</button>
     <span id="scriptStatus" style="margin-left:12px;font-size:13px;color:#8b949e"></span>
   </div>
@@ -380,6 +388,12 @@ async function loadProject() {
   document.getElementById('metaWorldview').textContent = currentProject.worldview || '（未设置）';
   document.getElementById('metaSynopsis').textContent = currentProject.synopsis || '（未设置）';
 
+  // Pre-fill script generation form
+  document.getElementById('scriptWorldview').value = currentProject.worldview || '';
+  document.getElementById('scriptSynopsis').value = currentProject.synopsis || '';
+  document.getElementById('scriptGenre').value = currentProject.genre || '科幻';
+  document.getElementById('scriptTopic').value = currentProject.logline || '';
+
   // Refresh all panels
   if (currentProject.script_raw) {
     document.getElementById('scriptPreview').style.display = 'block';
@@ -391,6 +405,12 @@ async function loadProject() {
         `<li>${c.name} — ${c.description||''}</li>`).join('');
       document.getElementById('shotCount').textContent = extractShots(s).length + ' 个镜头';
     } catch(e) {}
+  } else {
+    document.getElementById('scriptPreview').style.display = 'none';
+    document.getElementById('scriptTitle').textContent = '';
+    document.getElementById('scriptLogline').textContent = '';
+    document.getElementById('charList').innerHTML = '';
+    document.getElementById('shotCount').textContent = '';
   }
   renderCharacters();
   renderShots();
@@ -458,7 +478,9 @@ async function generateScript() {
         topic: topic,
         genre: document.getElementById('scriptGenre').value,
         episode_count: parseInt(document.getElementById('scriptEpisodes').value),
-        duration_per_ep: parseInt(document.getElementById('scriptDuration').value)
+        duration_per_ep: parseInt(document.getElementById('scriptDuration').value),
+        worldview: document.getElementById('scriptWorldview').value.trim(),
+        synopsis: document.getElementById('scriptSynopsis').value.trim()
       })
     });
     currentProject = r;
