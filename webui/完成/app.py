@@ -49,7 +49,9 @@ def api_create_project():
     pid = create_project(
         name=data.get("name", "未命名项目"),
         genre=data.get("genre", ""),
-        logline=data.get("logline", "")
+        logline=data.get("logline", ""),
+        worldview=data.get("worldview", ""),
+        synopsis=data.get("synopsis", "")
     )
     return jsonify({"id": pid, "name": data.get("name")})
 

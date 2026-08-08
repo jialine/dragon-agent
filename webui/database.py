@@ -22,6 +22,8 @@ def init_db():
             name TEXT NOT NULL,
             genre TEXT DEFAULT '',
             logline TEXT DEFAULT '',
+            worldview TEXT DEFAULT '',
+            synopsis TEXT DEFAULT '',
             script_raw TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now'))
@@ -84,14 +86,26 @@ def init_db():
         );
     """)
     conn.commit()
+    
+    # Migration: add worldview/synopsis columns if not exist
+    try:
+        conn.execute("ALTER TABLE projects ADD COLUMN worldview TEXT DEFAULT ''")
+    except:
+        pass
+    try:
+        conn.execute("ALTER TABLE projects ADD COLUMN synopsis TEXT DEFAULT ''")
+    except:
+        pass
+    conn.commit()
+    
     conn.close()
 
 
 # --- Project CRUD ---
-def create_project(name, genre="", logline=""):
+def create_project(name, genre="", logline="", worldview="", synopsis=""):
     conn = get_db()
-    conn.execute("INSERT INTO projects (name, genre, logline) VALUES (?,?,?)",
-                 (name, genre, logline))
+    conn.execute("INSERT INTO projects (name, genre, logline, worldview, synopsis) VALUES (?,?,?,?,?)",
+                 (name, genre, logline, worldview, synopsis))
     conn.commit()
     pid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.close()

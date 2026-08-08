@@ -121,6 +121,22 @@ table th { color: #8b949e !important; }
   <span style="margin-left:auto;font-size:12px;color:#8b949e" id="statusBar">就绪</span>
 </div>
 
+<div id="projectMeta" class="card" style="display:none;margin-bottom:12px">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div style="flex:1">
+      <div style="font-size:14px;color:#8b949e;margin-bottom:4px">
+        <span id="metaGenre"></span>
+      </div>
+      <div id="metaLogline" style="font-size:14px;color:var(--accent);margin-bottom:8px"></div>
+      <details id="metaDetails" style="font-size:13px;color:#8b949e">
+        <summary style="cursor:pointer;color:var(--accent)">世界观 & 简介</summary>
+        <div style="margin-top:8px"><strong>世界观：</strong><span id="metaWorldview"></span></div>
+        <div style="margin-top:4px"><strong>剧情简介：</strong><span id="metaSynopsis"></span></div>
+      </details>
+    </div>
+  </div>
+</div>
+
 <div class="tabs">
   <div class="tab active" data-tab="script" onclick="switchTab('script')">📝 剧本</div>
   <div class="tab" data-tab="characters" onclick="switchTab('characters')">👤 角色</div>
@@ -353,6 +369,17 @@ async function loadProject() {
   setStatus('加载中...');
   currentProject = await fetchAPI(`/api/projects/${pid}`);
   setStatus(`✅ ${currentProject.name}`);
+
+  // Show project meta
+  const meta = document.getElementById('projectMeta');
+  meta.style.display = 'block';
+  document.getElementById('metaGenre').textContent = currentProject.genre ? '🏷 ' + currentProject.genre : '';
+  document.getElementById('metaLogline').textContent = currentProject.logline || '';
+  const hasExtra = currentProject.worldview || currentProject.synopsis;
+  document.getElementById('metaDetails').style.display = hasExtra ? '' : 'none';
+  document.getElementById('metaWorldview').textContent = currentProject.worldview || '（未设置）';
+  document.getElementById('metaSynopsis').textContent = currentProject.synopsis || '（未设置）';
+
   // Refresh all panels
   if (currentProject.script_raw) {
     document.getElementById('scriptPreview').style.display = 'block';
@@ -377,12 +404,39 @@ function extractShots(script) {
 }
 
 async function newProject() {
-  const name = prompt('项目名称：', '新短剧');
-  if (!name) return;
+  const html = `
+    <div id="newProjectModal" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.remove()">
+      <div style="background:#161b22;border:1px solid var(--border);border-radius:12px;padding:24px;width:500px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()">
+        <h3 style="margin:0 0 16px 0">📽️ 新建项目</h3>
+        <div class="form-group"><label>项目名称 *</label><input id="npName" placeholder="例如：猩族纪元"></div>
+        <div class="form-group"><label>类型</label><select id="npGenre"><option>科幻</option><option>悬疑</option><option>爱情</option><option>动作</option><option>奇幻</option><option>都市</option><option>古装</option></select></div>
+        <div class="form-group"><label>一句话梗概 (Logline)</label><input id="npLogline" placeholder="例如：基因改造的猩族与人类的生存战争"></div>
+        <div class="form-group"><label>世界观</label><textarea id="npWorldview" rows="3" placeholder="例如：2077年，地球资源枯竭，人类培育出具有高等智慧的猩族作为劳动力。猩族觉醒后建立起自己的文明……" style="width:100%;background:#0d1117;color:#c9d1d9;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:13px;resize:vertical"></textarea></div>
+        <div class="form-group"><label>剧情简介</label><textarea id="npSynopsis" rows="3" placeholder="例如：前特种兵陆铮在猩族起义中失去了左臂，装上义肢后潜入猩族领地，却发现猩族并非他想象中的敌人……" style="width:100%;background:#0d1117;color:#c9d1d9;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:13px;resize:vertical"></textarea></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+          <button class="btn btn-secondary" onclick="document.getElementById('newProjectModal').remove()">取消</button>
+          <button class="btn btn-primary" onclick="doCreateProject()">创建</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function doCreateProject() {
+  const name = document.getElementById('npName').value.trim();
+  if (!name) { alert('请输入项目名称'); return; }
+  const data = {
+    name: name,
+    genre: document.getElementById('npGenre').value,
+    logline: document.getElementById('npLogline').value.trim(),
+    worldview: document.getElementById('npWorldview').value.trim(),
+    synopsis: document.getElementById('npSynopsis').value.trim()
+  };
   const r = await fetchAPI('/api/projects', {
     method: 'POST',
-    body: JSON.stringify({name})
+    body: JSON.stringify(data)
   });
+  document.getElementById('newProjectModal').remove();
   await loadProjects();
   document.getElementById('projectSelect').value = r.id;
   await loadProject();
