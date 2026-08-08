@@ -449,18 +449,18 @@ class TestWhatsAppAdapter:
 
 class TestSignalAdapter:
     def test_constructor_reads_env_with_default(self):
-        from dragon.gateway.signal import SignalAdapter
+        from dragon.gateway.signal_adapter import SignalAdapter
         adapter = SignalAdapter()
         assert adapter.rest_url == "http://localhost:8080"
 
     def test_constructor_custom_rest_url(self):
-        from dragon.gateway.signal import SignalAdapter
+        from dragon.gateway.signal_adapter import SignalAdapter
         with patch.dict("os.environ", {"SIGNAL_REST_URL": "http://signal-api:9000"}):
             adapter = SignalAdapter()
             assert adapter.rest_url == "http://signal-api:9000"
 
     def test_verify_webhook_always_returns_true(self):
-        from dragon.gateway.signal import SignalAdapter
+        from dragon.gateway.signal_adapter import SignalAdapter
         adapter = SignalAdapter()
         result = asyncio.new_event_loop().run_until_complete(
             adapter.verify_webhook({}, b"{}")
@@ -468,7 +468,7 @@ class TestSignalAdapter:
         assert result is True
 
     def test_parse_webhook_signal_cli_format(self):
-        from dragon.gateway.signal import SignalAdapter
+        from dragon.gateway.signal_adapter import SignalAdapter
         adapter = SignalAdapter()
         body = {
             "envelope": {
@@ -491,7 +491,7 @@ class TestSignalAdapter:
         assert msg.message_id == "1700000000000"
 
     def test_parse_webhook_skips_sync_message(self):
-        from dragon.gateway.signal import SignalAdapter
+        from dragon.gateway.signal_adapter import SignalAdapter
         adapter = SignalAdapter()
         body = {
             "envelope": {
@@ -505,7 +505,7 @@ class TestSignalAdapter:
         assert msg is None
 
     def test_webhook_path(self):
-        from dragon.gateway.signal import SignalAdapter
+        from dragon.gateway.signal_adapter import SignalAdapter
         adapter = SignalAdapter()
         assert adapter.webhook_path == "/signal/webhook"
 
@@ -940,7 +940,7 @@ class TestSMSAdapter:
 
 class TestEmailAdapter:
     def test_constructor_reads_env_vars(self):
-        from dragon.gateway.email import EmailAdapter
+        from dragon.gateway.email_adapter import EmailAdapter
         with patch.dict("os.environ", {
             "SMTP_HOST": "smtp.example.com",
             "SMTP_PORT": "465",
@@ -954,7 +954,7 @@ class TestEmailAdapter:
             assert adapter.smtp_pass == "s3cr3t"
 
     def test_constructor_defaults(self):
-        from dragon.gateway.email import EmailAdapter
+        from dragon.gateway.email_adapter import EmailAdapter
         with patch.dict("os.environ", {}, clear=True):
             adapter = EmailAdapter()
             assert adapter.smtp_host == "smtp.gmail.com"
@@ -963,12 +963,12 @@ class TestEmailAdapter:
             assert adapter.smtp_pass == ""
 
     def test_webhook_path(self):
-        from dragon.gateway.email import EmailAdapter
+        from dragon.gateway.email_adapter import EmailAdapter
         adapter = EmailAdapter()
         assert adapter.webhook_path == "/email/webhook"
 
     def test_verify_webhook_returns_true(self):
-        from dragon.gateway.email import EmailAdapter
+        from dragon.gateway.email_adapter import EmailAdapter
         adapter = EmailAdapter()
         result = asyncio.new_event_loop().run_until_complete(
             adapter.verify_webhook({}, b"{}")
@@ -976,7 +976,7 @@ class TestEmailAdapter:
         assert result is True
 
     def test_parse_webhook_email_dict(self):
-        from dragon.gateway.email import EmailAdapter
+        from dragon.gateway.email_adapter import EmailAdapter
         adapter = EmailAdapter()
         body = {
             "from": "sender@example.com",
@@ -996,7 +996,7 @@ class TestEmailAdapter:
         assert msg.message_id == "<msg-001@example.com>"
 
     def test_parse_webhook_empty_body_returns_none(self):
-        from dragon.gateway.email import EmailAdapter
+        from dragon.gateway.email_adapter import EmailAdapter
         adapter = EmailAdapter()
         msg = asyncio.new_event_loop().run_until_complete(
             adapter.parse_webhook({"from": "a@b.com"})
@@ -1004,7 +1004,7 @@ class TestEmailAdapter:
         assert msg is None
 
     def test_send_message_constructs_mime_and_uses_smtp(self):
-        from dragon.gateway.email import EmailAdapter
+        from dragon.gateway.email_adapter import EmailAdapter
         from dragon.gateway.base import PlatformReply
 
         adapter = EmailAdapter(
@@ -1029,7 +1029,7 @@ class TestEmailAdapter:
             assert "Hello via email" in call_args[0][2]
 
     def test_send_message_no_credentials_returns_false(self):
-        from dragon.gateway.email import EmailAdapter
+        from dragon.gateway.email_adapter import EmailAdapter
         from dragon.gateway.base import PlatformReply
 
         adapter = EmailAdapter(smtp_user="", smtp_pass="")

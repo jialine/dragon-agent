@@ -62,14 +62,14 @@ from .wechat import WeChatAdapter
 # New adapters (batch 2)
 from .slack import SlackAdapter
 from .whatsapp import WhatsAppAdapter
-from .signal import SignalAdapter
+from .signal_adapter import SignalAdapter
 from .dingtalk import DingTalkAdapter
 from .wecom import WeComAdapter
 from .webhook import GenericWebhookAdapter
 
 # New adapters (batch 3: SMS/Email/Matrix/Mattermost/QQ Bot)
 from .sms import SMSAdapter
-from .email import EmailAdapter
+from .email_adapter import EmailAdapter
 from .matrix import MatrixAdapter
 from .mattermost import MattermostAdapter
 from .qqbot import QQBotAdapter
