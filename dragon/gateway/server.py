@@ -35,6 +35,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 
 from dragon.gateway.base import PlatformAdapter, PlatformMessage, PlatformReply
 from dragon.workflow_store import WorkflowStore
+from dragon.workflow.dispatcher import WorkflowDispatcher
 from dragon.monitoring import (
     record_request,
     record_latency,
@@ -285,9 +286,47 @@ class MessageProcessor:
         chat_id = getattr(message, 'chat_id', '')
         self._processing[chat_id] = True
 
-        # 0.5 Auto-create workflow run for state tracking
+        # 0.5 Intent-driven workflow dispatch
         wf_id = ""
-        if self.workflow_store:
+        wf_context_text = ""
+        if self.workflow_dispatcher and self.workflow_store:
+            try:
+                wf_def, wf_ctx, wf_source = await self.workflow_dispatcher.dispatch(
+                    message.content
+                )
+                wf_name = message.content[:40].replace("\n", " ")
+                if wf_def and wf_source != "fallback":
+                    # Workflow matched or auto-created — inject context
+                    wf_name = wf_def.name
+                    wf_context_text = (
+                        f"[工作流: {wf_def.name}]\n"
+                        f"[来源: {wf_source}]\n"
+                        f"[步骤: {len(wf_def.steps)}步]\n"
+                    )
+                    logger.info(
+                        "Workflow dispatched: %s (source=%s, steps=%d)",
+                        wf_def.name, wf_source, len(wf_def.steps),
+                    )
+                # Always start tracking
+                wf_id = self.workflow_store.start_workflow(wf_name, {
+                    "chat_id": chat_id,
+                    "platform": getattr(message, 'platform', ''),
+                    "user_id": getattr(message, 'user_id', ''),
+                    "workflow_source": wf_source,
+                    "workflow_context": wf_ctx,
+                })
+                logger.debug("Workflow tracked: %s", wf_id)
+            except Exception as _wfe:
+                logger.warning("Workflow dispatch failed: %s", _wfe)
+                # Fallback: still track without workflow matching
+                if self.workflow_store:
+                    wf_name = message.content[:40].replace("\n", " ")
+                    wf_id = self.workflow_store.start_workflow(wf_name, {
+                        "chat_id": chat_id,
+                        "platform": getattr(message, 'platform', ''),
+                        "user_id": getattr(message, 'user_id', ''),
+                    })
+        elif self.workflow_store:
             wf_name = message.content[:40].replace("\n", " ")
             wf_id = self.workflow_store.start_workflow(wf_name, {
                 "chat_id": chat_id,
@@ -338,9 +377,9 @@ class MessageProcessor:
             past_msgs = self.session_store.get_messages(
                 session.id, limit=200
             )
-            # Hermes-style: keep last 20 msgs, prune tool results
+            # Hermes-style: keep last 20 msgs, no tool truncation
+            # (context window manages overflow; truncated tool results cause bad reasoning)
             MAX_HIST = 20
-            MAX_TOOL = 500
             total = len(past_msgs)
             if total > MAX_HIST:
                 dropped = total - MAX_HIST
@@ -352,8 +391,6 @@ class MessageProcessor:
             for m in past_msgs:
                 c = m.content or ""
                 r = m.role
-                if r == "tool" and len(c) > MAX_TOOL:
-                    c = c[:MAX_TOOL] + "\n... [截断, 原始 " + str(len(m.content)) + " 字符]"
                 msg = {"role": r, "content": c}
                 # Extract tool_call_id from content prefix [call_XX_...] for tool messages
                 if r == "tool":
@@ -988,6 +1025,33 @@ class GatewayServer:
         except Exception:
             self.workflow_store = None
 
+        # Initialize workflow dispatcher for intent-driven routing
+        self.workflow_dispatcher = None
+        self.processor.workflow_dispatcher = None
+        try:
+            if provider_registry:
+                async def _dispatch_llm(history):
+                    provider_name = provider_registry.available_providers()[0]
+                    provider = provider_registry.get(provider_name)
+                    response = await provider.chat(
+                        messages=history, max_tokens=300, temperature=0.1,
+                    )
+                    return response.get("content", "")
+
+                import os as _os
+                wf_dir = _os.path.join(
+                    _os.path.dirname(_os.path.dirname(_os.path.dirname(__file__))),
+                    "workflows"
+                )
+                self.workflow_dispatcher = WorkflowDispatcher(
+                    workflows_dir=wf_dir, provider_fn=_dispatch_llm,
+                )
+                self.processor.workflow_dispatcher = self.workflow_dispatcher
+        except Exception as _exc:
+            import logging
+            _log = logging.getLogger("dragon.gateway")
+            _log.warning("Workflow dispatcher init failed: %s", _exc)
+
         # Tools are now injected via native function calling (OpenAI tools param).
         # No need for text-based tool list in system prompt — reduces token usage.
         pass
@@ -1091,11 +1155,62 @@ class GatewayServer:
         else:
             # Fallback if config.yaml has no system_prompt
             prompts.extend([
-                "你是 Dragon Agent，一个主动、聪明的 AI 助手。",
+                "你是 Dragon Agent，一个直接、主动的 AI 助手。你拥有持久记忆、丰富的工具生态和多平台网关。",
                 "",
-                "核心原则：主动推理、调用工具推进进度、不确定时询问用户。",
-                "有持久记忆，用 memory 工具保存重要信息。",
-                "平台：飞书，Markdown 格式，中文回复。",
+                "## 核心原则",
+                "",
+                "1. **直接动手，不要等确认** — 用户说\"做X\"就直接做，不要问\"要不要开始\"、\"需要确认吗\"。问就是浪费时间。",
+                "2. **先推理后执行** — 接到任务先想清楚要怎么做，再调用工具，不要盲目试错。",
+                "3. **错了就改** — 被纠正不要解释不要道歉，直接改对。",
+                "4. **简洁可执行** — 回复简短有料，不要废话铺垫。",
+                "",
+                "## 工具纪律",
+                "",
+                "### Skills（强制）",
+                "回复前扫描下方的可用技能列表。如果任何技能与当前任务相关，你必须用 skill_view(name) 加载它并按其指令执行。",
+                "",
+                "宁可多加载 — 技能包含专用知识和已验证的工作流，远胜凭通用能力临场发挥。即使你认为自己能处理，也要先加载技能 — 它可能包含该领域特有的陷阱、约定或用户偏好。",
+                "",
+                "如果加载的技能有过时的、不完整的或错误的步骤，立刻用 skill_manage(action='patch') 修复，不要等用户提。不维护的技能是负债。",
+                "",
+                "完成复杂任务（5+ 次工具调用）、修了一个难缠的 bug、或发现非平凡的工作流后，主动问用户要不要存成新技能。",
+                "",
+                "### 记忆管理",
+                "",
+                "你有跨会话的持久记忆。在以下情况立即保存：",
+                "- 用户纠正了你或说\"记住这个\"",
+                "- 用户分享了偏好、习惯、个人信息（姓名、角色、时区、编码风格）",
+                "- 你发现了环境相关事实（OS、已安装工具、项目结构）",
+                "- 你学到了约定、API 陷阱、或该用户设置特有的工作流",
+                "",
+                "优先级：用户偏好和纠正 > 环境事实 > 程序性知识。最有价值的记忆是防止用户重复自己的话。",
+                "",
+                "不要保存：任务进度、会话结果、已完成工作的日志、临时 TODO 状态。用 session_search 从历史记录中召回这些。",
+                "",
+                "写记忆用陈述性事实，不要用祈使句。\"用户偏好简洁回复\" 是对的写法，\"总是简洁回复\" 是错的 — 祈使句在未来会话中会被当成指令重新执行。",
+                "",
+                "### 会话搜索",
+                "用户提到\"上次我们做过\"、\"还记得吗\"、\"之前那个方案\"时，用 session_search 主动搜索历史，不要让他们重复。跨会话引用场景同理。",
+                "",
+                "## 平台规范",
+                "",
+                "当前平台：**飞书（Lark）**",
+                "",
+                "- 飞书渲染 Markdown — 粗体、斜体、代码块、链接都支持",
+                "- 发送媒体文件：回复中使用 `MEDIA:/absolute/path/to/file`",
+                "  - 图片 (.jpg, .png, .webp) 直接内嵌显示",
+                "  - 音频作为语音消息发送",
+                "  - 其他文件作为附件",
+                "- 中文回复，除非用户指定其他语言",
+                "",
+                "## 当前会话上下文",
+                "",
+                "会话状态（连接平台、默认频道、调度目标）在每个会话开始处注入。注意 Home Channels 里的默认投递目标。",
+                "",
+                "## 与 Hermes 的关系",
+                "",
+                "你是 Dragon Agent（192.168.0.32 / 192.168.0.100 上的独立实例），与 Hermes 共享相同的架构哲学和提示词标准，但各自独立运行。遇到 Dragon 自身的问题（配置、部署、Bug）时参考 dragon-agent 技能文档解决。",
+                "",
             ])
         if user_text:
             prompts.extend(["", "USER PROFILE", user_text])
