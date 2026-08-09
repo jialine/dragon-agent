@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import sys
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -189,6 +190,41 @@ def setup_welcome():
         style="bold green"
     )
 
+def _fetch_models(api_key: str, base_url: str) -> List[Dict[str, str]]:
+    """Fetch available models from the dispatch API (/v1/models)."""
+    import urllib.request
+    import urllib.error
+    import ssl
+
+    results = []
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+
+        req = urllib.request.Request(
+            f"{base_url}/models",
+            headers={"Authorization": f"Bearer {api_key}"}
+        )
+        with urllib.request.urlopen(req, context=ctx, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+            models = data.get("data", [])
+            for m in models:
+                mid = m.get("id", "")
+                owned = m.get("owned_by", "")
+                if mid and not mid.startswith(("dall-e", "tts", "whisper", "moderation", "embedding")):
+                    results.append({
+                        "name": mid,
+                        "desc": owned or "AI model",
+                        "ctx": "—",
+                        "tier": "premium",
+                    })
+    except Exception as e:
+        _print(f"  ⚠ 无法从 API 获取模型列表: {e}", style="yellow")
+    
+    return results
+
+
 def setup_model():
     """Step: Choose default model from dispatch (andlapi.cn)."""
     _panel("📦 Model & Provider", "所有模型通过 andlapi.cn 调度网关接入", style="bold cyan")
@@ -198,28 +234,42 @@ def setup_model():
 
     # Check if API key is set
     key = env.get("DEEPSEEK_API_KEY") or os.getenv("DEEPSEEK_API_KEY", "")
-    if key:
-        _print(f"  ✓ API Key: {'*' * 12} (已配置)", style="green")
-    else:
+    if not key:
         _print(f"  ○ 未配置 API Key，请先运行: dragon setup providers", style="yellow")
         return
-
-    _print("\n  调度网关: api.andlapi.cn", style="dim")
-    _print("  备用网关: api.sangyuye.com", style="dim")
+    
+    _print(f"  ✓ API Key: {'*' * 12} (已配置)", style="green")
+    
+    base_url = cfg.get("dispatch", {}).get("global_api", {}).get("base_url", "https://api.andlapi.cn/v1")
+    _print(f"\n  调度网关: {base_url}", style="dim")
+    
+    # Fetch real model list from API
+    _print(f"\n  正在拉取可用模型...", style="bold")
+    live_models = _fetch_models(key, base_url)
+    
+    if live_models:
+        models = live_models
+        _print(f"  ✓ 从 API 获取到 {len(models)} 个模型", style="green")
+    else:
+        models = PROVIDERS[0]["models"]
+        _print(f"  ⚠ 使用本地内置模型列表 ({len(models)} 个)", style="yellow")
     
     # Pick default model
     _print(f"\n  可用模型:", style="bold")
-    for i, m in enumerate(PROVIDERS[0]["models"], 1):
+    for i, m in enumerate(models, 1):
         _print(f"  {i}. {m['name']} — {m['desc']} ({m['ctx']})")
+    
+    current = cfg.get("dispatch", {}).get("global_api", {}).get("model", "")
+    if current:
+        _print(f"\n  当前默认: {current}", style="dim")
     
     try:
         choice = input(f"\n  选择默认模型 [1]: ").strip()
-        idx = int(choice) - 1 if choice.isdigit() and 1 <= int(choice) <= len(PROVIDERS[0]["models"]) else 0
-        model = PROVIDERS[0]["models"][idx]
+        idx = int(choice) - 1 if choice.isdigit() and 1 <= int(choice) <= len(models) else 0
+        model = models[idx]
         cfg["dispatch"] = cfg.get("dispatch", {})
         cfg["dispatch"]["global_api"] = cfg["dispatch"].get("global_api", {})
         cfg["dispatch"]["global_api"]["model"] = model["name"]
-        cfg["dispatch"]["global_api"]["base_url"] = "https://api.andlapi.cn/v1"
         _save_config(cfg)
         _print(f"  ✓ 默认: {model['name']} ({model['ctx']})", style="green")
     except (EOFError, KeyboardInterrupt):
