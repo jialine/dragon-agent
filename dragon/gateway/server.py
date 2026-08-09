@@ -1294,8 +1294,8 @@ class GatewayServer:
                 "  - 图片 (.jpg, .png, .webp) 直接内嵌显示",
                 "  - 音频作为语音消息发送",
                 "  - 其他文件作为附件",
-                "- 创建 PDF：用 `file_write` 写 markdown 源文件 → 用 `pdf_create` 生成 PDF → 用 MEDIA: 交付",
-                "  - pdf_create 支持标题、粗体、斜体、代码、列表、分页符(---)，零依赖",
+                "- 创建 PDF：直接调 `pdf_create(path, content, title)` — 不需要先写文件！内置 DroidSansFallback 字体，中文完美支持。生成后用 MEDIA: 交付。",
+                "  - 一封到底：pdf_create 接受 markdown 字符串，一步生成 PDF。不要写 .md 中间文件。",
                 "  - 做完直接发 MEDIA: 路径，用户能立即下载"
                 "- 中文回复，除非用户指定其他语言",
                 "",
