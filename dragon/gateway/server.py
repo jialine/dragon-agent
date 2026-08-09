@@ -413,7 +413,7 @@ class MessageProcessor:
 
         # 3. Compress if needed
         if self.compressor and self.compressor.needs_compression(history):
-            history = self.compressor.compress(history)
+            history = await self.compressor.compress(history)
 
         # 4. Skill matching
         skill_context = ""
