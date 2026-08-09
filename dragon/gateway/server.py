@@ -375,6 +375,15 @@ class MessageProcessor:
             fresh_sp = self._rebuild_system_prompt_with_memory(mem_part, user_part)
             if fresh_sp:
                 system_prompt = fresh_sp
+                # DEBUG: dump prompt structure for Hermes comparison
+                import re
+                headings = re.findall(r'^#{1,3}\s+.*', system_prompt, re.MULTILINE)
+                logger.info(
+                    "[PROC_DEBUG] system_prompt_len=%d headings=%s preview=%s",
+                    len(system_prompt),
+                    " → ".join(h.strip() for h in headings),
+                    system_prompt[:2500],
+                )
         except Exception:
             pass
 
@@ -1068,7 +1077,27 @@ class MessageProcessor:
                     except Exception:
                         pass
                 if skill_entries:
-                    lines = ["", "## Skills", "", "<available_skills>"]
+                    lines = [
+                        "", "## Skills (mandatory)", "",
+                        "Before replying, scan the skills below. If a skill matches or ",
+                        "is even partially relevant to your task, you MUST load it ",
+                        "with skill_view(name) and follow its instructions. ",
+                        "Err on the side of loading — it is always better to have ",
+                        "context you don't need than to miss critical steps, pitfalls, ",
+                        "or established workflows. Skills contain specialized knowledge ",
+                        "— API endpoints, tool-specific commands, and proven workflows ",
+                        "that outperform general-purpose approaches. Load the skill ",
+                        "even if you think you could handle the task with basic tools ",
+                        "like terminal or execute_code. Skills also encode the user's ",
+                        "preferred approach, conventions, and quality standards for ",
+                        "tasks like code review, planning, and testing — load them ",
+                        "even for tasks you already know how to do, because the skill ",
+                        "defines how it should be done here.", "",
+                        "If a skill has issues, fix it with ",
+                        "skill_manage(action='patch') — don't wait to be asked. ",
+                        "Skills that aren't maintained become liabilities.", "",
+                        "<available_skills>",
+                    ]
                     for name, desc in skill_entries[:50]:
                         lines.append("  %s: %s" % (name, desc))
                     lines.append("</available_skills>")
@@ -1079,10 +1108,10 @@ class MessageProcessor:
         parts = []
         if base_prompt:
             parts.append(base_prompt)
-        if tool_catalog:
-            parts.append(tool_catalog)
         if skills_catalog:
             parts.append(skills_catalog)
+        if tool_catalog:
+            parts.append(tool_catalog)
         if user_text:
             parts.extend(["", "USER PROFILE" + chr(10) + user_text])
         if memory_text:
