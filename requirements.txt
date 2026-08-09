@@ -24,3 +24,6 @@ prometheus_client>=0.21.0
 lark-oapi>=1.4.0
 websockets>=13.0
 qrcode[pil]>=8.0
+
+# ── PDF editing (Hermes-aligned) ──
+nano-pdf>=0.2.0

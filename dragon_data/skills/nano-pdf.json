@@ -1,7 +1,8 @@
 {
   "meta": {
     "name": "nano-pdf",
-    "description": "Edit PDF text/typos/titles via nano-pdf CLI (NL prompts).",
+    "description": "用自然语言编辑 PDF（改错字/标题/日期）。通过 nano-pdf CLI 实现，Hermes 对齐。",
+    "version": "1.0.0",
     "tags": [
       "PDF",
       "Documents",
@@ -9,26 +10,8 @@
       "NLP",
       "Productivity"
     ],
-    "version": "1.0.0",
-    "author": "dragon-agent",
-    "related_skills": [],
     "execution_mode": "sequential",
-    "input_schema": {},
-    "output_schema": {},
-    "status": "active",
-    "created_at": "2026-06-25T05:54:05.750100+00:00",
-    "updated_at": "2026-06-25T05:54:05.750100+00:00"
+    "source": "hermes"
   },
-  "content": "# nano-pdf\n\nEdit PDFs using natural-language instructions. Point it at a page and describe what to change.\n\n## Prerequisites\n\n```bash\n# Install with uv (recommended — already available in Hermes)\nuv pip install nano-pdf\n\n# Or with pip\npip install nano-pdf\n```\n\n## Usage\n\n```bash\nnano-pdf edit <file.pdf> <page_number> \"<instruction>\"\n```\n\n## Examples\n\n```bash\n# Change a title on page 1\nnano-pdf edit deck.pdf 1 \"Change the title to 'Q3 Results' and fix the typo in the subtitle\"\n\n# Update a date on a specific page\nnano-pdf edit report.pdf 3 \"Update the date from January to February 2026\"\n\n# Fix content\nnano-pdf edit contract.pdf 2 \"Change the client name from 'Acme Corp' to 'Acme Industries'\"\n```\n\n## Notes\n\n- Page numbers may be 0-based or 1-based depending on version — if the edit hits the wrong page, retry with ±1\n- Always verify the output PDF after editing (use `read_file` to check file size, or open it)\n- The tool uses an LLM under the hood — requires an API key (check `nano-pdf --help` for config)\n- Works well for text changes; complex layout modifications may need a different approach\n",
-  "versions": [
-    {
-      "version": "1.0.0",
-      "content": "# nano-pdf\n\nEdit PDFs using natural-language instructions. Point it at a page and describe what to change.\n\n## Prerequisites\n\n```bash\n# Install with uv (recommended — already available in Hermes)\nuv pip install nano-pdf\n\n# Or with pip\npip install nano-pdf\n```\n\n## Usage\n\n```bash\nnano-pdf edit <file.pdf> <page_number> \"<instruction>\"\n```\n\n## Examples\n\n```bash\n# Change a title on page 1\nnano-pdf edit deck.pdf 1 \"Change the title to 'Q3 Results' and fix the typo in the subtitle\"\n\n# Update a date on a specific page\nnano-pdf edit report.pdf 3 \"Update the date from January to February 2026\"\n\n# Fix content\nnano-pdf edit contract.pdf 2 \"Change the client name from 'Acme Corp' to 'Acme Industries'\"\n```\n\n## Notes\n\n- Page numbers may be 0-based or 1-based depending on version — if the edit hits the wrong page, retry with ±1\n- Always verify the output PDF after editing (use `read_file` to check file size, or open it)\n- The tool uses an LLM under the hood — requires an API key (check `nano-pdf --help` for config)\n- Works well for text changes; complex layout modifications may need a different approach\n",
-      "success_count": 0,
-      "failure_count": 0,
-      "avg_latency_ms": 0.0,
-      "last_used_at": "",
-      "active": true
-    }
-  ]
+  "content": "# nano-pdf\n\n用自然语言指令编辑 PDF。指定页面和要修改的内容即可。\n\n## 用法\n\n```bash\nnano-pdf edit <文件.pdf> <页码> \"<指令>\"\n```\n\n## 示例\n\n```bash\n# 修改第1页标题\nnano-pdf edit report.pdf 1 \"把标题改成'Q3 业绩报告'并修正副标题里的错别字\"\n\n# 更新日期\nnano-pdf edit contract.pdf 3 \"把日期从1月改成2026年2月\"\n\n# 修改客户名称\nnano-pdf edit proposal.pdf 2 \"把客户名从'某某公司'改成'新客户名'\"\n```\n\n## 注意\n\n- 页码可能是0-based或1-based，如果改错页了试试 ±1\n- 编辑后验证 PDF（用 read_file 或 pdf_read 检查）\n- 工具底层调用 LLM，需要 API key（已通过环境变量配置）\n- 适合文字修改，复杂排版修改可能需要其他方案\n"
 }
