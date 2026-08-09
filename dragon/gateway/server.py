@@ -30,6 +30,8 @@ import re
 import time
 from typing import Any, Callable, Dict, List, Optional
 
+from dragon.toolsets import resolve_toolset, DRAGON_DEFAULT_TOOLSET
+
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse, PlainTextResponse
 
@@ -522,23 +524,18 @@ class MessageProcessor:
                         tool_schemas = None
                         if self.tool_registry:
                             all_schemas = self.tool_registry.get_openai_schemas()
-                            # Limit to 25 tools to prevent payload overflow (400 errors)
-                            # Prioritize: file, terminal, web, memory, skills, core
-                            _priority_cats = {"file", "terminal", "web", "memory", "skills", "interaction", "delegation", "automation", "development"}
-                            _priority = []
-                            _others = []
-                            for s in all_schemas:
-                                name = s.get("function", {}).get("name", "")
-                                cat = ""
-                                for t in self.tool_registry.list_tools():
-                                    if t.get("name") == name:
-                                        cat = t.get("category", "")
-                                        break
-                                if cat in _priority_cats or name in ("read_file", "write_file", "search_files", "terminal", "web_search", "memory", "session_search", "skill_view", "skill_manage", "clarify", "todo", "cronjob", "delegate_task", "execute_code", "patch", "vision_analyze", "send_message", "pdf_create", "pdf_read", "pdf_extract", "text_to_speech"):
-                                    _priority.append(s)
-                                else:
-                                    _others.append(s)
-                            tool_schemas = (_priority + _others)[:50]
+                            # ── Hermes-aligned toolset filtering ──
+                            # Resolve the default toolset to get allowed tool names.
+                            # Only tools in the enabled toolset are sent to the LLM.
+                            # No hard numeric limit — all matched tools are included.
+                            try:
+                                allowed_tools = resolve_toolset(DRAGON_DEFAULT_TOOLSET)
+                            except Exception:
+                                allowed_tools = set()
+                            tool_schemas = [
+                                s for s in all_schemas
+                                if s.get("function", {}).get("name", "") in allowed_tools
+                            ]
 
                         # ── Compression (Hermes-aligned): summarise older msgs ──
                         if self.compressor and self.compressor.needs_compression(history):
