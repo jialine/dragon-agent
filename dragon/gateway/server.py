@@ -459,6 +459,7 @@ class MessageProcessor:
 
         try:
             print(f"[PROC_DEBUG] entering for loop, max_iter={self.max_tool_iterations}", flush=True)
+            thinking_only_count = 0  # guard against reasoning-model infinite loop
             for iteration in range(self.max_tool_iterations):
                 print(f"[PROC_DEBUG] iter={iteration}", flush=True)
                 # Steer check
@@ -643,9 +644,16 @@ class MessageProcessor:
                     has_reasoning = bool(msg.get("reasoning_content", ""))
                     has_content = bool(response_text and response_text.strip())
                     if has_reasoning and not has_content:
-                        # Thinking-only response — give model another turn to produce output
-                        logger.debug("Thinking-only response detected, continuing loop")
-                        continue
+                        thinking_only_count += 1
+                        if thinking_only_count < 3:
+                            # Thinking-only response — give model another turn to produce output
+                            logger.debug("Thinking-only response detected, continuing loop (%d/3)", thinking_only_count)
+                            continue
+                        else:
+                            # Force output after 3 consecutive thinking-only responses
+                            logger.warning("Thinking-only loop detected after 3 turns, forcing output")
+                            history.append({"role": "user", "content": "Stop thinking and give your final answer NOW. Output only the answer, no reasoning."})
+                            continue
                     reply_text = response_text
                     break
 
