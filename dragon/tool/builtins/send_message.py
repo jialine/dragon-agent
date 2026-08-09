@@ -86,10 +86,15 @@ async def tool_send_message(
                 return json.dumps({"error": "Feishu authentication failed"})
 
             chat_id = "oc_683756dd47394fb46ef5693cd1187b4c"  # Default home chat
+            receive_id_type = "chat_id"
             if target and ":" in target:
                 parts = target.split(":", 1)
                 if len(parts) == 2:
                     chat_id = parts[1]
+            # If target looks like an open_id (starts with ou_), use open_id receiver type
+            if target and target.startswith("ou_"):
+                chat_id = target
+                receive_id_type = "open_id"
 
             # Send text
             if message and not file_path:
@@ -97,7 +102,7 @@ async def tool_send_message(
                     "receive_id": chat_id,
                     "msg_type": "text",
                     "content": json.dumps({"text": message[:4096]}),
-                    "receive_id_type": "chat_id",
+                    "receive_id_type": receive_id_type,
                 }
                 url = f"{FEISHU_API_BASE}/im/v1/messages"
                 headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -114,16 +119,32 @@ async def tool_send_message(
                 is_image = ext in (".jpg", ".jpeg", ".png", ".webp", ".gif")
                 upload_type = "image" if is_image else "file"
 
+                # Detect file_type for Feishu API
+                _type_map = {
+                    ".pdf": "pdf", ".doc": "doc", ".docx": "doc", ".xls": "xls",
+                    ".xlsx": "xls", ".ppt": "ppt", ".pptx": "ppt",
+                    ".mp4": "mp4", ".mp3": "opus", ".opus": "opus",
+                }
+                file_type_str = _type_map.get(ext, "stream")
+                file_name = os.path.basename(file_path)
+
                 # Upload
                 upload_url = f"{FEISHU_API_BASE}/im/v1/{upload_type}s"
                 headers = {"Authorization": f"Bearer {token}"}
                 async with httpx.AsyncClient(timeout=30) as c:
                     with open(file_path, "rb") as f:
-                        files = {
-                            f"{upload_type}_type": (None, "message"),
-                            f"{upload_type}": (os.path.basename(file_path), f),
-                        }
-                        r = await c.post(upload_url, headers=headers, files=files)
+                        if is_image:
+                            files_data = {
+                                "image_type": (None, "message"),
+                                "image": (file_name, f),
+                            }
+                        else:
+                            files_data = {
+                                "file_type": (None, file_type_str),
+                                "file_name": (None, file_name),
+                                "file": (file_name, f),
+                            }
+                        r = await c.post(upload_url, headers=headers, files=files_data)
                         data = r.json()
                         if data.get("code") != 0:
                             return json.dumps({"error": f"Upload failed: {data.get('msg')}"})
@@ -131,27 +152,11 @@ async def tool_send_message(
 
                     # Send
                     msg_content = {f"{upload_type}_key": file_key}
-                    if message:
-                        body = {
-                            "receive_id": chat_id,
-                            "msg_type": "post",
-                            "content": json.dumps({
-                                "zh_cn": {
-                                    "title": "",
-                                    "content": [[{"tag": "text", "text": message[:500]}]]
-                                }
-                            }),
-                            "receive_id_type": "chat_id",
-                        }
-                        r2 = await c.post(f"{FEISHU_API_BASE}/im/v1/messages",
-                                         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                                         json=body)
-                        # Then send image separately
                     body2 = {
                         "receive_id": chat_id,
                         "msg_type": upload_type,
                         "content": json.dumps(msg_content),
-                        "receive_id_type": "chat_id",
+                        "receive_id_type": receive_id_type,
                     }
                     r3 = await c.post(f"{FEISHU_API_BASE}/im/v1/messages",
                                      headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
