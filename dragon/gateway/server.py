@@ -534,11 +534,11 @@ class MessageProcessor:
                                     if t.get("name") == name:
                                         cat = t.get("category", "")
                                         break
-                                if cat in _priority_cats or name in ("read_file", "write_file", "search_files", "terminal", "web_search", "memory", "session_search", "skill_view", "skill_manage", "clarify", "todo", "cronjob", "delegate_task", "execute_code", "patch", "vision_analyze", "send_message"):
+                                if cat in _priority_cats or name in ("read_file", "write_file", "search_files", "terminal", "web_search", "memory", "session_search", "skill_view", "skill_manage", "clarify", "todo", "cronjob", "delegate_task", "execute_code", "patch", "vision_analyze", "send_message", "pdf_create", "pdf_read", "pdf_extract", "text_to_speech"):
                                     _priority.append(s)
                                 else:
                                     _others.append(s)
-                            tool_schemas = (_priority + _others)[:25]
+                            tool_schemas = (_priority + _others)[:50]
 
                         # ── Compression (Hermes-aligned): summarise older msgs ──
                         if self.compressor and self.compressor.needs_compression(history):
