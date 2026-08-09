@@ -69,7 +69,7 @@ def main():
     gw_p.add_argument("action", nargs="?", default="start", choices=["start", "status", "install"],
                       help="start=启动网关, status=查看状态, install=安装配置")
     gw_p.add_argument("--host", default="0.0.0.0")
-    gw_p.add_argument("--port", type=int, default=8000)
+    gw_p.add_argument("--port", type=int, default=8090)
     gw_p.add_argument("--feishu", action="store_true", help="Enable Feishu")
     gw_p.add_argument("--telegram", action="store_true", help="Enable Telegram")
     gw_p.add_argument("--discord", action="store_true", help="Enable Discord")

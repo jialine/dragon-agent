@@ -203,6 +203,9 @@ fi
 if [ "$START_GATEWAY" = "1" ]; then
     echo -e "\n${BOLD}[7/7]${NC} 启动 Dragon Gateway (端口 $GATEWAY_PORT)..."
     
+    # Install Feishu WebSocket deps (lark-oapi required for Feishu adapter)
+    pip install lark-oapi websockets -q 2>/dev/null
+    
     # Create config.yaml with gateway port if not exists
     if ! grep -q "port: $GATEWAY_PORT" config.yaml 2>/dev/null; then
         sed -i "s/port: 8090/port: $GATEWAY_PORT/" config.yaml 2>/dev/null || true
