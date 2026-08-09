@@ -434,6 +434,14 @@ class DragonDispatcher:
         if profile.base_url:
             client_kwargs["base_url"] = profile.base_url
 
+        # Skip SSL verification for self-signed / internal CA dispatchers (andlapi.cn etc.)
+        import ssl
+        http_client = httpx.AsyncClient(
+            verify=False,
+            timeout=httpx.Timeout(profile.timeout),
+        )
+        client_kwargs["http_client"] = http_client
+
         client = AsyncOpenAI(**client_kwargs)
         self._clients[profile.name] = client
         logger.debug("Built AsyncOpenAI client for '%s'", profile.name)
