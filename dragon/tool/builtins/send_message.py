@@ -149,10 +149,9 @@ async def tool_send_message(
                         "receive_id": chat_id,
                         "msg_type": upload_type,
                         "content": json.dumps(msg_content),
-                        "receive_id_type": receive_id_type,
                     }
                     r3 = await c.post(
-                        f"{FEISHU_API_BASE}/im/v1/messages",
+                        f"{FEISHU_API_BASE}/im/v1/messages?receive_id_type={receive_id_type}",
                         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                         json=body2,
                     )
@@ -170,9 +169,8 @@ async def tool_send_message(
                     "receive_id": chat_id,
                     "msg_type": "text",
                     "content": json.dumps({"text": message[:4096]}),
-                    "receive_id_type": receive_id_type,
                 }
-                url = f"{FEISHU_API_BASE}/im/v1/messages"
+                url = f"{FEISHU_API_BASE}/im/v1/messages?receive_id_type={receive_id_type}"
                 headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
                 async with httpx.AsyncClient(timeout=15) as c:
                     r = await c.post(url, headers=headers, json=body)
