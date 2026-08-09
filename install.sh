@@ -130,19 +130,17 @@ echo -e "  ${GREEN}✓${NC} 依赖完成"
 echo -e "\n${BOLD}[4/5]${NC} 默认配置 (DeepSeek V4 Pro)..."
 if [ ! -f "config.yaml" ]; then
     cat > config.yaml << 'YAML'
-# Dragon Agent — 默认 DeepSeek V4 Pro
+# Dragon Agent — 统一走 andlapi.cn 调度网关
 # 前往 https://api.andlapi.cn 注册获取 API Key
 gateway:
   host: "0.0.0.0"
   port: 8090
 
-providers:
-  deepseek:
-    api_key: "${DEEPSEEK_API_KEY:-sk-your-key}"
+dispatch:
+  global_api:
+    model: "deepseek-v4-pro"
     base_url: "https://api.andlapi.cn/v1"
-    model: "deepseek-chat"
-
-# 本地模型已弃用，统一走云端 API
+    api_key: "${DEEPSEEK_API_KEY:-sk-your-key}"
 YAML
     echo -e "  ${GREEN}✓${NC} config.yaml 已创建"
     echo -e "  ${YELLOW}⚠${NC}  前往 https://api.andlapi.cn 注册获取 API Key"
