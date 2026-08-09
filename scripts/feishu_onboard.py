@@ -261,6 +261,52 @@ def configure_permissions(app_id: str, app_secret: str) -> dict:
     return result
 
 
+def update_systemd_service(app_id: str, app_secret: str):
+    """Update the dragon-gateway systemd service with Feishu credentials."""
+    service_file = Path("/etc/systemd/system/dragon-gateway.service")
+    if not service_file.exists():
+        print(f"  {YELLOW}⚠ systemd 服务不存在，跳过自动配置{NC}")
+        return
+    
+    try:
+        content = service_file.read_text()
+        lines = content.splitlines()
+        new_lines = []
+        updated_env = False
+        found_feishu_id = False
+        found_feishu_secret = False
+        
+        for line in lines:
+            if line.strip().startswith("Environment=FEISHU_APP_ID="):
+                new_lines.append(f"Environment=FEISHU_APP_ID={app_id}")
+                found_feishu_id = True
+                updated_env = True
+            elif line.strip().startswith("Environment=FEISHU_APP_SECRET="):
+                new_lines.append(f"Environment=FEISHU_APP_SECRET={app_secret}")
+                found_feishu_secret = True
+                updated_env = True
+            else:
+                new_lines.append(line)
+        
+        if not found_feishu_id:
+            new_lines.append(f"Environment=FEISHU_APP_ID={app_id}")
+        if not found_feishu_secret:
+            new_lines.append(f"Environment=FEISHU_APP_SECRET={app_secret}")
+        
+        service_file.write_text("\n".join(new_lines) + "\n")
+        print(f"  {GREEN}✓ systemd 服务已更新 Feishu 凭证{NC}")
+        
+        # Reload and restart
+        import subprocess
+        subprocess.run(["sudo", "systemctl", "daemon-reload"], capture_output=True)
+        subprocess.run(["sudo", "systemctl", "restart", "dragon-gateway"], capture_output=True)
+        print(f"  {GREEN}✓ dragon-gateway 已重启{NC}")
+    except PermissionError:
+        print(f"  {YELLOW}⚠ 无权限修改 systemd 服务，请手动: sudo vim {service_file}{NC}")
+    except Exception as e:
+        print(f"  {YELLOW}⚠ systemd 更新失败: {e}{NC}")
+
+
 def print_next_steps(app_id: str, perm_result: dict):
     """Print next steps after onboarding."""
     console_url = f"https://open.feishu.cn/app/{app_id}"
@@ -364,6 +410,9 @@ def main():
     
     # Write credentials
     write_env(app_id, app_secret)
+    
+    # Update systemd service if exists
+    update_systemd_service(app_id, app_secret)
     
     # Try auto-configure permissions + events + publish
     print()
