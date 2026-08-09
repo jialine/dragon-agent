@@ -1502,10 +1502,10 @@ def register_builtins(registry: ToolRegistry) -> None:
     # ── Send Message ────────────────────────────────────────────
     registry.register(
         name="send_message",
-        description="Send a message to a connected messaging platform, or list available targets. Hermes-aligned: send_message(action='send'|'list', target, message, file_path).",
+        description="Send a message with optional file/image attachments to a connected messaging platform, or list available targets. For files: pass file_path (single) or file_paths (list). Hermes-aligned: send_message(action='send'|'list', target, message, file_path, file_paths).",
         tags=["messaging", "feishu", "send"],
         category="interaction",
-        timeout_secs=30,
+        timeout_secs=60,
     )(tool_send_message)
 
     # ── Process Management ───────────────────────────────────────
