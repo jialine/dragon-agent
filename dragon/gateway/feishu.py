@@ -141,6 +141,8 @@ class FeishuAdapter(PlatformAdapter):
         self._last_reply_id: str = ""
         self._last_alert_id: str = ""
         self._last_progress_id: str = ""
+        self._last_progress_edit_time: float = 0.0  # cooldown for edit_message
+        self._active_chats: set = set()  # track active chat_ids for restart notification
         self._sent_ids: List[str] = []  # keep up to 10 recent
 
         # Voice mode
@@ -200,6 +202,44 @@ class FeishuAdapter(PlatformAdapter):
         self._ws_thread_loop = None
         self._loop = None
         logger.info("[Feishu] Disconnected")
+
+    async def notify_shutdown(self) -> None:
+        """Send gateway restarting notification to all active chats."""
+        msg = "⚠️ Dragon Gateway restarting — Your current task will be interrupted."
+        for chat_id in list(self._active_chats):
+            try:
+                await self.send_message(PlatformReply(chat_id=chat_id, content=msg))
+            except Exception as e:
+                logger.warning("[Feishu] shutdown notify failed for %s: %s", chat_id, e)
+        # Persist chats for startup notification
+        import json, os
+        path = os.path.expanduser("~/.hermes/.restart_notify.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w') as f:
+            json.dump(list(self._active_chats), f)
+        logger.info("[Feishu] Shutdown notification sent to %d chats", len(self._active_chats))
+
+    async def notify_startup(self) -> None:
+        """Send gateway back online notification to previously active chats."""
+        import json, os
+        path = os.path.expanduser("~/.hermes/.restart_notify.json")
+        chats = []
+        if os.path.exists(path):
+            try:
+                with open(path) as f:
+                    chats = json.load(f)
+                os.remove(path)
+            except Exception:
+                pass
+        if not chats:
+            return
+        msg = "✅ Dragon Gateway back online — Ready."
+        for chat_id in chats:
+            try:
+                await self.send_message(PlatformReply(chat_id=chat_id, content=msg))
+            except Exception as e:
+                logger.warning("[Feishu] startup notify failed for %s: %s", chat_id, e)
+        logger.info("[Feishu] Startup notification sent to %d chats", len(chats))
 
     async def _connect_websocket(self) -> bool:
         """Start the Lark SDK WebSocket client in a background thread."""
@@ -428,6 +468,8 @@ class FeishuAdapter(PlatformAdapter):
             "[Feishu] Message: user=%s chat=%s text=%s",
             message.user_id, message.chat_id, message.content[:80],
         )
+        # Track active chat for restart notification
+        self._active_chats.add(message.chat_id)
 
         with open("/tmp/feishu_dispatch.log", "a") as _f:
             _f.write(f"[{_dh.datetime.now()}] HANDLER: {'SET' if self._message_handler else 'NONE'}\n")
@@ -729,9 +771,21 @@ class FeishuAdapter(PlatformAdapter):
                 return None
 
             msg = getattr(evt, 'message', None)
-            if msg is None:
-                _log('msg is None')
-                return None
+            # Lark SDK v2: P2ImMessageReceiveV1Data uses 'event' nesting
+            if msg is None and hasattr(evt, 'event'):
+                inner = evt.event
+                msg = getattr(inner, 'message', None)
+                if msg is None:
+                    _log(f'msg is None, evt class={type(evt).__name__}, has event={hasattr(evt, "event")}')
+                    # Dump attributes for debugging
+                    for attr in dir(evt):
+                        if not attr.startswith('_'):
+                            try:
+                                val = getattr(evt, attr)
+                                _log(f'  evt.{attr}={type(val).__name__}')
+                            except:
+                                pass
+                    return None
 
             chat_id = getattr(msg, 'chat_id', '')
             message_id = getattr(msg, 'message_id', '')
@@ -788,6 +842,8 @@ class FeishuAdapter(PlatformAdapter):
             if is_edited:
                 final_text = "[用户编辑了消息]\n" + final_text
 
+            # Derive stable session_id from chat_id (survives gateway restarts)
+            _session_id = hashlib.sha256(f"feishu:{chat_id}".encode()).hexdigest()[:12]
             return PlatformMessage(
                 platform="feishu",
                 chat_id=chat_id,
@@ -798,7 +854,7 @@ class FeishuAdapter(PlatformAdapter):
                 timestamp=time.time(),
             )
         except Exception as exc:
-            logger.debug("[Feishu] Failed to parse WS event: %s", exc)
+            logger.exception("[Feishu] Failed to parse WS event")
             return None
 
     # ── Webhook Verification ──────────────────────────────────────
@@ -1108,8 +1164,13 @@ class FeishuAdapter(PlatformAdapter):
         prefix = "" if is_final else "\U0001f4dd "
         full_text = f"{prefix}{text}"
         if self._last_progress_id:
-            # Edit existing progress message in-place
+            # Edit existing progress message in-place (cooldown: min 15s between edits)
+            import time
+            now = time.time()
+            if now - self._last_progress_edit_time < 15 and not is_final:
+                return self._last_progress_id  # skip edit, within cooldown
             ok = await self.edit_message(self._last_progress_id, full_text)
+            self._last_progress_edit_time = now
             if is_final:
                 self._last_progress_id = ""
             return self._last_progress_id if ok else ""

@@ -402,9 +402,9 @@ def cmd_gateway(args):
         server.register_adapter(FeishuAdapter())
         print("  ✓ Feishu enabled (default)")
 
+
     import uvicorn
     uvicorn.run(server.app, host=args.host, port=args.port, log_level="info")
-
 
 def _cmd_gateway_service(action):
     """Control Dragon Gateway as a background service (Hermes-aligned).

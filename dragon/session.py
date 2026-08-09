@@ -206,10 +206,11 @@ class SessionStore:
         platform: str = "api",
         model: str = "",
         meta: Optional[Dict] = None,
+        session_id: Optional[str] = None,
     ) -> Session:
-        """Create a new session."""
+        """Create a new session. If session_id is provided, use it instead of UUID."""
         sess = Session(
-            id=uuid.uuid4().hex[:12],
+            id=session_id or uuid.uuid4().hex[:12],
             title=title or "New Session",
             platform=platform,
             model=model,

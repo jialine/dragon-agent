@@ -340,13 +340,20 @@ class MessageProcessor:
         if self.session_store:
             # Check for forced new session from /new /reset command
             forced_sid = self._next_session_ids.get(chat_id) if chat_id else None
-            lookup_id = forced_sid or message.session_id
+            lookup_id = forced_sid or getattr(message, 'session_id', None)
             session = self.session_store.get(lookup_id)
             if session is None:
-                session = self.session_store.create(
-                    title=message.content[:50],
-                    platform=message.platform,
-                )
+                # Try to find existing session by chat_id-derived ID
+                import hashlib
+                stable_sid = hashlib.sha256(f"feishu:{chat_id}".encode()).hexdigest()[:12]
+                session = self.session_store.get(stable_sid)
+                if session is None:
+                    # Create new session with stable ID
+                    session = self.session_store.create(
+                        title=message.content[:50],
+                        platform=message.platform,
+                        session_id=stable_sid,
+                    )
                 record_session_created()
             # Persist session_id → chat_id mapping for all future messages
             self._next_session_ids[chat_id] = session.id
@@ -1433,15 +1440,32 @@ class GatewayServer:
                         logger.warning("Platform %s failed to connect", name)
                 except Exception as exc:
                     logger.error("Platform %s connect error: %s", name, exc)
+            # Startup notification
+            for name, adapter in list(self.adapters.items()):
+                if hasattr(adapter, 'notify_startup'):
+                    try:
+                        await adapter.notify_startup()
+                        logger.info("Platform %s startup notify sent", name)
+                    except Exception as exc:
+                        logger.error("Platform %s startup notify error: %s", name, exc)
 
         @self.app.on_event("shutdown")
         async def _shutdown():
+            for name, adapter in list(self.adapters.items()):
+                # Shutdown notification
+                if hasattr(adapter, 'notify_shutdown'):
+                    try:
+                        print(f"[Dragon] Sending shutdown notification for {name}...", flush=True)
+                        await adapter.notify_shutdown()
+                        print(f"[Dragon] Shutdown notify sent for {name}", flush=True)
+                    except Exception as exc:
+                        print(f"[Dragon] Shutdown notify error for {name}: {exc}", flush=True)
+                        logger.error("Platform %s shutdown notify error: %s", name, exc)
             for name, adapter in list(self.adapters.items()):
                 try:
                     await adapter.disconnect()
                 except Exception as exc:
                     logger.error("Platform %s disconnect error: %s", name, exc)
-
     def register_adapter(self, adapter: PlatformAdapter) -> None:
         """Register a platform adapter."""
         self.adapters[adapter.platform_name] = adapter
