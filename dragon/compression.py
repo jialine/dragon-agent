@@ -29,6 +29,8 @@ class CompressionConfig:
     keep_system: bool = True             # always keep system message
     summary_model: str = ""              # model for generating summaries ("" = use same)
     max_summary_tokens: int = 500        # max tokens per summary chunk
+    min_msg_count: int = 12              # Hermes-aligned: trigger when ≥ N messages
+    min_char_count: int = 6000           # Hermes-aligned: trigger when ≥ N chars
 
 
 # ────────────────────────────────────────────────────────────────────
@@ -98,6 +100,15 @@ class ContextCompressor:
         """Check if the conversation needs compression."""
         if not self.config.enabled:
             return False
+        if not messages:
+            return False
+        # Hermes-aligned: check msg count + char count as soft triggers
+        if len(messages) >= self.config.min_msg_count:
+            return True
+        total_chars = sum(len(str(m.get("content", ""))) for m in messages)
+        if total_chars >= self.config.min_char_count:
+            return True
+        # Token-based hard trigger
         estimated = estimate_message_tokens(messages)
         return estimated > int(self.context_limit * self.config.threshold_ratio)
 

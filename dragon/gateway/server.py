@@ -493,6 +493,15 @@ class MessageProcessor:
                                     _others.append(s)
                             tool_schemas = (_priority + _others)[:25]
 
+                        # ── Compression (Hermes-aligned): summarise older msgs ──
+                        if self.compressor and self.compressor.needs_compression(history):
+                            try:
+                                before = len(history)
+                                history = await self.compressor.compress_async(history)
+                                print(f"[PROC_DEBUG] compressed history: {before} → {len(history)} msgs", flush=True)
+                            except Exception as _ce:
+                                logger.warning("Compression failed, falling back to trim: %s", _ce)
+
                         # ── Trim history to prevent unbounded growth from accumulated tool calls ──
                         MAX_PROVIDER_HIST = 50
                         # Hermes-aligned orphan cleanup: drop invalid tool messages.
@@ -1078,11 +1087,11 @@ class GatewayServer:
                 compression_config = CompressionConfig(
                     min_msg_count=12,
                     min_char_count=6000,
-                    keep_last=6,
-                    provider_fn=_compress_llm,
+                    keep_recent=6,
                 )
                 self.processor.compressor = __import__("dragon.compression", fromlist=["ContextCompressor"]).ContextCompressor(
                     config=compression_config,
+                    summary_fn=_compress_llm,
                 )
             except Exception as _exc:
                 import logging
