@@ -282,8 +282,18 @@ class MessageProcessor:
                         chat_id=message.chat_id,
                     )
 
-        # 0. Processing lock
+        # 0. Processing lock — prevent concurrent agent loops per chat
         chat_id = getattr(message, 'chat_id', '')
+        if self._processing.get(chat_id):
+            # Queue the message; process after current run finishes
+            if chat_id not in self._message_queues:
+                self._message_queues[chat_id] = []
+            self._message_queues[chat_id].append(message)
+            logger.info("Message queued for chat %s (processing in progress)", chat_id)
+            return PlatformReply(
+                content=f"[⏳ 消息已排队，当前任务完成后处理]",
+                chat_id=chat_id,
+            )
         self._processing[chat_id] = True
 
         # 0.5 Intent-driven workflow dispatch
