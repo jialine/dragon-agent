@@ -474,7 +474,15 @@ def run_setup(section="", feishu_only=False, providers_only=False, quick=False):
     elif section == "doctor":
         setup_doctor()
     elif feishu_only:
-        setup_gateway()  # gateway section includes Feishu
+        # Launch device-code OAuth QR onboarding
+        _print("\n  🚀 启动飞书一键扫码创建...", style="bold cyan")
+        _print("  如需手动输入 App ID/Secret，请用: dragon setup gateway\n")
+        script = Path(__file__).resolve().parent.parent / "scripts" / "feishu_onboard.py"
+        if script.exists():
+            import subprocess
+            subprocess.run([sys.executable, str(script)])
+        else:
+            _print("  ✗ feishu_onboard.py not found. 请更新 Dragon Agent.", style="red")
     else:
         # Full wizard
         setup_welcome()
