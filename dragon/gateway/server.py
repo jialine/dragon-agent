@@ -1040,11 +1040,11 @@ class GatewayServer:
             if provider_registry:
                 async def _dispatch_llm(history):
                     provider_name = provider_registry.available_providers()[0]
-                    provider = provider_registry.get(provider_name)
-                    response = await provider.chat(
+                    response = await provider_registry.call(
+                        provider_name=provider_name,
                         messages=history, max_tokens=300, temperature=0.1,
                     )
-                    return response.get("content", "")
+                    return response.content if hasattr(response, 'content') else str(response)
 
                 import os as _os
                 wf_dir = _os.path.join(
@@ -1071,11 +1071,11 @@ class GatewayServer:
 
                 async def _compress_llm(history):
                     provider_name = provider_registry.available_providers()[0]
-                    provider = provider_registry.get(provider_name)
-                    response = await provider.chat(
+                    response = await provider_registry.call(
+                        provider_name=provider_name,
                         messages=history, max_tokens=800, temperature=0.3,
                     )
-                    return response.get("content", "")
+                    return response.content if hasattr(response, 'content') else str(response)
 
                 compression_config = CompressionConfig(
                     min_msg_count=12,

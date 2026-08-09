@@ -330,23 +330,16 @@ class WorkflowDispatcher:
 async def _default_llm_call(prompt: str, max_tokens: int, temperature: float) -> str:
     """默认 LLM 调用 — 从 provider_registry 获取当前 provider。"""
     try:
-        from dragon.provider.registry import provider_registry
+        from dragon.provider import provider_registry
 
         provider_name = provider_registry.available_providers()[0]
-        provider = provider_registry.get(provider_name)
-
-        if hasattr(provider, "chat") and callable(provider.chat):
-            response = await provider.chat(
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=max_tokens,
-                temperature=temperature,
-            )
-            return response.get("content", "")
-        elif hasattr(provider, "complete"):
-            response = await provider.complete(
-                prompt, max_tokens=max_tokens, temperature=temperature,
-            )
-            return response
+        response = await provider_registry.call(
+            provider_name=provider_name,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        return response.content if hasattr(response, 'content') else str(response)
     except Exception as exc:
         logger.error("Default LLM call failed: %s", exc)
 
