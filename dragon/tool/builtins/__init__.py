@@ -1553,7 +1553,7 @@ def register_builtins(registry: ToolRegistry) -> None:
     # ── PDF Create ──────────────────────────────────────────────
     registry.register(
         name="pdf_create",
-        description="Create a PDF from markdown text. Zero-dependency. Supports headings, bold, italic, code, lists, page breaks (---). Hermes-aligned: pdf_create(path, content, title, author).",
+        description="Create a PDF from markdown text. FULL Chinese/CJK support via embedded TrueType font — handles mixed Chinese+English perfectly. Zero-dependency (stdlib only). Supports headings, bold, italic, code, lists, page breaks (---). Just call this directly for any PDF with Chinese text; no need to install anything. Hermes-aligned: pdf_create(path, content, title, author).",
         tags=["document", "pdf", "markdown", "create"],
         category="productivity",
         timeout_secs=30,
