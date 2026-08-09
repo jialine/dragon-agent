@@ -657,12 +657,34 @@ class MessageProcessor:
 
                 # ── Stuck detection: same tool calls 6x in a row → abort ──
                 if tool_calls:
-                    tc_sig = tuple(sorted(tc["name"] for tc in tool_calls))
+                    # Build signature: tool names + key differentiator args
+                    def _tool_differentiator(tc):
+                        """Extract the argument that distinguishes different calls of the same tool."""
+                        name = tc["name"]
+                        args = tc.get("arguments", {})
+                        if name == "write_file":
+                            return args.get("path", "")
+                        elif name == "read_file":
+                            return args.get("path", "")
+                        elif name == "terminal":
+                            return args.get("command", "")
+                        elif name == "search_files":
+                            return args.get("pattern", "")
+                        elif name == "web_search":
+                            return args.get("query", "")
+                        elif name == "execute_code":
+                            return hash(args.get("code", ""))
+                        else:
+                            return ""  # no differentiator → pure name comparison
+
+                    tc_sig = tuple(sorted(
+                        (tc["name"], _tool_differentiator(tc)) for tc in tool_calls
+                    ))
                     _last_tc_signatures.append(tc_sig)
                     if len(_last_tc_signatures) > 6:
                         _last_tc_signatures.pop(0)
                     if len(_last_tc_signatures) == 6 and len(set(_last_tc_signatures)) == 1:
-                        stuck_tools = ', '.join(_last_tc_signatures[0])
+                        stuck_tools = ', '.join(sorted(set(tc["name"] for tc in tool_calls)))
                         logger.error("[Processor] STUCK DETECTED: %s repeated 6x — aborting", stuck_tools)
                         response_text = (
                             f"⚠️ 任务卡住了 — 连续6次调用相同工具 ({stuck_tools}) 没有进展，已自动中止。\n"
