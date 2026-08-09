@@ -332,9 +332,8 @@ async def _default_llm_call(prompt: str, max_tokens: int, temperature: float) ->
     try:
         from dragon.provider import provider_registry
 
-        provider_name = provider_registry.available_providers()[0]
         response = await provider_registry.call(
-            provider_name=provider_name,
+            provider_name="openai",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=max_tokens,
             temperature=temperature,

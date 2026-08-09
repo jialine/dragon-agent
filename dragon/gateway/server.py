@@ -1039,9 +1039,8 @@ class GatewayServer:
         try:
             if provider_registry:
                 async def _dispatch_llm(history):
-                    provider_name = provider_registry.available_providers()[0]
                     response = await provider_registry.call(
-                        provider_name=provider_name,
+                        provider_name="openai",
                         messages=history, max_tokens=300, temperature=0.1,
                     )
                     return response.content if hasattr(response, 'content') else str(response)
@@ -1070,9 +1069,8 @@ class GatewayServer:
                 from dragon.compression import CompressionConfig
 
                 async def _compress_llm(history):
-                    provider_name = provider_registry.available_providers()[0]
                     response = await provider_registry.call(
-                        provider_name=provider_name,
+                        provider_name="openai",
                         messages=history, max_tokens=800, temperature=0.3,
                     )
                     return response.content if hasattr(response, 'content') else str(response)
