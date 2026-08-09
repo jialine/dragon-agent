@@ -1146,7 +1146,7 @@ class FeishuAdapter(PlatformAdapter):
                         return True
                     logger.error("[Feishu] Edit error: %s", data.get("msg"))
                 else:
-                    logger.error("[Feishu] Edit HTTP %d", resp.status_code)
+                    logger.error("[Feishu] Edit HTTP %d: %s", resp.status_code, resp.text[:300])
         except Exception as e:
             logger.exception("[Feishu] Edit failed: %s", e)
         return False

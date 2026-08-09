@@ -214,7 +214,7 @@ class OpenAIProvider(BaseProvider):
             except Exception as e:
                 if attempt == self.config.max_retries:
                     raise
-                logger.warning("OpenAI attempt %d failed: %s", attempt + 1, e)
+                logger.warning("OpenAI attempt %d failed: %s: %r", attempt + 1, type(e).__name__, e)
                 await asyncio.sleep(1)
 
     async def complete_stream(self, model, messages, temperature=0.7, max_tokens=2048, **kwargs):
@@ -658,7 +658,7 @@ class AzureOpenAIProvider(BaseProvider):
             except Exception as e:
                 if attempt == self.config.max_retries:
                     raise
-                logger.warning("Azure OpenAI attempt %d failed: %s", attempt + 1, e)
+                logger.warning("Azure OpenAI attempt %d failed: %s: %r", attempt + 1, type(e).__name__, e)
                 await asyncio.sleep(1)
 
     async def complete_stream(self, model, messages, temperature=0.7, max_tokens=2048, **kwargs):
