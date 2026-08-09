@@ -200,8 +200,8 @@ def setup_model():
         _print(f"  ○ 未配置 API Key，请先运行: dragon setup providers", style="yellow")
         return
 
-    _print(f"\n  调度网关: {CYAN}api.andlapi.cn{NC}")
-    _print(f"  备用网关: {CYAN}api.sangyuye.com{NC}")
+    _print("\n  调度网关: api.andlapi.cn", style="dim")
+    _print("  备用网关: api.sangyuye.com", style="dim")
     
     # Pick default model
     _print(f"\n  可用模型:", style="bold")
@@ -240,8 +240,8 @@ def setup_providers(quick=False):
         else:
             return
 
-    _print(f"\n  获取 Key: {CYAN}https://api.andlapi.cn{NC} (注册送 ¥10)")
-    _print(f"  备用:     {CYAN}https://api.sangyuye.com{NC}")
+    _print("\n  获取 Key: https://api.andlapi.cn (注册送 ¥10)", style="bold")
+    _print("  备用:     https://api.sangyuye.com", style="dim")
     
     key = _prompt("DEEPSEEK_API_KEY", password=True)
     if key:
