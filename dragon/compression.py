@@ -159,15 +159,18 @@ class ContextCompressor:
 
         compressed_middle = self._truncate_messages(middle, budget_for_middle)
 
-        # 4. Add compression summary
+        # 4. Add compression summary (merge into existing system msg, don't duplicate)
         if compressed_middle:
             removed_count = len(middle) - len(compressed_middle)
             if removed_count > 0:
                 summary = (
-                    f"[上下文已压缩: 省略了 {removed_count} 条中间消息。"
+                    f"\n\n[上下文已压缩: 省略了 {removed_count} 条中间消息。"
                     f"当前会话共 {len(messages)} 条消息。]"
                 )
-                result.append({"role": "system", "content": summary})
+                if sys_idx > 0 and result and result[0].get("role") == "system":
+                    result[0]["content"] += summary
+                else:
+                    result.insert(0, {"role": "system", "content": summary.lstrip()})
 
         result.extend(compressed_middle)
         result.extend(recent)
@@ -217,7 +220,10 @@ class ContextCompressor:
                     middle,
                     max_tokens=self.config.max_summary_tokens,
                 )
-                result.append({"role": "system", "content": f"[对话摘要] {summary_text}"})
+                if sys_idx > 0 and result and result[0].get("role") == "system":
+                    result[0]["content"] += f"\n\n[对话摘要] {summary_text}"
+                else:
+                    result.insert(0, {"role": "system", "content": f"[对话摘要] {summary_text}"})
                 self._compression_count += 1
                 logger.info("Async compressed: summarized %d middle messages", len(middle))
             except Exception as e:
