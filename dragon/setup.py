@@ -276,6 +276,19 @@ def setup_model():
         pass
 
     _print("  ✓ Config saved", style="green")
+    
+    # Auto-restart gateway if running
+    import subprocess
+    result = subprocess.run(
+        ["systemctl", "--user", "is-active", "dragon-gateway"],
+        capture_output=True, text=True
+    )
+    if result.stdout.strip() == "active":
+        if _confirm("立即重启 Gateway 使配置生效?"):
+            subprocess.run(["systemctl", "--user", "restart", "dragon-gateway"], capture_output=True)
+            _print("  ✓ Gateway 已重启", style="green")
+        else:
+            _print("  ⚠ 配置已保存，重启后生效: systemctl --user restart dragon-gateway", style="yellow")
 
 
 def setup_providers(quick=False):
