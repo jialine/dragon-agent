@@ -52,6 +52,7 @@ from dragon.tool.builtins.documents import (
     tool_pdf_extract,
     tool_docx_read,
 )
+from dragon.tool.builtins.pdf_create import tool_pdf_create
 from dragon.tool.builtins.email import (
     tool_email_send,
     tool_email_search,
@@ -1585,5 +1586,14 @@ def register_builtins(registry: ToolRegistry) -> None:
         category="automation",
         timeout_secs=15,
     )(tool_cronjob)
+
+    # ── PDF Create ─────────────────────────────────────────────────
+    registry.register(
+        name="pdf_create",
+        description="Create a PDF from markdown text. Zero-dependency. Supports headings, bold, italic, code, lists, page breaks (---). Hermes-aligned: pdf_create(path, content, title, author).",
+        tags=["pdf", "documents", "create", "markdown"],
+        category="documents",
+        timeout_secs=30,
+    )(tool_pdf_create)
 
     logger.info("Registered %d built-in tools (with Hermes aliases)", len(registry._tools))
