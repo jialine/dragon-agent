@@ -1064,6 +1064,33 @@ class GatewayServer:
         # No need for text-based tool list in system prompt — reduces token usage.
         pass
 
+        # Enable context compression (Hermes-aligned)
+        if provider_registry:
+            try:
+                from dragon.compression import CompressionConfig
+
+                async def _compress_llm(history):
+                    provider_name = provider_registry.available_providers()[0]
+                    provider = provider_registry.get(provider_name)
+                    response = await provider.chat(
+                        messages=history, max_tokens=800, temperature=0.3,
+                    )
+                    return response.get("content", "")
+
+                compression_config = CompressionConfig(
+                    min_msg_count=12,
+                    min_char_count=6000,
+                    keep_last=6,
+                    provider_fn=_compress_llm,
+                )
+                self.processor.compressor = __import__("dragon.compression", fromlist=["ContextCompressor"]).ContextCompressor(
+                    config=compression_config,
+                )
+            except Exception as _exc:
+                import logging
+                _log = logging.getLogger("dragon.gateway")
+                _log.warning("Compression init failed: %s", _exc)
+
         # Register routes and lifecycle hooks
         self._register_routes()
         self._register_lifecycle()
