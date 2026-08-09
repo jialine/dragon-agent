@@ -1459,8 +1459,17 @@ class GatewayServer:
                 if skill_entries:
                     lines = [
                         "", "## Skills (mandatory)", "",
-                        "Before replying, scan the skills below. If a skill matches ",
-                        "load it with skill_view(name) and follow its instructions.", "",
+                        "Before replying, scan the skills below. If a skill matches or ",
+                        "is even partially relevant to your task, you MUST load it ",
+                        "with skill_view(name) and follow its instructions. ",
+                        "Err on the side of loading — it is always better to have ",
+                        "context you don't need than to miss critical steps. ",
+                        "Skills contain specialized knowledge that outperforms ",
+                        "general-purpose approaches. Load the skill even if you ",
+                        "think you could handle the task with basic tools like ",
+                        "web_search or terminal.", "",
+                        "If a skill has issues, fix it with ",
+                        "skill_manage(action='patch') — don't wait to be asked.", "",
                         "<available_skills>",
                     ]
                     for name, desc in skill_entries[:50]:
