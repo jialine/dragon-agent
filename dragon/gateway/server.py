@@ -282,18 +282,8 @@ class MessageProcessor:
                         chat_id=message.chat_id,
                     )
 
-        # 0. Processing lock — prevent concurrent agent loops per chat
+        # 0. Processing lock — prevent re-entrant calls from same task
         chat_id = getattr(message, 'chat_id', '')
-        if self._processing.get(chat_id):
-            # Queue the message; process after current run finishes
-            if chat_id not in self._message_queues:
-                self._message_queues[chat_id] = []
-            self._message_queues[chat_id].append(message)
-            logger.info("Message queued for chat %s (processing in progress)", chat_id)
-            return PlatformReply(
-                content=f"[⏳ 消息已排队，当前任务完成后处理]",
-                chat_id=chat_id,
-            )
         self._processing[chat_id] = True
 
         # 0.5 Intent-driven workflow dispatch
@@ -1052,6 +1042,9 @@ class GatewayServer:
         self._skill_engine = skill_engine
         self.system_prompt = system_prompt or self._build_system_prompt()
 
+        # Track running agent tasks per chat for interrupt support
+        self._running_tasks: Dict[str, "asyncio.Task"] = {}
+
         # Initialize workflow store for state persistence
         try:
             self.workflow_store = WorkflowStore()
@@ -1484,17 +1477,45 @@ class GatewayServer:
         # (e.g. Feishu) can dispatch messages to the processor
         async def _handler(message: PlatformMessage) -> PlatformReply:
             import datetime as _dh
+            import asyncio as _asyncio
+            chat_id = getattr(message, 'chat_id', '')
             with open("/tmp/feishu_dispatch.log", "a") as _f:
-                _f.write(f"[{_dh.datetime.now()}] SERVER_HANDLER: ENTER user={getattr(message, 'user_id', '?')} chat={getattr(message, 'chat_id', '?')}\n")
+                _f.write(f"[{_dh.datetime.now()}] SERVER_HANDLER: ENTER user={getattr(message, 'user_id', '?')} chat={chat_id}\n")
+
+            # Interrupt: cancel any running task for this chat
+            old_task = self._running_tasks.get(chat_id)
+            if old_task and not old_task.done():
+                logger.info("Interrupting running agent for chat %s", chat_id)
+                old_task.cancel()
+                try:
+                    await _asyncio.wait_for(old_task, timeout=3.0)
+                except (_asyncio.CancelledError, _asyncio.TimeoutError):
+                    pass
+                self._running_tasks.pop(chat_id, None)
+
+            async def _run():
+                try:
+                    result = await self.processor.process(message, self.system_prompt)
+                    with open("/tmp/feishu_dispatch.log", "a") as _f:
+                        _f.write(f"[{_dh.datetime.now()}] SERVER_HANDLER: DONE reply_len={len(result.content) if result and result.content else 0}\n")
+                    return result
+                except _asyncio.CancelledError:
+                    logger.info("Agent task cancelled for chat %s", chat_id)
+                    return PlatformReply(
+                        content="[⏹ 已打断]",
+                        chat_id=chat_id,
+                    )
+                except Exception as e:
+                    with open("/tmp/feishu_dispatch.log", "a") as _f:
+                        _f.write(f"[{_dh.datetime.now()}] SERVER_HANDLER: ERROR {e}\n")
+                    raise
+
+            task = _asyncio.create_task(_run())
+            self._running_tasks[chat_id] = task
             try:
-                result = await self.processor.process(message, self.system_prompt)
-                with open("/tmp/feishu_dispatch.log", "a") as _f:
-                    _f.write(f"[{_dh.datetime.now()}] SERVER_HANDLER: DONE reply_len={len(result.content) if result and result.content else 0}\n")
-                return result
-            except Exception as e:
-                with open("/tmp/feishu_dispatch.log", "a") as _f:
-                    _f.write(f"[{_dh.datetime.now()}] SERVER_HANDLER: ERROR {e}\n")
-                raise
+                return await task
+            finally:
+                self._running_tasks.pop(chat_id, None)
 
         adapter.register_handler(_handler)
 
