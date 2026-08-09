@@ -1262,17 +1262,22 @@ class GatewayServer:
                         "",
                         "Before replying, scan the skills below. If a skill matches or "
                         "is even partially relevant to your task, you MUST load it "
-                        "with skill_view(name) and follow its instructions.",
+                        "with skill_view(name) and follow its instructions. "
+                        "Err on the side of loading — it is always better to have "
+                        "context you don't need than to miss critical steps, pitfalls, "
+                        "or established workflows. Skills contain specialized knowledge "
+                        "— API endpoints, tool-specific commands, and proven workflows "
+                        "that outperform general-purpose approaches. Load the skill "
+                        "even if you think you could handle the task with basic tools "
+                        "like web_search or terminal. Skills also encode the user's "
+                        "preferred approach, conventions, and quality standards for "
+                        "tasks like code review, planning, and testing — load them "
+                        "even for tasks you already know how to do, because the skill "
+                        "defines how it should be done here.",
                         "",
-                        "Err on the side of loading — skills contain specialized "
-                        "knowledge that dramatically improves results.",
-                        "",
-                        "If a loaded skill has issues, fix it with "
-                        "skill_manage(action='patch', name=..., content=...).",
-                        "",
-                        "After completing difficult tasks (>=5 tool calls), "
-                        "offer to save the workflow as a new skill: "
-                        "skill_manage(action='create', name=..., content=..., description=...).",
+                        "If a skill has issues, fix it with "
+                        "skill_manage(action='patch') — don't wait to be asked. "
+                        "Skills that aren't maintained become liabilities.",
                         "",
                         "<available_skills>",
                     ]
@@ -1400,7 +1405,7 @@ class GatewayServer:
                 "## 工具纪律",
                 "",
                 "### Skills（强制）",
-                "回复前扫描下方可用技能。匹配就用 skill_view(name) 加载。发现问题用 skill_manage(action='patch') 修复。",
+                "回复前扫描下方可用技能。匹配或部分相关就必须用 skill_view(name) 加载并按指令执行。宁可多加载——技能包含专用知识和已验证工作流，远胜通用工具。即使你认为自己能用 web_search 或 terminal 处理，也要先加载技能。",
                 "",
                 "### 记忆管理",
                 "跨会话记忆。保存：纠正/偏好/环境事实。不保存：任务进度/临时 TODO。用 session_search 召回历史。",
