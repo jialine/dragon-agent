@@ -100,7 +100,6 @@ async def tool_session_search(
         # ── Mode 1: List recent sessions ──────────────────────────
         sessions = store.list_recent(
             limit=limit,
-            platform=platform.strip() if platform else None,
         )
         for sess in sessions:
             preview = _make_preview(store, sess.id)

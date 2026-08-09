@@ -46,12 +46,15 @@ async def tool_clarify(
 
     parsed_choices = None
     if choices:
-        try:
-            parsed_choices = json.loads(choices)
-            if not isinstance(parsed_choices, list):
-                parsed_choices = [choices]
-        except json.JSONDecodeError:
-            parsed_choices = [c.strip() for c in choices.split(",")]
+        if isinstance(choices, list):
+            parsed_choices = choices
+        elif isinstance(choices, str):
+            try:
+                parsed_choices = json.loads(choices)
+                if not isinstance(parsed_choices, list):
+                    parsed_choices = [c.strip() for c in choices.split(",")]
+            except json.JSONDecodeError:
+                parsed_choices = [c.strip() for c in choices.split(",")]
 
     # Log the question for dispatch tracking
     logger.info("Clarify: asking user: %s (choices=%s)", question[:200], parsed_choices)
