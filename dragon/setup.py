@@ -59,6 +59,10 @@ PROVIDERS = [  # 保留变量名以兼容旧代码，但只包含 dispatch
             {"name": "deepseek-v4-pro", "desc": "DeepSeek V4 Pro, best all-around", "ctx": "128K", "tier": "premium"},
             {"name": "deepseek-chat", "desc": "DeepSeek V3, best value", "ctx": "128K", "tier": "budget"},
             {"name": "gpt-4o", "desc": "OpenAI GPT-4o, multimodal", "ctx": "128K", "tier": "premium"},
+            {"name": "gpt-4.1", "desc": "GPT-4.1, coding + reasoning", "ctx": "1M", "tier": "premium"},
+            {"name": "gemini-2.5-pro", "desc": "Gemini 2.5 Pro, deep reasoning", "ctx": "1M", "tier": "premium"},
+            {"name": "gemini-2.5-flash", "desc": "Gemini 2.5 Flash, fast + large docs", "ctx": "1M", "tier": "budget"},
+            {"name": "claude-sonnet-4", "desc": "Claude Sonnet 4, best coding", "ctx": "200K", "tier": "premium"},
         ],
         "url": "https://api.andlapi.cn",
     }
