@@ -450,7 +450,7 @@ class MessageProcessor:
             "session_search": "research", "search_files": "research", "memory": "research",
             "read_file": "reading",
             "execute_code": "processing", "terminal": "processing",
-            "write_file": "generating", "pdf_create": "generating", "patch": "generating",
+            "write_file": "generating", "patch": "generating",
             "send_message": "delivering",
         }
         _STAGE_EMOJI = {
@@ -701,9 +701,7 @@ class MessageProcessor:
                         if s:
                             stage = s
                             # Add detail for key tools
-                            if name == "pdf_create" and tc.get("arguments", {}).get("title"):
-                                detail = tc["arguments"]["title"]
-                            elif name == "write_file":
+                            if name == "write_file":
                                 path = tc.get("arguments", {}).get("path", "")
                                 if path.endswith(".pdf"):
                                     stage = "generating"
@@ -1324,7 +1322,7 @@ class GatewayServer:
                 "",
                 "完成复杂任务（5+ 次工具调用）、修了一个难缠的 bug、或发现非平凡的工作流后，主动问用户要不要存成新技能。",
                 "",
-                "没有对应技能时，先看是否有专用工具（pdf_create、send_message 发文件、text_to_speech 等）。**有专用工具就直接调，不准写代码替代。** 写代码是最后手段，不是首选。",
+                "没有对应技能时，先看是否有专用工具（send_message 发文件、text_to_speech、terminal 等）。**有专用工具就直接调，不准写代码替代。** 写代码是最后手段，不是首选。",
                 "",
                 "### 记忆管理",
                 "",
@@ -1352,8 +1350,7 @@ class GatewayServer:
                 "  - 图片 (.jpg, .png, .webp) 直接内嵌显示",
                 "  - 音频作为语音消息发送",
                 "  - 其他文件作为附件",
-                "- 创建 PDF：直接调 `pdf_create(path, content, title)` — 不需要先写文件！内置 DroidSansFallback 字体，中文完美支持。生成后用 MEDIA: 交付。",
-                "  - 一封到底：pdf_create 接受 markdown 字符串，一步生成 PDF。不要写 .md 中间文件。",
+                "- 创建 PDF：用 `nano-pdf` 技能或 CLI — 先写 markdown 文件，再用 `terminal` 调 `nano-pdf create <输入.md> <输出.pdf>` 一步生成。Hermes 对齐。",
                 "  - 做完直接发 MEDIA: 路径，用户能立即下载",
                 "- 中文回复，除非用户指定其他语言",
                 "",
@@ -1411,7 +1408,7 @@ class GatewayServer:
                 "跨会话记忆。保存：纠正/偏好/环境事实。不保存：任务进度/临时 TODO。用 session_search 召回历史。",
                 "",
                 "## 平台规范",
-                "飞书（Lark）：支持 Markdown。MEDIA:/path 发送文件。pdf_create 创建 PDF 后 MEDIA: 交付。中文回复。",
+                "飞书（Lark）：支持 Markdown。MEDIA:/path 发送文件。用 nano-pdf 创建 PDF 后 MEDIA: 交付。中文回复。",
             ])
 
         # ── Dynamic tool list (compact — names only to save tokens) ──

@@ -46,8 +46,6 @@ _DRAGON_CORE_TOOLS: List[str] = [
     "cronjob",
     # Cross-platform messaging
     "send_message",
-    # PDF creation (CRITICAL — embedded DroidSansFallback font, full CJK)
-    "pdf_create",
     # Document reading
     "pdf_read", "docx_read",
     # Browser automation
@@ -131,7 +129,7 @@ TOOLSETS: Dict[str, Dict] = {
     "document": {
         "description": "Document creation and reading (PDF, DOCX, PPTX)",
         "tools": [
-            "pdf_create", "pdf_read", "pdf_extract",
+            "pdf_read", "pdf_extract",
             "docx_read", "pptx_read", "pptx_create",
             "ocr",
         ],

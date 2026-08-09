@@ -52,7 +52,6 @@ from dragon.tool.builtins.documents import (
     tool_pdf_extract,
     tool_docx_read,
 )
-from dragon.tool.builtins.pdf_create import tool_pdf_create
 from dragon.tool.builtins.email import (
     tool_email_send,
     tool_email_search,
@@ -1549,15 +1548,6 @@ def register_builtins(registry: ToolRegistry) -> None:
         category="productivity",
         timeout_secs=15,
     )(tool_feishu_drive_list_comment_replies)
-
-    # ── PDF Create ──────────────────────────────────────────────
-    registry.register(
-        name="pdf_create",
-        description="Create a PDF from markdown text. FULL Chinese/CJK support via embedded TrueType font — handles mixed Chinese+English perfectly. Zero-dependency (stdlib only). Supports headings, bold, italic, code, lists, page breaks (---). Just call this directly for any PDF with Chinese text; no need to install anything. Hermes-aligned: pdf_create(path, content, title, author).",
-        tags=["document", "pdf", "markdown", "create"],
-        category="productivity",
-        timeout_secs=30,
-    )(tool_pdf_create)
 
     # ── Cronjob ─────────────────────────────────────────────────
     registry.register(
