@@ -1098,7 +1098,7 @@ class MessageProcessor:
                         "Skills that aren't maintained become liabilities.", "",
                         "<available_skills>",
                     ]
-                    for name, desc in skill_entries[:50]:
+                    for name, desc in skill_entries:
                         lines.append("  %s: %s" % (name, desc))
                     lines.append("</available_skills>")
                     skills_catalog = "\n".join(lines)
@@ -1515,7 +1515,7 @@ class GatewayServer:
                         "skill_manage(action='patch') — don't wait to be asked.", "",
                         "<available_skills>",
                     ]
-                    for name, desc in skill_entries[:50]:
+                    for name, desc in skill_entries:
                         lines.append(f"  {name}: {desc}")
                     lines.append("</available_skills>")
                     skills_catalog = "\n".join(lines)
