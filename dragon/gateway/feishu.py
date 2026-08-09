@@ -1173,6 +1173,10 @@ class FeishuAdapter(PlatformAdapter):
             self._last_progress_edit_time = now
             if is_final:
                 self._last_progress_id = ""
+            elif not ok:
+                # Edit failed (e.g. message deleted) — clear ID so next call sends new msg
+                logger.warning("[Feishu] Progress edit failed, resetting progress_id")
+                self._last_progress_id = ""
             return self._last_progress_id if ok else ""
         else:
             # First call: send new message

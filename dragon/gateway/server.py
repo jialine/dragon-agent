@@ -467,6 +467,7 @@ class MessageProcessor:
         try:
             print(f"[PROC_DEBUG] entering for loop, max_iter={self.max_tool_iterations}", flush=True)
             thinking_only_count = 0  # guard against reasoning-model infinite loop
+            _last_tc_signatures = []  # guard against stuck tool-call loops (last 6 sigs)
             for iteration in range(self.max_tool_iterations):
                 print(f"[PROC_DEBUG] iter={iteration}", flush=True)
                 # Steer check
@@ -654,7 +655,25 @@ class MessageProcessor:
                     # Legacy: text-based ```tool_call / <tool_call> parsing
                     tool_calls = self._parse_tool_calls(response_text)
 
+                # ── Stuck detection: same tool calls 6x in a row → abort ──
+                if tool_calls:
+                    tc_sig = tuple(sorted(tc["name"] for tc in tool_calls))
+                    _last_tc_signatures.append(tc_sig)
+                    if len(_last_tc_signatures) > 6:
+                        _last_tc_signatures.pop(0)
+                    if len(_last_tc_signatures) == 6 and len(set(_last_tc_signatures)) == 1:
+                        stuck_tools = ', '.join(_last_tc_signatures[0])
+                        logger.error("[Processor] STUCK DETECTED: %s repeated 6x — aborting", stuck_tools)
+                        response_text = (
+                            f"⚠️ 任务卡住了 — 连续6次调用相同工具 ({stuck_tools}) 没有进展，已自动中止。\n"
+                            f"请简化任务重试，或发送「/new」清除上下文后重新开始。"
+                        )
+                        tool_calls = []  # force text response
+                        _last_tc_signatures = []
+
                 if not tool_calls:
+                    # No tool calls — clear stuck guard
+                    _last_tc_signatures = []
                     # No tool calls — but check if this is thinking-only
                     msg = result.raw["choices"][0]["message"] if hasattr(result, "raw") else {}
                     has_reasoning = bool(msg.get("reasoning_content", ""))
