@@ -270,52 +270,44 @@ def update_systemd_service(app_id: str, app_secret: str):
     service_dir = Path.home() / ".config" / "systemd" / "user"
     service_file = service_dir / "dragon-gateway.service"
     
-    # Check existing service (system or user level)
-    system_service = Path("/etc/systemd/system/dragon-gateway.service")
-    if not service_file.exists() and not system_service.exists():
-        print(f"  {YELLOW}⚠ systemd 服务不存在，创建用户级服务...{NC}")
-        _create_user_service(app_id, app_secret)
-        return
-    
-    # Prefer user-level service
-    target = service_file if service_file.exists() else system_service
-    use_sudo = not service_file.exists()
-    
-    try:
-        content = target.read_text()
-        lines = content.splitlines()
-        new_lines = []
-        found_feishu_id = False
-        found_feishu_secret = False
-        
-        for line in lines:
-            if line.strip().startswith("Environment=FEISHU_APP_ID="):
+    # If user-level service exists, update it in-place
+    if service_file.exists():
+        try:
+            content = service_file.read_text()
+            lines = content.splitlines()
+            new_lines = []
+            found_feishu_id = False
+            found_feishu_secret = False
+            
+            for line in lines:
+                if line.strip().startswith("Environment=FEISHU_APP_ID="):
+                    new_lines.append(f"Environment=FEISHU_APP_ID={app_id}")
+                    found_feishu_id = True
+                elif line.strip().startswith("Environment=FEISHU_APP_SECRET="):
+                    new_lines.append(f"Environment=FEISHU_APP_SECRET={app_secret}")
+                    found_feishu_secret = True
+                else:
+                    new_lines.append(line)
+            
+            if not found_feishu_id:
                 new_lines.append(f"Environment=FEISHU_APP_ID={app_id}")
-                found_feishu_id = True
-            elif line.strip().startswith("Environment=FEISHU_APP_SECRET="):
+            if not found_feishu_secret:
                 new_lines.append(f"Environment=FEISHU_APP_SECRET={app_secret}")
-                found_feishu_secret = True
-            else:
-                new_lines.append(line)
-        
-        if not found_feishu_id:
-            new_lines.append(f"Environment=FEISHU_APP_ID={app_id}")
-        if not found_feishu_secret:
-            new_lines.append(f"Environment=FEISHU_APP_SECRET={app_secret}")
-        
-        target.write_text("\n".join(new_lines) + "\n")
-        print(f"  {GREEN}✓ 服务已更新 Feishu 凭证{NC}")
-        
-        # Reload and restart (user-level, no sudo)
-        import subprocess
-        if not use_sudo:
+            
+            service_file.write_text("\n".join(new_lines) + "\n")
+            print(f"  {GREEN}✓ 用户级服务已更新 Feishu 凭证{NC}")
+            
+            import subprocess
             subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True)
             subprocess.run(["systemctl", "--user", "restart", "dragon-gateway"], capture_output=True)
-        print(f"  {GREEN}✓ dragon-gateway 已重启{NC}")
-    except PermissionError:
-        print(f"  {YELLOW}⚠ 无权限修改 {target}，请手动编辑{NC}")
-    except Exception as e:
-        print(f"  {YELLOW}⚠ 更新失败: {e}{NC}")
+            print(f"  {GREEN}✓ dragon-gateway 已重启{NC}")
+        except Exception as e:
+            print(f"  {YELLOW}⚠ 更新失败: {e}{NC}")
+        return
+    
+    # No user-level service — create one (ignore old system-level, Hermes-aligned)
+    print(f"  {YELLOW}⚠ 未找到用户级服务，创建中...{NC}")
+    _create_user_service(app_id, app_secret)
 
 
 def _create_user_service(app_id: str, app_secret: str):
