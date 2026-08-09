@@ -38,53 +38,30 @@ console = Console() if HAS_RICH else None
 ENV_FILE = Path.home() / ".dragon" / ".env"
 CONFIG_FILE = Path.home() / ".dragon" / "config.yaml"
 
-# ── Provider Registry ────────────────────────────────────────────────
+# ── Dispatch Config (唯一入口: andlapi.cn / sangyuye.com) ──────────
 
-PROVIDERS = [
-    {"id": "agilemind", "env": "AGILEMIND_API_KEY", "label": "灵思引擎 (AgileMind)", "models": [
-        {"name": "qwen2-1.5b", "desc": "1.5B dense, 32K context, 消费级显卡",  "ctx": "256K", "tier": "self-hosted"},
-        {"name": "qwen3.6-35b-a3b",   "desc": "35B MoE, 128K context, 18 tok/s, 单卡可运行",      "ctx": "128K", "tier": "self-hosted"},
-    ], "url": "https://console.agilemind.ai", "base_url_env": "AGILEMIND_API_URL", "base_url_default": "https://api.agilemind.ai/v1"},
-    {"id": "openai",    "env": "OPENAI_API_KEY",    "label": "OpenAI",          "models": [
-        {"name": "gpt-4o",           "desc": "Best overall, 128K context, multimodal",          "ctx": "128K", "tier": "premium"},
-        {"name": "gpt-4o-mini",      "desc": "Fast and affordable, 128K context",                "ctx": "128K", "tier": "budget"},
-        {"name": "gpt-4.1",          "desc": "Latest, improved coding and reasoning",            "ctx": "1M",   "tier": "premium"},
-        {"name": "o4-mini",          "desc": "Fast reasoning model, cost-effective",              "ctx": "200K", "tier": "budget"},
-    ], "url": "https://platform.openai.com/api-keys"},
-    {"id": "deepseek",  "env": "DEEPSEEK_API_KEY",  "label": "DeepSeek",        "models": [
-        {"name": "deepseek-chat",     "desc": "General purpose, best value",                    "ctx": "128K", "tier": "budget"},
-        {"name": "deepseek-reasoner", "desc": "Advanced reasoning (R1), math and code",          "ctx": "128K", "tier": "premium"},
-    ], "url": "https://platform.deepseek.com/api_keys"},
-    {"id": "anthropic", "env": "ANTHROPIC_API_KEY", "label": "Anthropic",       "models": [
-        {"name": "claude-sonnet-4-20250514", "desc": "Best coding agent, 200K context",          "ctx": "200K", "tier": "premium"},
-        {"name": "claude-haiku-3.5",         "desc": "Fast, affordable, good for simple tasks",   "ctx": "200K", "tier": "budget"},
-        {"name": "claude-opus-4-20250514",   "desc": "Most capable, complex analysis",           "ctx": "200K", "tier": "premium"},
-    ], "url": "https://console.anthropic.com/keys"},
-    {"id": "google",    "env": "GOOGLE_API_KEY",    "label": "Google Gemini",   "models": [
-        {"name": "gemini-2.5-flash", "desc": "Fast, 1M context, great for large docs",          "ctx": "1M",   "tier": "budget"},
-        {"name": "gemini-2.5-pro",   "desc": "Most capable, 1M context, deep reasoning",         "ctx": "1M",   "tier": "premium"},
-    ], "url": "https://aistudio.google.com/apikey"},
-    {"id": "xai",       "env": "XAI_API_KEY",       "label": "xAI Grok",        "models": [
-        {"name": "grok-3", "desc": "DeepSearch reasoning, real-time knowledge",                "ctx": "128K", "tier": "premium"},
-    ], "url": "https://console.x.ai"},
-    {"id": "openrouter","env": "OPENROUTER_API_KEY","label": "OpenRouter",      "models": [
-        {"name": "openai/gpt-4o",            "desc": "OpenAI via OpenRouter",                    "ctx": "128K", "tier": "premium"},
-        {"name": "anthropic/claude-sonnet-4","desc": "Claude Sonnet via OpenRouter",              "ctx": "200K", "tier": "premium"},
-        {"name": "google/gemini-2.5-flash",  "desc": "Gemini Flash via OpenRouter",              "ctx": "1M",   "tier": "budget"},
-    ], "url": "https://openrouter.ai/keys"},
-    {"id": "moonshot",  "env": "MOONSHOT_API_KEY",  "label": "Moonshot/Kimi",   "models": [
-        {"name": "moonshot-v1-8k",  "desc": "Chinese-optimized, 8K context",                    "ctx": "8K",   "tier": "budget"},
-        {"name": "kimi-k2",         "desc": "Latest Kimi, strong Chinese reasoning",             "ctx": "128K", "tier": "premium"},
-    ], "url": "https://platform.moonshot.cn/console/api-keys"},
-    {"id": "together",  "env": "TOGETHER_API_KEY",  "label": "Together AI",     "models": [
-        {"name": "meta-llama/Llama-4-Maverick", "desc": "Open-source, strong general purpose",   "ctx": "128K", "tier": "budget"},
-    ], "url": "https://api.together.xyz/settings/api-keys"},
-    {"id": "groq",      "env": "GROQ_API_KEY",      "label": "Groq",            "models": [
-        {"name": "llama-3.3-70b", "desc": "Ultra-fast inference, great latency",                 "ctx": "128K", "tier": "budget"},
-    ], "url": "https://console.groq.com/keys"},
-    {"id": "mistral",   "env": "MISTRAL_API_KEY",   "label": "Mistral AI",      "models": [
-        {"name": "mistral-large", "desc": "Strong multilingual, 128K context",                  "ctx": "128K", "tier": "premium"},
-    ], "url": "https://console.mistral.ai/api-keys"},
+# Dragon 所有 LLM 调用统一走 dispatch 网关，不直连任何第三方 API
+DISPATCH_CONFIG = {
+    "id": "dispatch",
+    "env": "DEEPSEEK_API_KEY",  # 兼容旧环境变量，实际用 DRAGON_API_KEY
+    "label": "andlapi.cn 调度网关",
+    "description": "DeepSeek V4 Pro · GPT-4o · Claude · Gemini — 一个 Key 全搞定",
+    "register_url": "https://api.andlapi.cn",
+    "alt_url": "https://api.sangyuye.com",
+}
+
+PROVIDERS = [  # 保留变量名以兼容旧代码，但只包含 dispatch
+    {
+        "id": "dispatch",
+        "env": "DEEPSEEK_API_KEY",
+        "label": "andlapi.cn / sangyuye.com",
+        "models": [
+            {"name": "deepseek-v4-pro", "desc": "DeepSeek V4 Pro, best all-around", "ctx": "128K", "tier": "premium"},
+            {"name": "deepseek-chat", "desc": "DeepSeek V3, best value", "ctx": "128K", "tier": "budget"},
+            {"name": "gpt-4o", "desc": "OpenAI GPT-4o, multimodal", "ctx": "128K", "tier": "premium"},
+        ],
+        "url": "https://api.andlapi.cn",
+    }
 ]
 
 GATEWAY_PLATFORMS = [
@@ -149,18 +126,7 @@ def _confirm(text, default=True):
         return default if not a else a in ("y", "yes")
 
 def _check_agilemind():
-    """Check if AgileMind Engine API is configured.
-
-    Returns the API base URL if AGILEMIND_API_URL or AGILEMIND_API_KEY is set,
-    otherwise None.
-    """
-    api_url = os.getenv("AGILEMIND_API_URL", "")
-    api_key = os.getenv("AGILEMIND_API_KEY", "")
-    if api_key:
-        url = api_url or "https://api.agilemind.ai/v1"
-        return url
-    if api_url:
-        return api_url  # URL set but no key — show as available but unauthenticated
+    """AgileMind removed — all calls now go through dispatch (andlapi.cn)."""
     return None
 
 
@@ -220,120 +186,77 @@ def setup_welcome():
     )
 
 def setup_model():
-    """Step: Choose default model and provider."""
-    _panel("📦 Model & Provider", "Choose your default AI model.", style="bold cyan")
+    """Step: Choose default model from dispatch (andlapi.cn)."""
+    _panel("📦 Model & Provider", "所有模型通过 andlapi.cn 调度网关接入", style="bold cyan")
 
     env = _load_env()
     cfg = _load_config()
 
-    # Check if AgileMind Engine API is configured
-    agilemind_url = _check_agilemind()
-    if agilemind_url:
-        _print(f"  🐉 灵思引擎 API 已配置: {agilemind_url}", style="bold green")
-
-    # Show currently configured providers
-    configured = []
-    for p in PROVIDERS:
-        key = env.get(p["env"]) or os.getenv(p["env"], "")
-        key_status = "✓" if key else "○"
-        configured.append((key_status, p["id"], p["label"]))
-
-    _table("Providers", ["Status", "Provider", "API Key"],
-           [(s, n, "✓ configured" if s == "✓" else "not set")
-            for s, n, _ in configured])
-
-    # Auto-select AgileMind if API key is present
-    if agilemind_url and os.getenv("AGILEMIND_API_KEY"):
-        _print("\n  🐉 灵思引擎 API Key 已配置，自动设为默认", style="bold green")
-        provider = next(p for p in PROVIDERS if p["id"] == "agilemind")
-        cfg["provider"] = cfg.get("provider", {})
-        cfg["provider"]["default"] = "agilemind"
-        cfg["provider"]["agilemind"] = {"model": provider["models"][0]["name"]}
-        _print(f"  ✓ 默认: {provider['label']} / {provider['models'][0]['name']} (256K)", style="green")
-        _save_config(cfg)
-        _print("  ✓ Config saved", style="green")
+    # Check if API key is set
+    key = env.get("DEEPSEEK_API_KEY") or os.getenv("DEEPSEEK_API_KEY", "")
+    if key:
+        _print(f"  ✓ API Key: {'*' * 12} (已配置)", style="green")
+    else:
+        _print(f"  ○ 未配置 API Key，请先运行: dragon setup providers", style="yellow")
         return
 
-    # Pick provider
-    _print("\n  Select default provider:", style="bold")
-    for i, p in enumerate(PROVIDERS, 1):
-        status = "✓" if env.get(p["env"]) else " "
-        model_names = [m["name"] for m in p["models"][:2]]
-        _print(f"  [{status}] {i}. {p['label']}  ({', '.join(model_names)})")
-
+    _print(f"\n  调度网关: {CYAN}api.andlapi.cn{NC}")
+    _print(f"  备用网关: {CYAN}api.sangyuye.com{NC}")
+    
+    # Pick default model
+    _print(f"\n  可用模型:", style="bold")
+    for i, m in enumerate(PROVIDERS[0]["models"], 1):
+        _print(f"  {i}. {m['name']} — {m['desc']} ({m['ctx']})")
+    
     try:
-        choice = input("\n  Number (or Enter to skip): ").strip()
-        if choice.isdigit() and 1 <= int(choice) <= len(PROVIDERS):
-            provider = PROVIDERS[int(choice) - 1]
-            cfg["provider"] = cfg.get("provider", {})
-            cfg["provider"]["default"] = provider["id"]
-
-            # Pick model for this provider
-            models = provider["models"]
-            _print(f"\n  Models for {provider['label']}:", style="bold")
-            _table(
-                f"Models for {provider['label']}",
-                ["#", "Model", "Context", "Tier", "Description"],
-                [
-                    (str(i), m["name"], m["ctx"], m["tier"].upper(), m["desc"])
-                    for i, m in enumerate(models, 1)
-                ]
-            )
-
-            m_choice = input(f"\n  Model number [1]: ").strip()
-            idx = int(m_choice) - 1 if m_choice.isdigit() and 1 <= int(m_choice) <= len(models) else 0
-            model = models[idx]
-            cfg["provider"][provider["id"]] = {"model": model["name"]}
-
-            _print(f"  ✓ Default: {provider['label']} / {model['name']} ({model['ctx']})", style="green")
+        choice = input(f"\n  选择默认模型 [1]: ").strip()
+        idx = int(choice) - 1 if choice.isdigit() and 1 <= int(choice) <= len(PROVIDERS[0]["models"]) else 0
+        model = PROVIDERS[0]["models"][idx]
+        cfg["dispatch"] = cfg.get("dispatch", {})
+        cfg["dispatch"]["global_api"] = cfg["dispatch"].get("global_api", {})
+        cfg["dispatch"]["global_api"]["model"] = model["name"]
+        cfg["dispatch"]["global_api"]["base_url"] = "https://api.andlapi.cn/v1"
+        _save_config(cfg)
+        _print(f"  ✓ 默认: {model['name']} ({model['ctx']})", style="green")
     except (EOFError, KeyboardInterrupt):
         pass
 
-    _save_config(cfg)
     _print("  ✓ Config saved", style="green")
 
 
 def setup_providers(quick=False):
-    """Step: Configure API keys for providers."""
-    _panel("🔑 Provider API Keys", "At least one provider is required.\nGet free keys from the URLs below.", style="bold cyan")
+    """Step: Configure dispatch API key."""
+    _panel("🔑 API Key", "Dragon 统一走 andlapi.cn 调度网关，一个 Key 用所有模型\n注册: https://api.andlapi.cn", style="bold cyan")
 
     env = _load_env()
-    added = 0
+    key = env.get("DEEPSEEK_API_KEY") or os.getenv("DEEPSEEK_API_KEY", "")
 
-    for p in PROVIDERS:
-        existing = env.get(p["env"]) or os.getenv(p["env"], "")
-        if existing:
-            _print(f"  ✓ {p['label']}: {'*' * 12} (configured)", style="green")
-            if quick:
-                env[p["env"]] = existing
-                continue
-            if _confirm(f"Keep {p['label']} key?"):
-                env[p["env"]] = existing
-                continue
-            else:
-                del env[p["env"]]
-
+    if key:
+        _print(f"  ✓ API Key: {'*' * 12} (已配置)", style="green")
         if quick:
-            continue
+            return
+        if _confirm("更换 API Key?"):
+            key = ""
+        else:
+            return
 
-        _print(f"\n  {p['label']}", style="bold yellow")
-        _print(f"  Get key: {p['url']}")
-        _print(f"  Models:  {', '.join(p['models'][:3])}")
-
-        if not _confirm("Configure this provider?", default=False):
-            continue
-
-        key = _prompt(p["env"], password=True)
-        if key:
-            env[p["env"]] = key
-            added += 1
-            _print(f"  ✓ {p['label']} key saved", style="green")
-
-    _save_env(env)
-    if quick:
-        _print(f"  ✓ Loaded {len([1 for p in PROVIDERS if env.get(p['env'])])} keys from environment", style="green")
-    else:
-        _print(f"  ✓ {added} new keys configured", style="green")
+    _print(f"\n  获取 Key: {CYAN}https://api.andlapi.cn{NC} (注册送 ¥10)")
+    _print(f"  备用:     {CYAN}https://api.sangyuye.com{NC}")
+    
+    key = _prompt("DEEPSEEK_API_KEY", password=True)
+    if key:
+        env["DEEPSEEK_API_KEY"] = key
+        _save_env(env)
+        # Update config.yaml dispatch
+        cfg = _load_config()
+        cfg["dispatch"] = cfg.get("dispatch", {})
+        cfg["dispatch"]["global_api"] = cfg["dispatch"].get("global_api", {})
+        cfg["dispatch"]["global_api"]["api_key"] = key
+        cfg["dispatch"]["global_api"]["base_url"] = "https://api.andlapi.cn/v1"
+        if not cfg["dispatch"]["global_api"].get("model"):
+            cfg["dispatch"]["global_api"]["model"] = "deepseek-v4-pro"
+        _save_config(cfg)
+        _print(f"  ✓ API Key 已保存", style="green")
 
 
 def setup_gateway():
@@ -439,10 +362,9 @@ def run_setup(section="", feishu_only=False, providers_only=False, quick=False):
     """
     if quick:
         env = _load_env()
-        for p in PROVIDERS:
-            v = os.getenv(p["env"], "")
-            if v:
-                env[p["env"]] = v
+        key = os.getenv("DEEPSEEK_API_KEY", "")
+        if key:
+            env["DEEPSEEK_API_KEY"] = key
         for plat in GATEWAY_PLATFORMS:
             for v in plat["envs"]:
                 val = os.getenv(v, "")
@@ -452,16 +374,14 @@ def run_setup(section="", feishu_only=False, providers_only=False, quick=False):
         _print(f"  ✓ Quick setup: loaded {len(env)} vars from environment", style="green")
 
         if not CONFIG_FILE.exists():
-            agilemind_url = _check_agilemind()
-            has_agilemind = bool(agilemind_url and os.getenv("AGILEMIND_API_KEY"))
-            default_provider = "agilemind" if has_agilemind else "deepseek"
-            default_model = "qwen2-1.5b" if has_agilemind else "deepseek-chat"
             _save_config({
-                "provider": {"default": default_provider, default_provider: {"model": default_model}},
-                "server": {"host": "0.0.0.0", "port": 8000},
+                "dispatch": {
+                    "global_api": {
+                        "model": "deepseek-v4-pro",
+                        "base_url": "https://api.andlapi.cn/v1",
+                    }
+                },
             })
-            if has_agilemind:
-                _print("  🐉 灵思引擎已设为默认", style="green")
         return
 
     # Route to specific section
