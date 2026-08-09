@@ -314,12 +314,17 @@ def _load_dispatch_config():
             dispatch = cfg.get('dispatch', {})
             api = dispatch.get('global_api', {})
             if api:
-                return {
+                result = {
                     "api_key": api.get("api_key") or os.getenv(api.get("api_key_env", ""), ""),
                     "base_url": api.get('base_url'),
                     "model": api.get('model', 'gpt-4o'),
                     "timeout_secs": api.get('timeout_secs', 60),
                 }
+                # Also read max_turns from dispatch, agent, or global_api
+                _maxturns = api.get('max_turns') or cfg.get('agent', {}).get('max_turns')
+                if _maxturns:
+                    result['max_turns'] = int(_maxturns)
+                return result
     # Also check agent section for max_turns
     for p in paths:
         if os.path.exists(p):
