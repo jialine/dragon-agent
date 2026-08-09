@@ -439,6 +439,45 @@ class MessageProcessor:
         steer_injected = 0
         _current_tool_name = "thinking..."  # for progress display
         _loop_start = time.monotonic()
+        _current_stage = ""  # track workflow stage for notifications
+
+        # Stage classifier: map tool names to stage labels
+        _TOOL_STAGE = {
+            "web_search": "research", "http_get": "research", "web_fetch": "research",
+            "load_skill": "research", "skill_view": "research", "skill_manage": "research",
+            "session_search": "research", "search_files": "research", "memory": "research",
+            "read_file": "reading",
+            "execute_code": "processing", "terminal": "processing",
+            "write_file": "generating", "pdf_create": "generating", "patch": "generating",
+            "send_message": "delivering",
+        }
+        _STAGE_EMOJI = {
+            "research": "\U0001f50d", "reading": "\U0001f4d6",
+            "processing": "\u2699\ufe0f", "generating": "\U0001f4dd",
+            "delivering": "\U0001f4e4"
+        }
+        _STAGE_NAMES = {
+            "research": "正在调研", "reading": "正在分析文件",
+            "processing": "正在处理", "generating": "正在生成",
+            "delivering": "正在发送"
+        }
+
+        async def _maybe_notify_stage_change(new_stage: str, detail: str = ""):
+            nonlocal _current_stage
+            if new_stage and new_stage != _current_stage and self._progress_callback:
+                emoji = _STAGE_EMOJI.get(new_stage, "")
+                name = _STAGE_NAMES.get(new_stage, new_stage)
+                msg = f"{emoji} {name}"
+                if detail:
+                    msg += f"\uff1a{detail}"
+                try:
+                    await self._progress_callback(chat_id, msg)
+                except Exception as e:
+                    logger.warning("[Processor] stage notify error: %s", e)
+                _current_stage = new_stage
+
+        # Initial notification
+        await _maybe_notify_stage_change("research")
 
         # Progress reporter (background, every 3 min)
         progress_task = None
@@ -654,6 +693,26 @@ class MessageProcessor:
                 else:
                     # Legacy: text-based ```tool_call / <tool_call> parsing
                     tool_calls = self._parse_tool_calls(response_text)
+
+                # ── Stage change detection ──────────────────────
+                if tool_calls:
+                    stage = None
+                    detail = ""
+                    for tc in tool_calls:
+                        name = tc.get("name", "")
+                        s = _TOOL_STAGE.get(name, "")
+                        if s:
+                            stage = s
+                            # Add detail for key tools
+                            if name == "pdf_create" and tc.get("arguments", {}).get("title"):
+                                detail = tc["arguments"]["title"]
+                            elif name == "write_file":
+                                path = tc.get("arguments", {}).get("path", "")
+                                if path.endswith(".pdf"):
+                                    stage = "generating"
+                                    detail = "PDF"
+                            break  # first tool determines the stage
+                    await _maybe_notify_stage_change(stage or "", detail)
 
                 # ── Stuck detection: same tool calls 6x in a row → abort ──
                 if tool_calls:
