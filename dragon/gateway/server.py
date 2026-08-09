@@ -1350,7 +1350,6 @@ class GatewayServer:
                 "  - 图片 (.jpg, .png, .webp) 直接内嵌显示",
                 "  - 音频作为语音消息发送",
                 "  - 其他文件作为附件",
-                "- ⚠️ PDF 创建铁律：禁止 execute_code 生成 PDF，禁止 Python PDF 库。唯一流程：① write_file 写 .md → ② terminal: nano-pdf create in.md out.pdf → ③ MEDIA:out.pdf",
                 "- 中文回复，除非用户指定其他语言",
                 "",
                 "## 当前会话上下文",
@@ -1407,7 +1406,7 @@ class GatewayServer:
                 "跨会话记忆。保存：纠正/偏好/环境事实。不保存：任务进度/临时 TODO。用 session_search 召回历史。",
                 "",
                 "## 平台规范",
-                "飞书（Lark）：支持 Markdown。MEDIA:/path 发送文件。用 nano-pdf 创建 PDF 后 MEDIA: 交付。中文回复。",
+                "飞书（Lark）：支持 Markdown。MEDIA:/path 发送文件（图片内嵌、音频语音消息、其他文件附件）。中文回复。",
             ])
 
         # ── Dynamic tool list (compact — names only to save tokens) ──
