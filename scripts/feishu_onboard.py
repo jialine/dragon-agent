@@ -338,6 +338,31 @@ def main():
     print(f"  {BOLD}╚══════════════════════════════════════╝{NC}")
     print()
 
+    # ── Check existing Feishu config ──
+    existing_app_id = os.getenv("FEISHU_APP_ID", "")
+    existing_app_secret = os.getenv("FEISHU_APP_SECRET", "")
+    
+    env_path = Path.home() / "dragon-agent" / ".env"
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            if line.startswith("FEISHU_APP_ID=") and not existing_app_id:
+                existing_app_id = line.split("=", 1)[1].strip('"').strip("'")
+            elif line.startswith("FEISHU_APP_SECRET=") and not existing_app_secret:
+                existing_app_secret = line.split("=", 1)[1].strip('"').strip("'")
+    
+    if existing_app_id and existing_app_secret:
+        print(f"  {GREEN}✓ 检测到已有飞书配置{NC}")
+        print(f"  App ID:     {CYAN}{existing_app_id}{NC}")
+        print(f"  App Secret: {CYAN}{existing_app_secret[:8]}...{NC}")
+        print()
+        choice = input(f"  {BOLD}[K] 保持现有配置  [R] 重新创建 (默认 K): {NC}").strip().lower()
+        if choice != "r":
+            print(f"  {GREEN}✓ 保持现有配置，跳过创建{NC}")
+            update_systemd_service(existing_app_id, existing_app_secret)
+            return
+        print(f"  {YELLOW}将重新创建飞书应用...{NC}")
+        print()
+
     # Step 1: Init
     print(f"{BOLD}[1/5]{NC} 连接飞书...")
     url = f"{ACCOUNTS_BASE}{REGISTRATION_PATH}"
