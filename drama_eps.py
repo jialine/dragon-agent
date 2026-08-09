@@ -238,9 +238,9 @@ for ep_num in [1, 2]:
 def feishu_send(title, text, video_paths):
     Send completion notification + videos to Feishu user
     import httpx
-    APP_ID = cli_aab694730bb8dcd6
-    APP_SECRET = 3lxuIiJiTwxwYaXYXhdSZUe4YdY1ssZP
-    OPEN_ID = ou_640a24ce510f7fa22bab74af213e4cbb
+    APP_ID = os.environ.get("FEISHU_APP_ID", "cli_aab694730bb8dcd6")
+    APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "3lxuIiJiTwxwYaXYXhdSZUe4YdY1ssZP")
+    OPEN_ID = os.environ.get("FEISHU_OPEN_ID", "ou_640a24ce510f7fa22bab74af213e4cbb")
     
     # Get tenant token
     r = httpx.post(https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal,

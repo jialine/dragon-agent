@@ -2,9 +2,9 @@
 """Feishu push for drama_eps completion"""
 import httpx, json, sys, os
 
-APP_ID = "cli_aab694730bb8dcd6"
-APP_SECRET = "3lxuIiJiTwxwYaXYXhdSZUe4YdY1ssZP"
-OPEN_ID = "ou_640a24ce510f7fa22bab74af213e4cbb"
+APP_ID = os.environ.get("FEISHU_APP_ID", "cli_aab694730bb8dcd6")
+APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "3lxuIiJiTwxwYaXYXhdSZUe4YdY1ssZP")
+OPEN_ID = os.environ.get("FEISHU_OPEN_ID", "ou_640a24ce510f7fa22bab74af213e4cbb")
 
 title = sys.argv[1] if len(sys.argv) > 1 else "短剧完成"
 text = sys.argv[2] if len(sys.argv) > 2 else ""
