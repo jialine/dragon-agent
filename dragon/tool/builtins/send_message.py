@@ -85,7 +85,7 @@ async def tool_send_message(
             if not token:
                 return json.dumps({"error": "Feishu authentication failed"})
 
-            chat_id = "oc_683756dd47394fb46ef5693cd1187b4c"  # Default home chat
+            chat_id = os.getenv("FEISHU_DEFAULT_CHAT_ID", "oc_683756dd47394fb46ef5693cd1187b4c")  # Default home chat, override via env
             receive_id_type = "chat_id"
             if target and ":" in target:
                 parts = target.split(":", 1)

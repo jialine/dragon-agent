@@ -14,15 +14,15 @@ FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 FFPROBE = FFMPEG.replace("ffmpeg", "ffprobe")
 
 # ===== CONFIG =====
-WAN_KEY = "sk-nve...ktjd"
-WAN_BASE = "https://api.lingyuncx.com"
-LLM_URL = "https://api.lingyuncx.com/v1/chat/completions"
-LLM_MODEL = "qwen3.6-flash"
-OUT_DIR = Path("/tmp/xianxia_drama")
+WAN_KEY = os.environ.get("WAN_API_KEY", "sk-nve...ktjd")
+WAN_BASE = os.environ.get("WAN_API_BASE", "https://api.lingyuncx.com")
+LLM_URL = os.environ.get("LLM_API_URL", "https://api.lingyuncx.com/v1/chat/completions")
+LLM_MODEL = os.environ.get("LLM_MODEL", "qwen3.6-flash")
+OUT_DIR = Path(os.environ.get("XIANXIA_OUT_DIR", "/tmp/xianxia_drama"))
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-SIGNOSS_URL = "https://api.andlapi.cn/signoss/upload"
-SIGNOSS_KEY = "sk-0c12c3fc39512eafa1a76adb07d25849abd10eb4305be405"
+SIGNOSS_URL = os.environ.get("SIGNOSS_URL", "https://api.andlapi.cn/signoss/upload")
+SIGNOSS_KEY = os.environ.get("SIGNOSS_KEY", "sk-0c1...e405")
 
 # ===== HELPERS =====
 def log(msg):
