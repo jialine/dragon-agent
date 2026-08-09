@@ -36,6 +36,7 @@ async def tool_send_message(
     target: str = "",
     message: str = "",
     file_path: str = "",
+    file_paths: list[str] | None = None,
 ):
     """Send a message to a connected messaging platform. Hermes-aligned.
 
@@ -43,7 +44,8 @@ async def tool_send_message(
         action: 'send' to send, 'list' to list available targets
         target: 'feishu' (default home chat), 'feishu:chat_id' for specific chat
         message: Message text to send
-        file_path: Optional path to a file/image to send as attachment
+        file_path: Optional single file/image to attach
+        file_paths: Optional list of file/image paths — batch send in one call
     """
     try:
         if action == "list":
@@ -78,61 +80,53 @@ async def tool_send_message(
             }, ensure_ascii=False)
 
         elif action == "send":
-            if not message and not file_path:
-                return json.dumps({"error": "message or file_path required"})
+            # Normalize: merge file_path and file_paths
+            all_files = []
+            if file_paths:
+                all_files.extend(file_paths)
+            if file_path:
+                all_files.append(file_path)
+            # Deduplicate while preserving order
+            seen = set()
+            all_files = [f for f in all_files if not (f in seen or seen.add(f))]
+
+            if not message and not all_files:
+                return json.dumps({"error": "message or file_path(s) required"})
 
             token = await _get_token()
             if not token:
                 return json.dumps({"error": "Feishu authentication failed"})
 
-            chat_id = os.getenv("FEISHU_DEFAULT_CHAT_ID", "oc_683756dd47394fb46ef5693cd1187b4c")  # Default home chat, override via env
+            chat_id = os.getenv("FEISHU_DEFAULT_CHAT_ID", "oc_683756dd47394fb46ef5693cd1187b4c")
             receive_id_type = "chat_id"
             if target and ":" in target:
                 parts = target.split(":", 1)
                 if len(parts) == 2:
                     chat_id = parts[1]
-            # If target looks like an open_id (starts with ou_), use open_id receiver type
             if target and target.startswith("ou_"):
                 chat_id = target
                 receive_id_type = "open_id"
 
-            # Send text
-            if message and not file_path:
-                body = {
-                    "receive_id": chat_id,
-                    "msg_type": "text",
-                    "content": json.dumps({"text": message[:4096]}),
-                    "receive_id_type": receive_id_type,
-                }
-                url = f"{FEISHU_API_BASE}/im/v1/messages"
-                headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-                async with httpx.AsyncClient(timeout=15) as c:
-                    r = await c.post(url, headers=headers, json=body)
-                    data = r.json()
-                    if data.get("code") == 0:
-                        return json.dumps({"status": "sent", "message_id": data.get("data", {}).get("message_id", "")})
-                    return json.dumps({"error": data.get("msg", "Unknown error"), "code": data.get("code")})
-
-            # Send file/image
-            if file_path and os.path.isfile(file_path):
-                ext = os.path.splitext(file_path)[1].lower()
+            async def _upload_and_send(fp: str, token: str) -> dict:
+                """Upload a single file and send it as a message."""
+                if not os.path.isfile(fp):
+                    return {"error": f"File not found: {fp}"}
+                ext = os.path.splitext(fp)[1].lower()
                 is_image = ext in (".jpg", ".jpeg", ".png", ".webp", ".gif")
                 upload_type = "image" if is_image else "file"
 
-                # Detect file_type for Feishu API
                 _type_map = {
                     ".pdf": "pdf", ".doc": "doc", ".docx": "doc", ".xls": "xls",
                     ".xlsx": "xls", ".ppt": "ppt", ".pptx": "ppt",
                     ".mp4": "mp4", ".mp3": "opus", ".opus": "opus",
                 }
                 file_type_str = _type_map.get(ext, "stream")
-                file_name = os.path.basename(file_path)
+                file_name = os.path.basename(fp)
 
-                # Upload
                 upload_url = f"{FEISHU_API_BASE}/im/v1/{upload_type}s"
                 headers = {"Authorization": f"Bearer {token}"}
-                async with httpx.AsyncClient(timeout=30) as c:
-                    with open(file_path, "rb") as f:
+                async with httpx.AsyncClient(timeout=60) as c:
+                    with open(fp, "rb") as f:
                         if is_image:
                             files_data = {
                                 "image_type": (None, "message"),
@@ -147,10 +141,9 @@ async def tool_send_message(
                         r = await c.post(upload_url, headers=headers, files=files_data)
                         data = r.json()
                         if data.get("code") != 0:
-                            return json.dumps({"error": f"Upload failed: {data.get('msg')}"})
+                            return {"error": f"Upload failed: {data.get('msg')}", "file": fp}
                         file_key = data.get("data", {}).get(f"{upload_type}_key", "")
 
-                    # Send
                     msg_content = {f"{upload_type}_key": file_key}
                     body2 = {
                         "receive_id": chat_id,
@@ -158,15 +151,45 @@ async def tool_send_message(
                         "content": json.dumps(msg_content),
                         "receive_id_type": receive_id_type,
                     }
-                    r3 = await c.post(f"{FEISHU_API_BASE}/im/v1/messages",
-                                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                                     json=body2)
+                    r3 = await c.post(
+                        f"{FEISHU_API_BASE}/im/v1/messages",
+                        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                        json=body2,
+                    )
                     data3 = r3.json()
                     if data3.get("code") == 0:
-                        return json.dumps({"status": "sent", "type": upload_type, "message_id": data3.get("data", {}).get("message_id", "")})
-                    return json.dumps({"error": data3.get("msg", "Unknown")})
+                        return {"status": "sent", "type": upload_type,
+                                "message_id": data3.get("data", {}).get("message_id", ""),
+                                "file": fp}
+                    return {"error": data3.get("msg", "Unknown"), "file": fp}
 
-            return json.dumps({"error": "No message content to send"})
+            # Send text first if there is one
+            results = []
+            if message:
+                body = {
+                    "receive_id": chat_id,
+                    "msg_type": "text",
+                    "content": json.dumps({"text": message[:4096]}),
+                    "receive_id_type": receive_id_type,
+                }
+                url = f"{FEISHU_API_BASE}/im/v1/messages"
+                headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+                async with httpx.AsyncClient(timeout=15) as c:
+                    r = await c.post(url, headers=headers, json=body)
+                    data = r.json()
+                    if data.get("code") == 0:
+                        results.append({"status": "sent", "type": "text",
+                                        "message_id": data.get("data", {}).get("message_id", "")})
+                    else:
+                        results.append({"error": data.get("msg", "Unknown error"), "type": "text"})
+
+            # Send each file
+            for fp in all_files:
+                results.append(await _upload_and_send(fp, token))
+
+            if len(results) == 1:
+                return json.dumps(results[0])
+            return json.dumps({"status": "batch_done", "count": len(results), "results": results})
 
         else:
             return json.dumps({"error": f"Unknown action: {action}. Use 'send' or 'list'."})
