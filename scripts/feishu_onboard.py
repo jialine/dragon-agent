@@ -262,17 +262,29 @@ def configure_permissions(app_id: str, app_secret: str) -> dict:
 
 
 def update_systemd_service(app_id: str, app_secret: str):
-    """Update the dragon-gateway systemd service with Feishu credentials."""
-    service_file = Path("/etc/systemd/system/dragon-gateway.service")
-    if not service_file.exists():
-        print(f"  {YELLOW}⚠ systemd 服务不存在，跳过自动配置{NC}")
+    """Update the dragon-gateway user service with Feishu credentials.
+    
+    Hermes-aligned: user-level service, no sudo required.
+    Service file: ~/.config/systemd/user/dragon-gateway.service
+    """
+    service_dir = Path.home() / ".config" / "systemd" / "user"
+    service_file = service_dir / "dragon-gateway.service"
+    
+    # Check existing service (system or user level)
+    system_service = Path("/etc/systemd/system/dragon-gateway.service")
+    if not service_file.exists() and not system_service.exists():
+        print(f"  {YELLOW}⚠ systemd 服务不存在，创建用户级服务...{NC}")
+        _create_user_service(app_id, app_secret)
         return
     
+    # Prefer user-level service
+    target = service_file if service_file.exists() else system_service
+    use_sudo = not service_file.exists()
+    
     try:
-        content = service_file.read_text()
+        content = target.read_text()
         lines = content.splitlines()
         new_lines = []
-        updated_env = False
         found_feishu_id = False
         found_feishu_secret = False
         
@@ -280,11 +292,9 @@ def update_systemd_service(app_id: str, app_secret: str):
             if line.strip().startswith("Environment=FEISHU_APP_ID="):
                 new_lines.append(f"Environment=FEISHU_APP_ID={app_id}")
                 found_feishu_id = True
-                updated_env = True
             elif line.strip().startswith("Environment=FEISHU_APP_SECRET="):
                 new_lines.append(f"Environment=FEISHU_APP_SECRET={app_secret}")
                 found_feishu_secret = True
-                updated_env = True
             else:
                 new_lines.append(line)
         
@@ -293,18 +303,62 @@ def update_systemd_service(app_id: str, app_secret: str):
         if not found_feishu_secret:
             new_lines.append(f"Environment=FEISHU_APP_SECRET={app_secret}")
         
-        service_file.write_text("\n".join(new_lines) + "\n")
-        print(f"  {GREEN}✓ systemd 服务已更新 Feishu 凭证{NC}")
+        target.write_text("\n".join(new_lines) + "\n")
+        print(f"  {GREEN}✓ 服务已更新 Feishu 凭证{NC}")
         
-        # Reload and restart
+        # Reload and restart (user-level, no sudo)
         import subprocess
-        subprocess.run(["sudo", "systemctl", "daemon-reload"], capture_output=True)
-        subprocess.run(["sudo", "systemctl", "restart", "dragon-gateway"], capture_output=True)
+        if not use_sudo:
+            subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True)
+            subprocess.run(["systemctl", "--user", "restart", "dragon-gateway"], capture_output=True)
         print(f"  {GREEN}✓ dragon-gateway 已重启{NC}")
     except PermissionError:
-        print(f"  {YELLOW}⚠ 无权限修改 systemd 服务，请手动: sudo vim {service_file}{NC}")
+        print(f"  {YELLOW}⚠ 无权限修改 {target}，请手动编辑{NC}")
     except Exception as e:
-        print(f"  {YELLOW}⚠ systemd 更新失败: {e}{NC}")
+        print(f"  {YELLOW}⚠ 更新失败: {e}{NC}")
+
+
+def _create_user_service(app_id: str, app_secret: str):
+    """Create a user-level systemd service for dragon-gateway."""
+    service_dir = Path.home() / ".config" / "systemd" / "user"
+    service_dir.mkdir(parents=True, exist_ok=True)
+    
+    project_dir = Path(__file__).resolve().parent.parent
+    venv_python = project_dir / ".venv" / "bin" / "python3"
+    
+    service_content = f"""[Unit]
+Description=Dragon Agent Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={project_dir}
+Environment=PATH={project_dir}/.venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=FEISHU_APP_ID={app_id}
+Environment=FEISHU_APP_SECRET={app_secret}
+Environment=DEEPSEEK_API_KEY=${{DEEPSEEK_API_KEY:-sk-your-key}}
+ExecStart={venv_python} -m dragon gateway start --port 8090
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+"""
+    
+    service_file = service_dir / "dragon-gateway.service"
+    service_file.write_text(service_content)
+    print(f"  {GREEN}✓ 用户级服务已创建: {service_file}{NC}")
+    
+    import subprocess
+    subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True)
+    subprocess.run(["systemctl", "--user", "enable", "dragon-gateway"], capture_output=True)
+    subprocess.run(["systemctl", "--user", "start", "dragon-gateway"], capture_output=True)
+    print(f"  {GREEN}✓ dragon-gateway 已启动 (用户级, 开机自启){NC}")
+    
+    # Enable lingering so user services start on boot without login
+    subprocess.run(["loginctl", "enable-linger"], capture_output=True)
+    print(f"  {GREEN}✓ linger 已启用 (无需登录即启动){NC}")
 
 
 def print_next_steps(app_id: str, perm_result: dict):

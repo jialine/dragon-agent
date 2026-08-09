@@ -211,18 +211,20 @@ if [ "$START_GATEWAY" = "1" ]; then
         sed -i "s/port: 8090/port: $GATEWAY_PORT/" config.yaml 2>/dev/null || true
     fi
     
-    PORT="$GATEWAY_PORT" nohup python3 -m dragon gateway start > gateway.log 2>&1 &
+    python3 -m dragon gateway start --port "$GATEWAY_PORT" > gateway.log 2>&1 &
     GW_PID=$!
     sleep 3
     if kill -0 "$GW_PID" 2>/dev/null; then
         echo -e "  ${GREEN}✓${NC} Gateway 已启动 (PID: $GW_PID)"
         echo -e "  ${GREEN}✓${NC} 地址: ${CYAN}http://localhost:$GATEWAY_PORT${NC}"
         
-        # Install systemd service for auto-start on boot
-        SERVICE_FILE="/etc/systemd/system/dragon-gateway.service"
+        # Install user-level systemd service for auto-start on boot (Hermes-aligned, no sudo)
+        SERVICE_DIR="$HOME/.config/systemd/user"
+        SERVICE_FILE="$SERVICE_DIR/dragon-gateway.service"
         if [ ! -f "$SERVICE_FILE" ]; then
-            echo -e "  ${BOLD}安装 systemd 服务...${NC}"
-            sudo tee "$SERVICE_FILE" > /dev/null << SERVEOF
+            echo -e "  ${BOLD}安装用户级 systemd 服务...${NC}"
+            mkdir -p "$SERVICE_DIR"
+            cat > "$SERVICE_FILE" << SERVEOF
 [Unit]
 Description=Dragon Agent Gateway
 After=network-online.target
@@ -230,22 +232,21 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=$USER
 WorkingDirectory=$INSTALL_DIR
 Environment=PATH=$INSTALL_DIR/.venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-sk-your-key}
-Environment=PORT=$GATEWAY_PORT
-ExecStart=$INSTALL_DIR/.venv/bin/python3 -m dragon gateway start
+ExecStart=$INSTALL_DIR/.venv/bin/python3 -m dragon gateway start --port $GATEWAY_PORT
 Restart=on-failure
 RestartSec=10
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
 SERVEOF
-            sudo systemctl daemon-reload
-            sudo systemctl enable dragon-gateway
-            echo -e "  ${GREEN}✓${NC} systemd 服务已安装 (开机自启)"
-            echo -e "  ${DIM}管理:${NC} sudo systemctl {start|stop|restart|status} dragon-gateway"
+            systemctl --user daemon-reload
+            systemctl --user enable dragon-gateway
+            loginctl enable-linger 2>/dev/null || true
+            echo -e "  ${GREEN}✓${NC} 用户级服务已安装 (无需 sudo, 开机自启)"
+            echo -e "  ${DIM}管理:${NC} systemctl --user {start|stop|restart|status} dragon-gateway"
         fi
     else
         echo -e "  ${RED}✗${NC} Gateway 启动失败，查看 gateway.log"
