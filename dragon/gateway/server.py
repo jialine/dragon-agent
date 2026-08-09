@@ -1116,7 +1116,17 @@ class MessageProcessor:
             parts.extend(["", "USER PROFILE" + chr(10) + user_text])
         if memory_text:
             parts.extend(["", "MEMORY" + chr(10) + memory_text])
-        return "\n".join(parts)
+        result = "\n".join(parts)
+        # DEBUG: log assembled prompt structure
+        import re as _re
+        headings = _re.findall(r'^#{1,3}\s+.*', result, _re.MULTILINE)
+        logger.info(
+            "[PROC_DEBUG] prompt_len=%d headings=%s preview=%s",
+            len(result),
+            " → ".join(h.strip() for h in headings),
+            result[:2000],
+        )
+        return result
 
 
 # ────────────────────────────────────────────────────────────────────
