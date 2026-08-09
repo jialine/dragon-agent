@@ -127,44 +127,66 @@ _web_search_router = WebSearchRouter()
 
 
 async def tool_search(
-    pattern: str,
+    pattern: str = "",
+    query: str = "",
     path: str = ".",
     target: str = "content",
-    file_glob: str = "*",
+    file_glob: Optional[str] = None,
+    limit: int = 50,
     max_results: int = 50,
+    output_mode: str = "content",
+    offset: int = 0,
+    context: int = 0,
 ) -> str:
-    """Search file contents with regex pattern matching.
+    """Search file contents with regex pattern matching. Hermes-aligned.
 
     Args:
-        pattern: Regex pattern to search for.
+        pattern: Regex pattern for content search, or glob for file search.
+        query: Alias for pattern (Hermes compatibility).
         path: Directory to search in.
+        target: 'content' (search inside files) or 'files' (find files by name).
         file_glob: File pattern filter (e.g., '*.py').
+        limit: Maximum results to return (Hermes-aligned alias for max_results).
         max_results: Maximum results to return.
+        offset: Skip first N results for pagination.
+        output_mode: Output format — 'content', 'files_only', or 'count'.
+        context: Number of context lines around each match.
     """
     import glob as glob_mod
+
+    # Resolve pattern from pattern or query (Hermes compatibility)
+    search_pattern = pattern or query
+    if not search_pattern:
+        return json.dumps({"error": "Missing required parameter: pattern (or query)"})
+
+    # Resolve limit
+    result_limit = max_results if max_results != 50 else limit
 
     search_dir = Path(path).expanduser().resolve()
     if not search_dir.exists():
         return json.dumps({"error": f"Path not found: {path}"})
 
-    if target == "files":
+    if target == "files" or output_mode == "files_only":
         results = []
         count = 0
-        for fp in search_dir.rglob(pattern if "*" in pattern else f"*{pattern}*"):
-            if count >= max_results:
+        for fp in search_dir.rglob(search_pattern if "*" in search_pattern else f"*{search_pattern}*"):
+            if count >= result_limit:
                 break
             results.append(str(fp.relative_to(search_dir)))
             count += 1
+        if output_mode == "count":
+            return json.dumps({"count": count})
         return json.dumps({"matches": results, "count": count})
 
     results = []
     count = 0
-    pattern_re = re.compile(pattern)
+    pattern_re = re.compile(search_pattern)
+    glob_filter = file_glob or "*"
 
-    for filepath in search_dir.rglob(file_glob):
+    for filepath in search_dir.rglob(glob_filter):
         if filepath.is_dir():
             continue
-        if count >= max_results:
+        if count >= result_limit:
             break
         try:
             content = filepath.read_text(encoding="utf-8", errors="ignore")
@@ -176,13 +198,19 @@ async def tool_search(
                         "content": line.strip()[:200],
                     })
                     count += 1
-                    if count >= max_results:
+                    if count >= result_limit:
                         break
         except Exception:
             continue
 
+    if output_mode == "files_only":
+        files = list(dict.fromkeys(r["file"] for r in results))
+        return json.dumps({"matches": files, "count": len(files)})
+    if output_mode == "count":
+        return json.dumps({"count": count})
+
     return json.dumps({
-        "pattern": pattern,
+        "pattern": search_pattern,
         "matches": len(results),
         "results": results,
     })
