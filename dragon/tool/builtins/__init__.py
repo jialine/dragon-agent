@@ -1064,7 +1064,7 @@ def register_builtins(registry: ToolRegistry) -> None:
 
     registry.register(
         name="execute_code",
-        description="Execute Python code with FULL system access in a subprocess. Can run shell commands, install packages, create files, start servers. Use for development tasks. Returns JSON: success, output, exit_code, duration_ms.",
+        description="Run Python code to call tools programmatically when you need processing logic between tool calls. Use for data processing, looping, or conditional tool orchestration — NOT for standalone tasks that existing tools handle better.",
         schema={
             "type": "object",
             "properties": {

@@ -1407,6 +1407,10 @@ class GatewayServer:
                 "### Skills（强制）",
                 "回复前扫描下方可用技能。匹配或部分相关就必须用 skill_view(name) 加载并按指令执行。宁可多加载——技能包含专用知识和已验证工作流，远胜通用工具。即使你认为自己能用 web_search 或 terminal 处理，也要先加载技能。",
                 "",
+                "### ⛔ PDF 创建（铁律）",
+                "禁止用 execute_code 或任何 Python 代码生成 PDF——字体嵌入会乱码，100% 失败。",
+                "唯一正确方式：① write_file 写 .md → ② terminal: nano-pdf create in.md out.pdf → ③ MEDIA:out.pdf",
+                "",
                 "### 记忆管理",
                 "跨会话记忆。保存：纠正/偏好/环境事实。不保存：任务进度/临时 TODO。用 session_search 召回历史。",
                 "",
@@ -1482,10 +1486,10 @@ class GatewayServer:
         prompts = []
         if base_prompt:
             prompts.append(base_prompt)
-        if tool_catalog:
-            prompts.append(tool_catalog)
         if skills_catalog:
             prompts.append(skills_catalog)
+        if tool_catalog:
+            prompts.append(tool_catalog)
         prompts.append("")
         if user_text:
             prompts.extend(["══════════════════════════════════════════════", "USER PROFILE", user_text, ""])
