@@ -29,6 +29,12 @@ def _get_api_key():
             k = c.get("dispatch", {}).get("global_api", {}).get("api_key", "")
             if k:
                 return k
+            # Fallback: api_key_env → read from env var (e.g. DEEPSEEK_API_KEY)
+            env_name = c.get("dispatch", {}).get("global_api", {}).get("api_key_env", "")
+            if env_name:
+                k = os.environ.get(env_name, "")
+                if k:
+                    return k
     except Exception:
         pass
     return ""
