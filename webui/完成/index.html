@@ -341,7 +341,8 @@ function insertCharUrl(url) {
   const end = ta.selectionEnd || start;
   const before = ta.value.substring(0, start);
   const after = ta.value.substring(end);
-  const insert = (before && !before.endsWith(' ') ? ' ' : '') + url + (after && !after.startsWith(' ') ? ' ' : '');
+  const text = '[' + url + ']';
+  const insert = (before && !before.endsWith(' ') ? ' ' : '') + text + (after && !after.startsWith(' ') ? ' ' : '');
   ta.value = before + insert + after;
   const newPos = start + insert.length;
   ta.setSelectionRange(newPos, newPos);
@@ -655,6 +656,37 @@ function buildCharUrlPalette() {
   list.innerHTML += '<span style="font-size:10px;color:#8b949e;width:100%;margin-top:4px">半透明=本地 | 绿边框=OSS公网' + expInfo + '</span>';
 }
 
+function buildShotCharButtons(shot) {
+  /* Inline character portrait buttons for a single shot */
+  const chars = currentProject?.characters || [];
+  const projName = currentProject?.name || '';
+  const baseUrl = window.location.origin;
+  var shotCharIds = [];
+  try { shotCharIds = JSON.parse(shot.character_ids || '[]'); } catch(e) {}
+  if (!shotCharIds.length && chars.length) {
+    // If no specific characters assigned, show all
+    shotCharIds = chars.map(c => c.id);
+  }
+  const relevantChars = chars.filter(c => shotCharIds.includes(c.id));
+  if (!relevantChars.length) return '';
+  
+  const views = ['portrait','fullbody_front','fullbody_side','fullbody_back'];
+  const labels = {portrait:'正', fullbody_front:'全正', fullbody_side:'全侧', fullbody_back:'全背'};
+  return '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px">' +
+    relevantChars.map(c => {
+      const localBase = baseUrl + '/assets/characters/' + encodeURIComponent(projName) + '/' + encodeURIComponent(c.name);
+      return views.map(v => {
+        var ossKey = v + '_oss';
+        var hasOss = c[ossKey] && c[ossKey].startsWith('http');
+        var url = hasOss ? c[ossKey] : (localBase + '/' + encodeURIComponent(v) + '.png');
+        var style = hasOss ? 'border-color:#16a34a;box-shadow:0 0 4px rgba(22,163,74,0.4)' : 'opacity:0.5';
+        var tip = c.name.substring(0,2) + labels[v];
+        return '<button class="char-url-btn" style="font-size:9px;padding:1px 4px;' + style + '" onclick="event.stopPropagation();insertCharUrl(\'' + url + '\')" title="' + c.name + ' ' + v + '">' + tip + '</button>';
+      }).join('');
+    }).join('') +
+  '</div>';
+}
+
 function renderShots() {
   const grid = document.getElementById('shotGrid');
   const allShots = currentProject?.shots || [];
@@ -691,6 +723,7 @@ function renderShots() {
         </div>
         <div class="shot-prompt-box">
           <textarea id="prompt-${s.id}" onchange="saveShotField(${s.id},'prompt_optimized')" onfocus="lastPromptTA=this">${prompt.replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>
+          ${buildShotCharButtons(s)}
         </div>
         <div class="shot-meta" style="align-items:center">
           <select class="shot-model-select" onchange="saveShotField(${s.id},'model',this.value)" style="width:auto">
