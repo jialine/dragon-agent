@@ -16,6 +16,38 @@ VIDEO_DIR = "/home/jialine/dragon-agent/assets/videos"
 Path(VIDEO_DIR).mkdir(parents=True, exist_ok=True)
 
 
+def _build_video_filename(project_name, episode, shot_number, model, seed=None, take_number=1):
+    """Generate consistent video filename: {project}_EP{ep}_S{shot}_V{ver}_T{take}_s{seed}.mp4
+    Version auto-increments by counting existing files for this shot."""
+    import glob, random
+    if seed is None:
+        seed = random.randint(100000, 999999)
+    
+    project_dir = os.path.join(VIDEO_DIR, project_name)
+    os.makedirs(project_dir, exist_ok=True)
+    
+    prefix = f"{project_name}_EP{episode:02d}_S{shot_number:02d}"
+    pattern = os.path.join(project_dir, f"{prefix}_V*_T*_s*.mp4")
+    existing = sorted(glob.glob(pattern))
+    version = len(existing) + 1
+    
+    filename = f"{prefix}_V{version:03d}_T{take_number:02d}_s{seed}.mp4"
+    return os.path.join(project_dir, filename), seed
+
+
+def _get_next_video_filename(project_name, episode, shot_number, model):
+    """Get next filename for a shot, auto-incrementing version."""
+    import glob
+    project_dir = os.path.join(VIDEO_DIR, project_name)
+    os.makedirs(project_dir, exist_ok=True)
+    
+    prefix = f"{project_name}_EP{episode:02d}_S{shot_number:02d}"
+    pattern = os.path.join(project_dir, f"{prefix}_V*_T*_s*.mp4")
+    existing = sorted(glob.glob(pattern))
+    version = len(existing) + 1
+    return os.path.join(project_dir, f"{prefix}_V{version:03d}.mp4")
+
+
 def submit_video(prompt, model="happyhorse-1.1-t2v", size="1920*1080",
                  duration=8, ref_images=None, output_path=None):
     """
@@ -110,6 +142,60 @@ def poll_task_status(task_id):
     """Poll a video task status directly via API."""
     status, url, reason = query_task(task_id)
     return {"task_id": task_id, "status": status or "unknown", "url": url or "", "reason": reason}
+
+
+def submit_video_with_retry(prompt, model="happyhorse-1.1-t2v", size="1920*1080",
+                            duration=8, ref_images=None, output_path=None,
+                            max_retries=3, project_name="", episode=1, shot_number=1):
+    """
+    Submit video with auto-retry on failure.
+    On retry: changes seed, increments take_number.
+    Returns: {"task_id": str, "submitted": bool, "take_number": int, "seed": int, "retries": int}
+    """
+    import random
+    
+    for attempt in range(max_retries):
+        seed = random.randint(100000, 999999)
+        take_number = attempt + 1
+        
+        # Build filename for this attempt if output_path not provided
+        if output_path is None and project_name:
+            output_path, _ = _build_video_filename(
+                project_name, episode, shot_number, model, seed=seed, take_number=take_number
+            )
+        
+        try:
+            task_id = submit(prompt, model, size, duration, ref_images or [])
+            t = threading.Thread(
+                target=_download_when_ready,
+                args=(task_id, output_path),
+                daemon=True
+            )
+            t.start()
+            return {
+                "task_id": task_id,
+                "submitted": True,
+                "success": True,
+                "take_number": take_number,
+                "seed": seed,
+                "retries": attempt,
+                "output_path": output_path
+            }
+        except Exception as e:
+            if attempt < max_retries - 1:
+                print(f"[video_gen] Attempt {attempt+1} failed: {e}, retrying with new seed...")
+                time.sleep(2)
+            else:
+                return {
+                    "task_id": "",
+                    "submitted": False,
+                    "success": False,
+                    "take_number": take_number,
+                    "seed": seed,
+                    "retries": attempt,
+                    "error": str(e),
+                    "output_path": output_path or ""
+                }
 
 
 def merge_videos(video_paths, output_path, transition="fade", transition_dur=0.5):

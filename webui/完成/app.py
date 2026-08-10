@@ -12,6 +12,7 @@ from flask_cors import CORS
 
 # Add parent to path for pipeline imports
 sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))  # webui/ for database.py
 
 from database import (
     create_project, get_project, list_projects, update_project_script,
@@ -541,9 +542,23 @@ def api_submit_video():
     ref_image = data.get("ref_image") or shot.get("ref_image", "")
     resolution = data.get("resolution") or shot.get("resolution", "1920*1080")
 
+    # Build consistent filename with version tracking
+    project = get_project(data.get("project_id"))
+    project_name = project.get("name", "未命名").replace(" ", "_") if project else "unknown"
+    proj_video_dir = os.path.join(str(ASSETS_DIR), "videos", project_name)
+    os.makedirs(proj_video_dir, exist_ok=True)
+    
+    import glob, random
+    seed = random.randint(100000, 999999)
+    prefix = f"{project_name}_EP{shot['episode']:02d}_S{shot['shot_number']:02d}"
+    pattern = os.path.join(proj_video_dir, f"{prefix}_V*_T*_s*.mp4")
+    existing = sorted(glob.glob(pattern))
+    version = len(existing) + 1
+    take_number = 1
+    
     output_path = os.path.join(
-        str(ASSETS_DIR), "videos",
-        f"EP{shot['episode']:02d}_S{shot['shot_number']:02d}.mp4"
+        proj_video_dir,
+        f"{prefix}_V{version:03d}_T{take_number:02d}_s{seed}.mp4"
     )
 
     try:
@@ -567,7 +582,10 @@ def api_submit_video():
     )
 
     if result.get("task_id"):
-        add_video_task(shot_id, result["task_id"], model)
+        add_video_task(shot_id, result["task_id"], model, 
+                       take_number=take_number, seed=seed,
+                       filename=os.path.basename(output_path),
+                       resolution=resolution)
 
     return jsonify({
         "shot_id": shot_id,
@@ -637,10 +655,218 @@ def api_status():
     })
 
 
+# ─── Validation & Dashboard ─────────────────────────────
+@app.route("/api/shots/validate", methods=["GET"])
+def api_validate_shots():
+    """Validate DB consistency: check filename ↔ episode/shot match, missing files, orphan tasks."""
+    project_id = request.args.get("project_id", type=int)
+    episode = request.args.get("episode", type=int)
+    
+    shots = get_shots(project_id, episode=episode)
+    import glob, re
+    
+    issues = []
+    for shot in shots:
+        vid = shot.get("video_local", "")
+        if not vid:
+            if shot.get("status") == "done":
+                issues.append({
+                    "shot_id": shot["id"],
+                    "shot": f"EP{shot['episode']}-S{shot['shot_number']}",
+                    "type": "missing_video",
+                    "detail": "Status is 'done' but no video_local path"
+                })
+            continue
+        
+        # Check file exists
+        if not os.path.exists(vid):
+            issues.append({
+                "shot_id": shot["id"],
+                "shot": f"EP{shot['episode']}-S{shot['shot_number']}",
+                "type": "file_missing",
+                "detail": f"File not found: {vid}"
+            })
+            continue
+        
+        # Check filename matches DB metadata
+        basename = os.path.basename(vid)
+        match = re.match(r'.*_EP(\d+)_S(\d+)_V\d+_T\d+_s\d+\.mp4$', basename)
+        if match:
+            file_ep, file_shot = int(match.group(1)), int(match.group(2))
+            if file_ep != shot["episode"] or file_shot != shot["shot_number"]:
+                issues.append({
+                    "shot_id": shot["id"],
+                    "shot": f"EP{shot['episode']}-S{shot['shot_number']}",
+                    "type": "filename_mismatch",
+                    "detail": f"DB says EP{shot['episode']}-S{shot['shot_number']} but file is EP{file_ep}-S{file_shot}: {basename}"
+                })
+    
+    # Check duplicates
+    from collections import Counter
+    eps_shots = [(s["episode"], s["shot_number"]) for s in shots]
+    dupes = [k for k, v in Counter(eps_shots).items() if v > 1]
+    for ep, sn in dupes:
+        issues.append({
+            "shot": f"EP{ep}-S{sn}",
+            "type": "duplicate",
+            "detail": f"Duplicate shot_number {sn} in episode {ep} ({Counter(eps_shots)[(ep,sn)]} entries)"
+        })
+    
+    return jsonify({
+        "project_id": project_id,
+        "episode": episode,
+        "total_shots": len(shots),
+        "issues": issues,
+        "clean": len(issues) == 0
+    })
+
+
+@app.route("/api/dashboard", methods=["GET"])
+def api_dashboard():
+    """Project dashboard: progress, status breakdown, estimated cost."""
+    project_id = request.args.get("project_id", type=int)
+    if not project_id:
+        return jsonify({"error": "project_id required"}), 400
+    
+    proj = get_project(project_id)
+    if not proj:
+        return jsonify({"error": "Project not found"}), 404
+    
+    shots = get_shots(project_id)
+    
+    # Status breakdown by episode
+    from collections import defaultdict
+    episodes = defaultdict(lambda: {"total": 0, "done": 0, "pending": 0, "generating": 0, "failed": 0})
+    total_duration = 0
+    models_used = defaultdict(int)
+    
+    for s in shots:
+        ep = s["episode"]
+        episodes[ep]["total"] += 1
+        status = s.get("status", "pending")
+        episodes[ep][status] = episodes[ep].get(status, 0) + 1
+        total_duration += s.get("duration", 8)
+        models_used[s.get("model", "unknown")] += 1
+    
+    # Estimate cost (rough: ¥0.5/s for T2V, ¥0.8/s for R2V)
+    estimated_cost = 0
+    for s in shots:
+        rate = 0.8 if "r2v" in s.get("model", "") else 0.5
+        estimated_cost += rate * s.get("duration", 8)
+    
+    return jsonify({
+        "project": proj["name"],
+        "total_shots": len(shots),
+        "episodes": {str(k): dict(v) for k, v in sorted(episodes.items())},
+        "total_duration_seconds": total_duration,
+        "estimated_cost_yuan": round(estimated_cost, 1),
+        "models_used": dict(models_used)
+    })
+
+
 # ─── Asset Serving ──────────────────────────────────────
 @app.route("/assets/<path:filepath>")
 def serve_assets(filepath):
     return send_from_directory(str(ASSETS_DIR), filepath)
+
+
+# ─── Batch Review ────────────────────────────────────────
+@app.route("/api/shots/review", methods=["POST"])
+def api_review_shots():
+    """Batch approve/reject shots. Rejected shots set to 'pending' for re-generation."""
+    data = request.json
+    actions = data.get("actions", [])  # [{shot_id: 1, action: "approve"|"reject"}]
+    project_id = data.get("project_id")
+    
+    import sqlite3
+    conn = sqlite3.connect(os.path.join(os.path.dirname(__file__), "..", "drama.db"))
+    
+    results = []
+    for a in actions:
+        sid = a.get("shot_id")
+        action = a.get("action")
+        if action == "approve":
+            conn.execute("UPDATE shots SET status='done' WHERE id=?", (sid,))
+            results.append({"shot_id": sid, "action": "approved"})
+        elif action == "reject":
+            conn.execute("UPDATE shots SET status='pending', video_local='', task_id='' WHERE id=?", (sid,))
+            results.append({"shot_id": sid, "action": "rejected"})
+    
+    conn.commit()
+    conn.close()
+    return jsonify({"results": results})
+
+
+@app.route("/api/shots/regenerate-failed", methods=["POST"])
+def api_regenerate_failed():
+    """Re-submit all failed shots in a project/episode."""
+    data = request.json
+    project_id = data.get("project_id")
+    episode = data.get("episode")
+    
+    shots = get_shots(project_id, episode=episode)
+    failed = [s for s in shots if s.get("status") == "failed"]
+    
+    if not failed:
+        return jsonify({"message": "No failed shots", "regenerated": 0})
+    
+    results = []
+    for shot in failed:
+        shot["status"] = "pending"
+        update_shot_video(shot["id"], "", "", "pending")
+        
+        # Re-submit via internal call
+        with app.test_client() as client:
+            r = client.post("/api/video/submit", json={
+                "shot_id": shot["id"],
+                "project_id": project_id
+            })
+            results.append(r.get_json())
+    
+    return jsonify({
+        "regenerated": len(failed),
+        "results": results
+    })
+
+
+# ─── Cost Dashboard ──────────────────────────────────────
+@app.route("/api/cost", methods=["GET"])
+def api_cost():
+    """Cost breakdown by project. Reads from andlapi cost.db if available."""
+    project_id = request.args.get("project_id", type=int)
+    
+    try:
+        import sqlite3
+        cost_db = os.path.join(os.path.dirname(__file__), "..", "..", "dragon_data", "cost.db")
+        if os.path.exists(cost_db):
+            conn = sqlite3.connect(cost_db)
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM usage_logs ORDER BY timestamp DESC LIMIT 500"
+            ).fetchall()
+            conn.close()
+            total = sum(r["cost"] for r in rows if r["cost"])
+            return jsonify({
+                "total_cost": round(total, 4),
+                "recent_logs": [dict(r) for r in rows[:100]],
+                "source": "cost.db"
+            })
+    except Exception:
+        pass
+    
+    # Fallback: estimate from shots
+    if project_id:
+        shots = get_shots(project_id)
+        estimated = sum(
+            (0.8 if "r2v" in s.get("model", "") else 0.5) * s.get("duration", 8)
+            for s in shots if s.get("status") == "done"
+        )
+        return jsonify({
+            "estimated_cost_yuan": round(estimated, 1),
+            "source": "estimate"
+        })
+    
+    return jsonify({"error": "No cost data available"}), 404
 
 
 # ─── Main ───────────────────────────────────────────────
