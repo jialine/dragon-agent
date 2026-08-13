@@ -1,0 +1,37 @@
+# workflows/drama_final_review.yaml — 终审：连贯性/音画同步/字幕/整体观感
+
+name: 终审
+industry: entertainment
+version: "1.0"
+timeout_secs: 300
+
+steps:
+  - id: final_check
+    name: 终审检查
+    type: loop
+    config:
+      array: "{review_checks}"
+      item_key: check_item
+      max_iterations: 4
+      sub_steps:
+        - id: single_check
+          name: 单项检查
+          type: tool_call
+          config:
+            tool: terminal
+            input: >
+              python3 scripts/drama_final_check.py
+              --dir "{final_dir}"
+              --storyboard "{storyboard}"
+              --check "{item}"
+              --output "{final_dir}/final_review_{item_index}.md"
+
+  - id: final_verdict
+    name: 终审结论
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_final_verdict.py
+        --reviews "{final_dir}/final_review_*.md"
+        --output "{final_dir}/FINAL_VERDICT.md"

@@ -1,0 +1,19 @@
+# Dragon 短剧流水线 — 依赖清单
+# 安装：pip install -r requirements.txt
+#
+# 说明：短剧流水线（编剧→审核→分镜→生成→配音→合成）的脚本与 WebUI
+# 只依赖以下轻量库，不依赖 dragon 核心 gateway（可独立运行）。
+
+# ── 核心（必装）────────────────────────────────────────────
+requests>=2.31.0          # API 调用（andlapi.cn）
+urllib3>=2.0.0            # SSL 兼容（api.andlapi.cn 非标准 CA）
+pyyaml>=6.0.2             # 配置/工作流解析
+python-dotenv>=1.0.0      # .env 加载
+
+# ── WebUI（Drama Studio）───────────────────────────────────
+flask>=3.0                # Web 框架
+flask-cors>=4.0           # 跨域
+
+# ── 可选（配音/合成，按需）──────────────────────────────────
+# edge-tts>=6.1.0         # TTS 配音（需网络）
+# ffmpeg 为系统级依赖，需单独安装（apt install ffmpeg 或静态版）

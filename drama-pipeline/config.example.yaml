@@ -1,0 +1,95 @@
+# ============================================================
+# Dragon Agent — Configuration Template
+# 复制为 config.yaml 并填入真实值，config.yaml 已在 .gitignore
+# ============================================================
+
+# ── Agent ────────────────────────────────────────────────────
+agent:
+  max_turns: 90                     # 单次对话最大推理轮数
+
+# ── Server ───────────────────────────────────────────────────
+server:
+  host: "0.0.0.0"
+  port: 8780
+  log_level: info                   # debug | info | warning | error
+
+# ── Dispatch（LLM 模型配置）───────────────────────────────────
+dispatch:
+  global_api:
+    model: deepseek-v4-pro          # 模型名称
+    base_url: https://api.andlapi.cn/v1
+    api_key: "sk-你的API密钥"         # ⚠️ 出于安全考虑，建议用环境变量
+    api_key_env: DRAGON_API_KEY      # 如果设了环境变量，优先读环境变量
+    max_retries: 2
+    timeout_secs: 300
+  industries:
+    general:
+      system_prompt: "你是 Dragon Agent，一个乐于助人的 AI 助手。"
+    finance:
+      system_prompt: "你是一位资深金融分析师，回答专业、准确，引用数据来源。"
+    medical:
+      system_prompt: "你是一位医学顾问，回答基于循证医学，不提供诊断但可提供科普。"
+    legal:
+      system_prompt: "你是一位法律顾问，基于中国法律体系提供参考意见，注明法条出处。"
+    education:
+      system_prompt: "你是一位教育专家，帮助学生理解概念而非直接给答案。"
+    enterprise:
+      system_prompt: "你是一位企业顾问，回答基于工商税务法规，帮助创业者合规经营。"
+    gov:
+      system_prompt: "你是一位政务顾问，回答基于《政府信息公开条例》，以服务公众为宗旨。"
+
+# ── Gateway（消息平台接入）────────────────────────────────────
+gateway:
+  enabled: true
+  port: 8781
+  standalone: true
+  system_prompt: ""                 # 全局 system prompt，留空用行业默认
+  platforms:
+    feishu:
+      enabled: false
+      app_id: "cli_xxxxxxxxxxxxxxxx"
+      app_secret: "你的飞书AppSecret"
+      domain: feishu                # feishu | lark
+      verification_token: ""
+    telegram:
+      enabled: false
+      bot_token: "123456789:ABCdef..."
+    discord:
+      enabled: false
+      bot_token: "MTIzNDU2..."
+    wechat:
+      enabled: false
+      app_id: "wxXXXXXXXXXXXXXXXX"
+      app_secret: "你的微信AppSecret"
+      token: "your_custom_token"
+      encoding_aes_key: ""
+
+# ── Router（本地小模型，行业分类路由）──────────────────────────
+router:
+  enabled: false
+  model_path: /home/jialine/models/Qwen2.5-1.5B-Q4_K_M.gguf
+  n_ctx: 2048
+  n_threads: 4
+  temperature: 0.1
+  max_tokens: 256
+  remote_model: Qwen3.5-122B-A10B-Q4_K_M.gguf
+  remote_url: http://192.168.0.21:8080/v1
+
+# ── Memory（向量知识库）───────────────────────────────────────
+memory:
+  persist_dir: dragon_data/vectordb
+  embedding_model: BAAI/bge-small-zh-v1.5
+  search_top_k: 5
+  search_threshold: 0.5
+
+# ── Backup（云端备份）─────────────────────────────────────────
+backup:
+  bucket: dragon-backups
+  endpoint: ""                      # OSS endpoint，留空则不启用
+  interval_hours: 6
+
+# ── Guard（反Loop保护）────────────────────────────────────────
+guard:
+  max_consecutive_repeats: 3
+  max_loop_rounds: 2
+  max_ineffective_retries: 3

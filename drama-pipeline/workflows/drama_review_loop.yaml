@@ -1,0 +1,77 @@
+# workflows/drama_review_loop.yaml — 三模型审阅→修正→再审阅 循环
+# 通用：故事/剧本/大纲 均可使用
+
+name: 三模型审阅循环
+industry: entertainment
+version: "1.0"
+timeout_secs: 600
+
+steps:
+  # Round 1: 三模型并行审阅
+  - id: review_round1
+    name: 第一轮审阅
+    type: loop
+    config:
+      array: "{reviewer_roles}"
+      item_key: role_desc
+      max_iterations: 3
+      sub_steps:
+        - id: single_review
+          name: 单模型审阅
+          type: tool_call
+          config:
+            tool: terminal
+            input: >
+              python3 scripts/drama_review_single.py
+              --content "{content_path}"
+              --role "{item}"
+              --output "{review_dir}/round1_{item_index}.md"
+
+  # 汇总 + 修正
+  - id: aggregate_and_fix
+    name: 汇总修正
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_review_aggregate.py
+        --reviews "{review_dir}/round1_*.md"
+        --content "{content_path}"
+        --output "{content_path}"
+        --diff "{review_dir}/fix_diff.md"
+
+  # Round 2: 三模型再审阅修正后内容
+  - id: review_round2
+    name: 第二轮审阅
+    type: loop
+    config:
+      array: "{reviewer_roles}"
+      item_key: role_desc
+      max_iterations: 3
+      sub_steps:
+        - id: single_review2
+          name: 再次审阅
+          type: tool_call
+          config:
+            tool: terminal
+            input: >
+              python3 scripts/drama_review_single.py
+              --content "{content_path}"
+              --role "{item}"
+              --previous "{review_dir}/round1_{item_index}.md"
+              --output "{review_dir}/round2_{item_index}.md"
+
+  # 最终汇总
+  - id: final_aggregate
+    name: 最终修正
+    type: tool_call
+    config:
+      tool: terminal
+      input: >
+        python3 scripts/drama_review_aggregate.py
+        --reviews "{review_dir}/round2_*.md"
+        --content "{content_path}"
+        --output "{content_path}"
+        --diff "{review_dir}/final_fix.md"
+        --final true
+    on_failure: skip
