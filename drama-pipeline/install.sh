@@ -32,6 +32,7 @@ PIPELINE_DIR=""                                     # 产品包根（= 仓库根
 PORT="${PORT:-5000}"
 API_KEY=""
 ASSUME_YES=false
+DIR_EXPLICIT=false
 REPO_URL="${REPO_URL:-git@gitee.com:jialine/dragon-agent.git}"
 DRAMA_SUBDIR="${DRAMA_SUBDIR:-drama-pipeline}"
 BRANCH="${BRANCH:-main}"
@@ -46,7 +47,7 @@ step() { echo -e "\n${CYAN}▶ $1${NC}"; }
 # ── 参数解析 ────────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --dir)      INSTALL_DIR="$2"; shift 2 ;;
+        --dir)      INSTALL_DIR="$2"; DIR_EXPLICIT=true; shift 2 ;;
         --port)     PORT="$2"; shift 2 ;;
         --api-key)  API_KEY="$2"; shift 2 ;;
         --repo)     REPO_URL="$2"; shift 2 ;;
@@ -111,8 +112,10 @@ if [ "$SOURCE" = "git" ]; then
     fi
     info "产品包目录: $PIPELINE_DIR"
 else
-    if [ -d "$INSTALL_DIR" ] && [ "$INSTALL_DIR" != "$SCRIPT_DIR" ]; then
-        if [ -d "$INSTALL_DIR/scripts" ]; then
+    # 本地包模式：默认就地安装（脚本所在目录就是产品包）
+    # 仅当用户显式 --dir 且目标 != 当前目录时才复制
+    if $DIR_EXPLICIT && [ "$INSTALL_DIR" != "$SCRIPT_DIR" ]; then
+        if [ -d "$INSTALL_DIR" ] && [ -d "$INSTALL_DIR/scripts" ]; then
             warn "目标目录已存在且含代码，仅同步更新代码文件（保留 config/.env/db）"
             rsync -a --delete \
                 --exclude='.venv' --exclude='config.yaml' --exclude='.env' \
@@ -120,18 +123,19 @@ else
                 --exclude='*.pyc' --exclude='__pycache__' \
                 "$SCRIPT_DIR/" "$INSTALL_DIR/"
             PIPELINE_DIR="$INSTALL_DIR"
-        else
+        elif [ -d "$INSTALL_DIR" ]; then
             err "目标目录 $INSTALL_DIR 已存在但不是流水线目录，请换 --dir"
+        else
+            info "复制代码到 $INSTALL_DIR"
+            mkdir -p "$INSTALL_DIR"
+            rsync -a --exclude='.venv' --exclude='config.yaml' --exclude='.env' \
+                --exclude='drama.db' --exclude='.git' --exclude='*.pyc' --exclude='__pycache__' \
+                "$SCRIPT_DIR/" "$INSTALL_DIR/"
+            PIPELINE_DIR="$INSTALL_DIR"
         fi
-    elif [ "$INSTALL_DIR" != "$SCRIPT_DIR" ]; then
-        info "复制代码到 $INSTALL_DIR"
-        mkdir -p "$INSTALL_DIR"
-        rsync -a --exclude='.venv' --exclude='config.yaml' --exclude='.env' \
-            --exclude='drama.db' --exclude='.git' --exclude='*.pyc' --exclude='__pycache__' \
-            "$SCRIPT_DIR/" "$INSTALL_DIR/"
-        PIPELINE_DIR="$INSTALL_DIR"
     else
         info "就地安装（当前目录）"
+        PIPELINE_DIR="$SCRIPT_DIR"
     fi
 fi
 
