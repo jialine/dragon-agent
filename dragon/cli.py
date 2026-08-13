@@ -54,9 +54,18 @@ def main():
     # ── chat ──────────────────────────────────────────────────────
     chat_p = sub.add_parser("chat", help="Start interactive chat")
     chat_p.add_argument("-q", "--query", help="Single query (non-interactive)")
-    chat_p.add_argument("-m", "--model", default="gpt-4o", help="Model to use")
-    chat_p.add_argument("-p", "--provider", default="openai", help="Provider name")
+    chat_p.add_argument("-m", "--model", default=None, help="Model to use (default: from config dispatch.global_api.model)")
+    chat_p.add_argument("-p", "--provider", default=None, help="Provider name (default: andlapi)")
     chat_p.add_argument("--stream", action="store_true", help="Stream output")
+
+    # ── review ─────────────────────────────────────────────────────
+    review_p = sub.add_parser("review", help="2+1 讨论投票轻量评审（零幻觉）")
+    review_p.add_argument("-q", "--query", required=True, help="Question to review")
+    review_p.add_argument("-a", "--model-a", default=None, help="模型A (default deepseek-v3.2)")
+    review_p.add_argument("-b", "--model-b", default=None, help="模型B (default qwen3.7-max)")
+    review_p.add_argument("-c", "--model-c", default=None, help="模型C 投票者 (default hy3-preview)")
+    review_p.add_argument("--judge", default=None, help="裁判模型 (default qwen3.7-max)")
+    review_p.add_argument("--max-tokens", type=int, default=800, help="回答最大 token")
 
     # ── serve ─────────────────────────────────────────────────────
     serve_p = sub.add_parser("serve", help="Start API server")
@@ -199,6 +208,7 @@ def main():
 
     handlers = {
         "chat": cmd_chat,
+        "review": cmd_review,
         "serve": cmd_serve,
         "gateway": cmd_gateway,
         "mcp": cmd_mcp,
@@ -229,6 +239,13 @@ def main():
 
 def cmd_chat(args):
     """Interactive or single-query chat."""
+    # Resolve model/provider from config when not explicitly given
+    if not args.model or not args.provider:
+        _dc = _load_dispatch_config()
+        if not args.model:
+            args.model = _dc.get("model") or "deepseek-v4-pro"
+        if not args.provider:
+            args.provider = "andlapi"
     if args.query:
         print(f"[Dragon] Processing: {args.query}")
         print(f"[Using {args.provider}/{args.model}]")
@@ -284,6 +301,35 @@ def cmd_chat(args):
                     print(f"Error: {e}")
 
         asyncio.run(_chat())
+
+
+def cmd_review(args):
+    """2+1 讨论投票轻量评审（零幻觉）。"""
+    import asyncio
+    from dragon.review import DebateReview
+
+    models = {}
+    if getattr(args, "model_a", None):
+        models["a"] = args.model_a
+    if getattr(args, "model_b", None):
+        models["b"] = args.model_b
+    if getattr(args, "model_c", None):
+        models["c"] = args.model_c
+    if getattr(args, "judge", None):
+        models["judge"] = args.judge
+
+    async def _run():
+        reviewer = DebateReview(models=models or None)
+        return await reviewer.review(args.query, max_tokens=args.max_tokens)
+
+    result = asyncio.run(_run())
+    print(
+        f"[{result.mode}] n_models={result.n_models} conflict={result.conflict} "
+        f"winner={result.winner or '-'} latency={result.latency_ms}ms"
+    )
+    print(f"models: {', '.join(result.models_used) or '-'}")
+    print()
+    print(result.answer)
 
 
 def cmd_serve(args):

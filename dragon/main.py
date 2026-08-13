@@ -42,6 +42,7 @@ from dragon.jury import JuryDebate, JuryVerdict
 from dragon.factcheck import FactChecker, ClaimExtractor
 from dragon.consensus import ConsensusBuilder, ConsensusResult
 from dragon.hallmetrics import HallucinationTracker, HallucinationReport
+from dragon.review import DebateReview, ReviewResult as _ReviewResult
 from dragon.web_search import WebSearcher
 
 # Gateway
@@ -671,6 +672,17 @@ class HonestChatResponse(BaseModel):
     latency_ms: int = 0
 
 
+class ReviewChatResponse(BaseModel):
+    """Response from the lightweight 2+1 debate review pipeline."""
+    answer: str                          # Final answer (Markdown)
+    mode: str                            # "2模型一致" | "3模型投票" | "降级单模型"
+    n_models: int                        # Number of models that answered (2 or 3)
+    conflict: bool                       # Whether the two answers conflicted
+    winner: str = ""                     # "A" | "B" | "" (voting winner)
+    models_used: list = []               # Models actually invoked
+    latency_ms: int = 0
+
+
 # ── Routes ───────────────────────────────────────────────
 
 @app.get("/health")
@@ -943,6 +955,50 @@ async def chat_honest(request: ChatRequest):
         disputed=disputed_out,
         minority_opinions=getattr(verdict, "minority_report", "") or "",
         latency_ms=latency_ms,
+    )
+
+
+# ── 2+1 Debate Review API ─────────────────────────────────────
+
+@app.post("/v1/chat/review", response_model=ReviewChatResponse)
+async def chat_review(request: ChatRequest):
+    """Lightweight zero-hallucination review (2+1 debate voting).
+
+    Two models answer independently → a judge detects conflict → if they
+    agree, take the consensus; if they conflict, a third model votes.
+    Cheaper than /v1/chat/honest (2-3 LLM calls vs 5-juror deliberation).
+    """
+    if not config:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+
+    user_msg = next(
+        (m.content for m in reversed(request.messages) if m.role == "user"),
+        "",
+    )
+    if not user_msg.strip():
+        raise HTTPException(status_code=400, detail="Empty query")
+
+    ga = config.dispatch.global_api
+    api_key = getattr(ga, "api_key", "") or os.getenv(
+        getattr(ga, "api_key_env", ""), ""
+    )
+    reviewer = DebateReview(api_key=api_key)
+    result = await reviewer.review(user_msg, max_tokens=request.max_tokens or 800)
+
+    logger.info(
+        "Review complete: mode=%s n_models=%d conflict=%s winner=%s latency=%dms",
+        result.mode, result.n_models, result.conflict, result.winner,
+        result.latency_ms,
+    )
+
+    return ReviewChatResponse(
+        answer=result.answer,
+        mode=result.mode,
+        n_models=result.n_models,
+        conflict=result.conflict,
+        winner=result.winner,
+        models_used=result.models_used,
+        latency_ms=result.latency_ms,
     )
 
 
