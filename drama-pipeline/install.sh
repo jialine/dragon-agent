@@ -159,8 +159,18 @@ else
     export PIP_BREAK_SYSTEM_PACKAGES=1
 fi
 
+# pip 安装辅助：官方源优先，失败自动回退清华镜像（国内网络必需）
+pip_install() {
+    if "$PIP" install "$@" -q 2>/dev/null; then
+        return 0
+    fi
+    warn "官方 PyPI 超时/失败，回退清华镜像..."
+    "$PIP" install "$@" -q -i https://pypi.tuna.tsinghua.edu.cn/simple 2>/dev/null \
+        || err "依赖安装失败（官方源和清华镜像都失败），请检查网络"
+}
+
 "$PIP" install --upgrade pip -q 2>/dev/null || true
-"$PIP" install -r requirements.txt -q
+pip_install -r requirements.txt
 info "核心依赖已安装"
 
 if ! "$PIP" show edge-tts >/dev/null 2>&1; then
