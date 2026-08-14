@@ -506,7 +506,7 @@ class MessageProcessor:
                     mins = int(elapsed // 60)
                     try:
                         await self._progress_callback(chat_id,
-                            f"\u23f3 {mins}min elapsed \u2014 iter {tool_call_count + 1}/{self.max_tool_iterations}, "
+                            f"\u23f3 {mins}min elapsed \u2014 {tool_call_count} tool calls, "
                             f"running: {_current_tool_name}")
                     except Exception as e:
                         logger.warning("[Processor] 3min progress error: %s", e)
@@ -519,6 +519,10 @@ class MessageProcessor:
             thinking_only_count = 0  # guard against reasoning-model infinite loop
             _last_tc_signatures = []  # guard against stuck tool-call loops (last 6 sigs)
             for iteration in range(self.max_tool_iterations):
+                # Hard cap: bound total tool calls too, not just iteration count
+                if tool_call_count >= self.max_tool_iterations:
+                    print(f"[PROC_DEBUG] tool_call_count={tool_call_count} >= max, break", flush=True)
+                    break
                 print(f"[PROC_DEBUG] iter={iteration}", flush=True)
                 # Steer check
                 steer_msg = self._pop_steer(chat_id)
@@ -831,6 +835,10 @@ class MessageProcessor:
                             output = "⚠️ TOOL ERROR - DO NOT claim success: " + output
                         elif is_error:
                             output = "⚠️ TOOL ISSUE - Verify before claiming success: " + output
+
+                        # Web search unavailable — tell the model to stop searching
+                        if tc["name"] == "web_search" and '"provider": "none"' in output_lower:
+                            output += "\n\n[注意] web_search 当前不可用（无 provider），请勿再调用 web_search，基于已有信息给出最终答案。"
 
                         # Record tool call metric
                         record_tool_call(tool_name=tc["name"])

@@ -386,7 +386,7 @@ async def tool_web_search(query: str, max_results: int = 10, provider: str = "")
             query, max_results=max_results, provider=provider or None
         )
 
-        return json.dumps({
+        payload = {
             "query": query,
             "provider": used_provider,
             "results": [
@@ -394,7 +394,13 @@ async def tool_web_search(query: str, max_results: int = 10, provider: str = "")
                 for r in results
             ],
             "total": len(results),
-        })
+        }
+        # If every provider failed (no API key + scraping failed), surface an
+        # explicit "error" so upstream error detection can tell the LLM to stop
+        # retrying web_search and answer from existing context instead.
+        if used_provider == "none":
+            payload["error"] = "all search providers unavailable (no API key + scraping failed)"
+        return json.dumps(payload)
     except Exception as e:
         logger.warning("Web search failed for query '%s': %s", query, e)
         return json.dumps({

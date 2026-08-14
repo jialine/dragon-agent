@@ -17,6 +17,7 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import List
+from html import unescape
 
 import httpx
 
@@ -284,14 +285,14 @@ class BingSearchProvider(SearchProvider):
 def _parse_bing_html(html: str, max_results: int) -> List[WebSearchResult]:
     """Extract results from cn.bing.com search HTML."""
     results: List[WebSearchResult] = []
-    blocks = re.findall(r'<li class="b_algo[^"]*">(.*?)</li>', html, re.DOTALL)
+    blocks = re.findall(r'<li class="b_algo".*?>(.*?)</li>', html, re.DOTALL)
     for block in blocks:
         if len(results) >= max_results:
             break
         title_m = re.search(r'<h2[^>]*><a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', block, re.DOTALL)
         if not title_m:
             continue
-        url = html.unescape(title_m.group(1))
+        url = unescape(title_m.group(1))
         title = re.sub(r"<[^>]+>", "", title_m.group(2)).strip()
         snippet = ""
         snippet_m = re.search(r'<p[^>]*>(.*?)</p>', block, re.DOTALL)
