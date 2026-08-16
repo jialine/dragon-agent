@@ -519,6 +519,7 @@ class MessageProcessor:
             thinking_only_count = 0  # guard against reasoning-model infinite loop
             _last_tc_signatures = []  # guard against stuck tool-call loops (last 6 sigs)
             _web_search_fail_count = 0  # guard against web_search unavailable dead loop
+            _web_search_call_count = 0  # guard against over-research: cap total searches per task
             for iteration in range(self.max_tool_iterations):
                 # Hard cap: bound total tool calls too, not just iteration count
                 if tool_call_count >= self.max_tool_iterations:
@@ -837,6 +838,10 @@ class MessageProcessor:
                         elif is_error:
                             output = "⚠️ TOOL ISSUE - Verify before claiming success: " + output
 
+                        # Count web_search calls (success or fail) for over-research guard
+                        if tc["name"] == "web_search":
+                            _web_search_call_count += 1
+
                         # Web search unavailable — count consecutive failures
                         if tc["name"] == "web_search" and '"provider": "none"' in output_lower:
                             _web_search_fail_count += 1
@@ -874,6 +879,15 @@ class MessageProcessor:
                             "content": "[强制] web_search 已连续失败 3 次，搜索功能不可用。立即基于已有信息给出最终答案，不要再调用任何工具。",
                         })
                         _web_search_fail_count = 0
+                        continue
+
+                    # Over-research guard: force final answer after 6 total searches
+                    if _web_search_call_count >= 6:
+                        history.append({
+                            "role": "user",
+                            "content": "[强制] 已搜索 6 次，信息已足够。立即基于已有搜索结果给出最终答案，不要再搜索。",
+                        })
+                        _web_search_call_count = 0
                         continue
 
                     # Check if we should continue

@@ -415,9 +415,10 @@ class WebSearchRouter:
 
     def _auto_register(self) -> None:
         """Register all available providers based on environment."""
-        # Always register DuckDuckGo (no credentials needed)
-        self.providers["duckduckgo"] = DuckDuckGoProvider()
+        # Register Bing FIRST — cn.bing.com is reachable in China; DuckDuckGo is
+        # blocked and would waste a 15s timeout on every query before Bing's turn.
         self.providers["bing"] = BingSearchProvider()
+        self.providers["duckduckgo"] = DuckDuckGoProvider()
 
         # Register Brave if API key is set
         if os.getenv("BRAVE_API_KEY"):
