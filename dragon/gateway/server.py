@@ -51,6 +51,36 @@ logger = logging.getLogger("dragon.gateway.server")
 
 
 # ────────────────────────────────────────────────────────────────────
+# web_search 防死循环 / 防过度调研 —— 纯函数，便于单元测试
+# ────────────────────────────────────────────────────────────────────
+
+# 连续 provider:none 失败次数阈值（搜索完全不可用）
+WEB_SEARCH_FAIL_LIMIT = 3
+# 单任务 web_search 累计调用次数阈值（过度调研）
+WEB_SEARCH_CALL_LIMIT = 6
+
+
+def web_search_stop_message(fail_count: int, call_count: int) -> str:
+    """返回 web_search 强制停止提示（空串表示不触发）。
+
+    Args:
+        fail_count: 连续 provider:none 失败次数
+        call_count: 本次任务 web_search 累计调用次数（含成功）
+    """
+    if fail_count >= WEB_SEARCH_FAIL_LIMIT:
+        return (
+            "[强制] web_search 已连续失败 3 次，搜索功能不可用。"
+            "立即基于已有信息给出最终答案，不要再调用任何工具。"
+        )
+    if call_count >= WEB_SEARCH_CALL_LIMIT:
+        return (
+            "[强制] 已搜索 6 次，信息已足够。"
+            "立即基于已有搜索结果给出最终答案，不要再搜索。"
+        )
+    return ""
+
+
+# ────────────────────────────────────────────────────────────────────
 # Message Processor
 # ────────────────────────────────────────────────────────────────────
 
@@ -872,21 +902,11 @@ class MessageProcessor:
                             "content": output[:4000],
                         })
 
-                    # Web search dead-loop guard: force final answer after 3 consecutive failures
-                    if _web_search_fail_count >= 3:
-                        history.append({
-                            "role": "user",
-                            "content": "[强制] web_search 已连续失败 3 次，搜索功能不可用。立即基于已有信息给出最终答案，不要再调用任何工具。",
-                        })
+                    # web_search 防死循环 + 防过度调研：连续失败/总次数达阈值强制收尾
+                    _stop_msg = web_search_stop_message(_web_search_fail_count, _web_search_call_count)
+                    if _stop_msg:
+                        history.append({"role": "user", "content": _stop_msg})
                         _web_search_fail_count = 0
-                        continue
-
-                    # Over-research guard: force final answer after 6 total searches
-                    if _web_search_call_count >= 6:
-                        history.append({
-                            "role": "user",
-                            "content": "[强制] 已搜索 6 次，信息已足够。立即基于已有搜索结果给出最终答案，不要再搜索。",
-                        })
                         _web_search_call_count = 0
                         continue
 
