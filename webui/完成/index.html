@@ -139,6 +139,7 @@ table th { color: #8b949e !important; }
 
 <div class="tabs">
   <div class="tab active" data-tab="script" onclick="switchTab('script')">📝 剧本</div>
+  <div class="tab" data-tab="novel" onclick="switchTab('novel')">📖 小说</div>
   <div class="tab" data-tab="characters" onclick="switchTab('characters')">👤 角色</div>
   <div class="tab" data-tab="shots" onclick="switchTab('shots')">🎞️ 分镜</div>
   <div class="tab" data-tab="video" onclick="switchTab('video')">🎥 视频</div>
@@ -202,6 +203,45 @@ table th { color: #8b949e !important; }
       <strong>镜头统计：</strong> <span id="shotCount" style="color:var(--accent)"></span>
     </div>
     <button class="btn btn-secondary btn-sm" onclick="switchTab('characters')">→ 生成角色图</button>
+  </div>
+</div>
+
+<!-- ── 小说面板 ── -->
+<div class="panel" id="panel-novel">
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">📖 小说创作</h3>
+      <button class="btn btn-primary btn-sm" onclick="generateChapter()">🪄 生成下一章</button>
+      <button class="btn btn-secondary btn-sm" onclick="checkContinuity()">🔍 连贯性检查</button>
+      <button class="btn btn-secondary btn-sm" onclick="exportNovel()">📥 导出小说</button>
+      <button class="btn btn-sm" style="background:#ea580c;color:#fff" onclick="adaptNovel()">🎬 改编成短剧</button>
+      <input id="novelEpisodeCount" type="number" value="8" min="1" max="50" style="width:64px" title="改编集数">
+      <span style="font-size:12px;color:#8b949e;margin-left:auto" id="novelStatus"></span>
+    </div>
+  </div>
+  <div style="display:flex;gap:16px;align-items:flex-start">
+    <div class="card" style="width:260px;flex-shrink:0">
+      <h3 style="margin-top:0">章节列表</h3>
+      <div id="chapterList" style="max-height:600px;overflow-y:auto">
+        <p style="color:#8b949e">暂无章节，点击「生成下一章」开始。</p>
+      </div>
+    </div>
+    <div class="card" style="flex:1">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <input id="chapterTitle" placeholder="章节标题（可选）" style="flex:1">
+        <button class="btn btn-sm btn-secondary" onclick="saveChapter()">💾 保存</button>
+        <button class="btn btn-sm btn-secondary" onclick="continueChapter()">✍️ 续写</button>
+      </div>
+      <textarea id="chapterContent" rows="20" style="width:100%;font-size:14px;line-height:1.8;background:#0d1117;color:#c9d1d9;border:1px solid var(--border);border-radius:6px;padding:10px;resize:vertical" placeholder="章节正文…"></textarea>
+      <div style="margin-top:8px;font-size:12px;color:#8b949e">
+        <span id="chapterWordCount">0 字</span>
+        <span id="chapterSummary" style="margin-left:12px"></span>
+      </div>
+    </div>
+  </div>
+  <div class="card" id="continuityResult" style="display:none">
+    <h3 style="margin-top:0">🔍 连贯性检查结果</h3>
+    <div id="continuityIssues"></div>
   </div>
 </div>
 
@@ -415,6 +455,7 @@ async function loadProject() {
   }
   renderCharacters();
   renderShots();
+  loadChapters();
 }
 
 function extractShots(script) {
@@ -422,6 +463,137 @@ function extractShots(script) {
   (script.episodes||[]).forEach(ep =>
     (ep.shots||[]).forEach(s => shots.push({...s, episode: ep.episode||1})));
   return shots;
+}
+
+// ─── 小说模式 ───
+let currentChapterId = null;
+let novelChapters = [];
+
+async function loadChapters() {
+  if (!currentProject) return;
+  try {
+    const r = await fetch(`/api/chapters?project_id=${currentProject.id}`);
+    novelChapters = await r.json();
+    renderChapterList();
+  } catch(e) {}
+}
+
+function renderChapterList() {
+  const el = document.getElementById('chapterList');
+  if (!novelChapters.length) {
+    el.innerHTML = '<p style="color:#8b949e">暂无章节，点击「生成下一章」开始。</p>';
+    return;
+  }
+  el.innerHTML = novelChapters.map(c => {
+    const active = c.id === currentChapterId ? 'background:var(--card);border-color:var(--accent);' : '';
+    const icon = c.status === 'done' ? '✅' : '📝';
+    return '<div style="padding:8px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;cursor:pointer;' + active + '" onclick="selectChapter(' + c.id + ')">'
+      + '<div style="font-weight:600;font-size:13px">第' + c.chapter_number + '章 ' + (c.title||'') + '</div>'
+      + '<div style="font-size:11px;color:#8b949e">' + (c.word_count||0) + ' 字 ' + icon + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+function selectChapter(cid) {
+  currentChapterId = cid;
+  const c = novelChapters.find(x => x.id === cid);
+  if (!c) return;
+  document.getElementById('chapterTitle').value = c.title || '';
+  document.getElementById('chapterContent').value = c.content || '';
+  document.getElementById('chapterWordCount').textContent = (c.word_count||0) + ' 字';
+  document.getElementById('chapterSummary').textContent = c.summary ? '摘要：' + c.summary : '';
+  renderChapterList();
+}
+
+async function generateChapter() {
+  if (!currentProject) { alert('请先选择项目'); return; }
+  const status = document.getElementById('novelStatus');
+  status.textContent = '⏳ 生成中…（约 1-2 分钟）';
+  try {
+    const r = await fetch('/api/chapters/generate', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({project_id: currentProject.id, title: document.getElementById('chapterTitle').value})
+    });
+    const data = await r.json();
+    if (data.error) { status.textContent = '❌ ' + data.error; return; }
+    status.textContent = '✅ 第' + data.chapter_number + '章生成完成';
+    await loadChapters();
+    selectChapter(data.id);
+  } catch(e) { status.textContent = '❌ ' + e.message; }
+}
+
+async function saveChapter() {
+  if (!currentChapterId) return;
+  await fetch(`/api/chapters/${currentChapterId}/update`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({title: document.getElementById('chapterTitle').value, content: document.getElementById('chapterContent').value})
+  });
+  await loadChapters();
+  document.getElementById('novelStatus').textContent = '✅ 已保存';
+}
+
+async function continueChapter() {
+  if (!currentChapterId) return;
+  const status = document.getElementById('novelStatus');
+  status.textContent = '⏳ 续写中…';
+  try {
+    const r = await fetch(`/api/chapters/${currentChapterId}/continue`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({})
+    });
+    const data = await r.json();
+    if (data.error) { status.textContent = '❌ ' + data.error; return; }
+    document.getElementById('chapterContent').value += '\n\n' + data.content;
+    status.textContent = '✅ 续写完成';
+    await saveChapter();
+  } catch(e) { status.textContent = '❌ ' + e.message; }
+}
+
+async function checkContinuity() {
+  if (!currentProject) return;
+  const status = document.getElementById('novelStatus');
+  status.textContent = '⏳ 检查中…';
+  try {
+    const r = await fetch('/api/chapters/check-continuity', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({project_id: currentProject.id})
+    });
+    const data = await r.json();
+    const issues = data.issues || [];
+    document.getElementById('continuityResult').style.display = 'block';
+    const el = document.getElementById('continuityIssues');
+    if (!issues.length) {
+      el.innerHTML = '<p style="color:#3fb950">✅ 未发现连贯性问题</p>';
+    } else {
+      el.innerHTML = issues.map(i =>
+        '<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px">'
+        + '<strong>第' + (i.chapter||'?') + '章 · ' + (i.type||'') + '</strong>'
+        + '<p style="margin:4px 0">' + (i.issue||'') + '</p>'
+        + '<p style="margin:0;color:#8b949e;font-size:12px">建议：' + (i.suggestion||'') + '</p>'
+        + '</div>').join('');
+    }
+    status.textContent = issues.length ? '⚠️ 发现 ' + issues.length + ' 个问题' : '✅ 连贯性 OK';
+  } catch(e) { status.textContent = '❌ ' + e.message; }
+}
+
+function exportNovel() {
+  if (!currentProject) return;
+  window.open('/api/chapters/export?project_id=' + currentProject.id, '_blank');
+}
+
+async function adaptNovel() {
+  if (!currentProject) { alert('请先选择项目'); return; }
+  const ep = document.getElementById('novelEpisodeCount').value || 8;
+  const status = document.getElementById('novelStatus');
+  status.textContent = '⏳ 改编中…（约 1-2 分钟）';
+  try {
+    const r = await fetch('/api/chapters/adapt', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({project_id: currentProject.id, episode_count: parseInt(ep)})
+    });
+    const data = await r.json();
+    if (data.error) { status.textContent = '❌ ' + data.error; return; }
+    status.textContent = '✅ 改编完成：' + data.character_count + ' 角色 + ' + data.shot_count + ' 分镜';
+    alert('改编完成！已导入 ' + data.character_count + ' 个角色 + ' + data.shot_count + ' 个分镜，请到「分镜」标签查看。');
+  } catch(e) { status.textContent = '❌ ' + e.message; }
 }
 
 async function newProject() {

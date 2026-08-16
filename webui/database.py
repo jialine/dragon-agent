@@ -84,6 +84,20 @@ def init_db():
             completed_at TEXT,
             FOREIGN KEY (shot_id) REFERENCES shots(id)
         );
+
+        CREATE TABLE IF NOT EXISTS chapters (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            chapter_number INTEGER NOT NULL,
+            title TEXT DEFAULT '',
+            content TEXT DEFAULT '',
+            summary TEXT DEFAULT '',          -- 章节摘要，用于续写/连贯性
+            status TEXT DEFAULT 'draft',       -- draft / done
+            word_count INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (project_id) REFERENCES projects(id)
+        );
     """)
     conn.commit()
     
@@ -319,6 +333,68 @@ def update_shot_scene(shot_id, scene_id, scene_ref_image=""):
     conn = get_db()
     conn.execute("UPDATE shots SET scene_id=?, scene_ref_image=? WHERE id=?",
                  (scene_id, scene_ref_image, shot_id))
+    conn.commit()
+    conn.close()
+
+
+# --- Chapter CRUD (小说模式) ---
+def add_chapter(project_id, chapter_number, title="", content="", summary="", status="draft"):
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO chapters (project_id, chapter_number, title, content, summary, status, word_count) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (project_id, chapter_number, title, content, summary, status, len(content or "")))
+    conn.commit()
+    cid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+    return cid
+
+
+def update_chapter(chapter_id, title=None, content=None, summary=None, status=None):
+    conn = get_db()
+    fields = []
+    params = []
+    if title is not None:
+        fields.append("title=?")
+        params.append(title)
+    if content is not None:
+        fields.append("content=?")
+        params.append(content)
+        fields.append("word_count=?")
+        params.append(len(content))
+    if summary is not None:
+        fields.append("summary=?")
+        params.append(summary)
+    if status is not None:
+        fields.append("status=?")
+        params.append(status)
+    if not fields:
+        conn.close()
+        return
+    fields.append("updated_at=datetime('now')")
+    params.append(chapter_id)
+    conn.execute(f"UPDATE chapters SET {', '.join(fields)} WHERE id=?", params)
+    conn.commit()
+    conn.close()
+
+
+def get_chapters(project_id):
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM chapters WHERE project_id=? ORDER BY chapter_number", (project_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_chapter(chapter_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM chapters WHERE id=?", (chapter_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def delete_chapter(chapter_id):
+    conn = get_db()
+    conn.execute("DELETE FROM chapters WHERE id=?", (chapter_id,))
     conn.commit()
     conn.close()
 

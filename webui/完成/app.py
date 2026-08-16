@@ -18,9 +18,11 @@ from database import (
     create_project, get_project, list_projects, update_project_script,
     add_character, update_character_view, get_characters,
     add_shot, update_shot_prompt, update_shot_video, get_shots,
-    add_video_task, update_video_task, get_video_task
+    add_video_task, update_video_task, get_video_task,
+    add_chapter, update_chapter, get_chapters, get_chapter, delete_chapter
 )
 from pipelines.script_writer import generate_script, optimize_prompt
+from pipelines.novel_writer import generate_chapter, continue_chapter, check_continuity, adapt_novel_to_script
 from pipelines.character_gen import check_comfyui, check_wan, check_hy, generate_character_views, generate_character_views_comfyui, generate_character_views_wan, generate_character_views_hy
 from pipelines.shot_planner import extract_shots_from_script, build_shot_prompts
 from pipelines.video_gen import submit_video, merge_videos
@@ -567,7 +569,7 @@ def api_submit_video():
             model=model,
             size=resolution,
             duration=duration,
-            ref_image=ref_image if ref_image else None,
+            ref_images=[ref_image] if ref_image else None,
             output_path=output_path
         )
     except Exception as e:
@@ -867,6 +869,193 @@ def api_cost():
         })
     
     return jsonify({"error": "No cost data available"}), 404
+
+
+# ─── Novel APIs (小说模式) ──────────────────────────────
+@app.route("/api/chapters", methods=["GET"])
+def api_list_chapters():
+    project_id = request.args.get("project_id", type=int)
+    if not project_id:
+        return jsonify({"error": "project_id required"}), 400
+    return jsonify(get_chapters(project_id))
+
+
+@app.route("/api/chapters", methods=["POST"])
+def api_create_chapter():
+    data = request.json
+    project_id = data.get("project_id")
+    if not project_id:
+        return jsonify({"error": "project_id required"}), 400
+    chapters = get_chapters(project_id)
+    chapter_number = data.get("chapter_number") or (max([c["chapter_number"] for c in chapters], default=0) + 1)
+    cid = add_chapter(
+        project_id=project_id,
+        chapter_number=chapter_number,
+        title=data.get("title", ""),
+        content=data.get("content", ""),
+        summary=data.get("summary", ""),
+    )
+    return jsonify({"id": cid, "chapter_number": chapter_number})
+
+
+@app.route("/api/chapters/<int:cid>/update", methods=["POST"])
+def api_update_chapter(cid):
+    data = request.json
+    update_chapter(
+        cid,
+        title=data.get("title"),
+        content=data.get("content"),
+        summary=data.get("summary"),
+        status=data.get("status"),
+    )
+    return jsonify({"ok": True})
+
+
+@app.route("/api/chapters/<int:cid>/delete", methods=["POST"])
+def api_delete_chapter(cid):
+    delete_chapter(cid)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/chapters/generate", methods=["POST"])
+def api_generate_chapter():
+    data = request.json
+    project_id = data.get("project_id")
+    if not project_id:
+        return jsonify({"error": "project_id required"}), 400
+    project = get_project(project_id)
+    if not project:
+        return jsonify({"error": "project not found"}), 404
+    characters = get_characters(project_id)
+    chapters = get_chapters(project_id)
+    prev_summaries = [c["summary"] for c in chapters if c.get("summary")]
+    chapter_number = data.get("chapter_number") or (max([c["chapter_number"] for c in chapters], default=0) + 1)
+    chapter_title = data.get("title", "")
+    instruction = data.get("instruction", "")
+
+    try:
+        result = generate_chapter(project, characters, prev_summaries, chapter_number, chapter_title, instruction)
+    except Exception as e:
+        return jsonify({"error": f"章节生成失败: {str(e)}"}), 500
+
+    cid = add_chapter(
+        project_id=project_id,
+        chapter_number=chapter_number,
+        title=result.get("title") or chapter_title,
+        content=result.get("content", ""),
+        summary=result.get("summary", ""),
+        status="done",
+    )
+    return jsonify({"id": cid, "chapter_number": chapter_number, **result})
+
+
+@app.route("/api/chapters/<int:cid>/continue", methods=["POST"])
+def api_continue_chapter(cid):
+    data = request.json
+    chapter = get_chapter(cid)
+    if not chapter:
+        return jsonify({"error": "chapter not found"}), 404
+    project = get_project(chapter["project_id"])
+    characters = get_characters(chapter["project_id"])
+    instruction = data.get("instruction", "")
+    try:
+        continuation = continue_chapter(project, characters, chapter, instruction)
+    except Exception as e:
+        return jsonify({"error": f"续写失败: {str(e)}"}), 500
+    new_content = chapter["content"] + "\n\n" + continuation
+    update_chapter(cid, content=new_content)
+    return jsonify({"content": continuation, "total_words": len(new_content)})
+
+
+@app.route("/api/chapters/check-continuity", methods=["POST"])
+def api_check_continuity():
+    data = request.json
+    project_id = data.get("project_id")
+    if not project_id:
+        return jsonify({"error": "project_id required"}), 400
+    project = get_project(project_id)
+    characters = get_characters(project_id)
+    chapters = get_chapters(project_id)
+    try:
+        result = check_continuity(project, characters, chapters)
+    except Exception as e:
+        return jsonify({"error": f"连贯性检查失败: {str(e)}"}), 500
+    return jsonify(result)
+
+
+@app.route("/api/chapters/export", methods=["GET"])
+def api_export_chapters():
+    project_id = request.args.get("project_id", type=int)
+    if not project_id:
+        return jsonify({"error": "project_id required"}), 400
+    project = get_project(project_id) or {}
+    chapters = get_chapters(project_id)
+    lines = [project.get("name", "未命名"), project.get("logline", ""), ""]
+    for c in chapters:
+        lines.append(f"第{c['chapter_number']}章 {c.get('title', '')}".strip())
+        lines.append("")
+        lines.append(c.get("content", ""))
+        lines.append("")
+    text = "\n".join(lines).strip() + "\n"
+    from flask import Response
+    return Response(
+        text, mimetype="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename=novel_{project_id}.txt"},
+    )
+
+
+@app.route("/api/chapters/adapt", methods=["POST"])
+def api_adapt_novel():
+    """小说 → 短剧剧本 → 导入 characters + shots（复用 script/generate 的导入逻辑）。"""
+    data = request.json
+    project_id = data.get("project_id")
+    episode_count = data.get("episode_count", 8)
+    if not project_id:
+        return jsonify({"error": "project_id required"}), 400
+    project = get_project(project_id)
+    chapters = get_chapters(project_id)
+    if not chapters:
+        return jsonify({"error": "没有章节可改编"}), 400
+    try:
+        script = adapt_novel_to_script(project, chapters, episode_count)
+    except Exception as e:
+        return jsonify({"error": f"改编失败: {str(e)}"}), 500
+
+    update_project_script(project_id, json.dumps(script, ensure_ascii=False, indent=2))
+
+    # 导入角色（按 name 去重，避免重复）
+    existing = {c["name"]: c for c in get_characters(project_id)}
+    characters = []
+    for c in script.get("characters", []):
+        name = c.get("name", "")
+        if name and name not in existing:
+            cid = add_character(project_id, name, c.get("role_type", "human"), c.get("description", ""))
+            existing[name] = {"id": cid}
+        if name in existing:
+            characters.append({"id": existing[name]["id"], **c})
+
+    # 导入分镜
+    shots = extract_shots_from_script(script)
+    shot_records = []
+    for s in shots:
+        sid = add_shot(
+            project_id=project_id,
+            episode=s["episode"],
+            shot_number=s["shot_number"],
+            scene_desc=s["scene_desc"],
+            prompt_raw=s["scene_desc"],
+            model="happyhorse-1.1-t2v",
+            duration=s.get("duration_sec", 8),
+        )
+        shot_records.append({"id": sid, **s})
+
+    return jsonify({
+        "project_id": project_id,
+        "title": script.get("title"),
+        "character_count": len(characters),
+        "shot_count": len(shot_records),
+        "script": script,
+    })
 
 
 # ─── Main ───────────────────────────────────────────────
