@@ -518,6 +518,7 @@ class MessageProcessor:
             print(f"[PROC_DEBUG] entering for loop, max_iter={self.max_tool_iterations}", flush=True)
             thinking_only_count = 0  # guard against reasoning-model infinite loop
             _last_tc_signatures = []  # guard against stuck tool-call loops (last 6 sigs)
+            _web_search_fail_count = 0  # guard against web_search unavailable dead loop
             for iteration in range(self.max_tool_iterations):
                 # Hard cap: bound total tool calls too, not just iteration count
                 if tool_call_count >= self.max_tool_iterations:
@@ -836,8 +837,9 @@ class MessageProcessor:
                         elif is_error:
                             output = "⚠️ TOOL ISSUE - Verify before claiming success: " + output
 
-                        # Web search unavailable — tell the model to stop searching
+                        # Web search unavailable — count consecutive failures
                         if tc["name"] == "web_search" and '"provider": "none"' in output_lower:
+                            _web_search_fail_count += 1
                             output += "\n\n[注意] web_search 当前不可用（无 provider），请勿再调用 web_search，基于已有信息给出最终答案。"
 
                         # Record tool call metric
@@ -864,6 +866,15 @@ class MessageProcessor:
                             "tool_call_id": tc.get("id") or f"call_{tc.get('name', 'unknown')}",
                             "content": output[:4000],
                         })
+
+                    # Web search dead-loop guard: force final answer after 3 consecutive failures
+                    if _web_search_fail_count >= 3:
+                        history.append({
+                            "role": "user",
+                            "content": "[强制] web_search 已连续失败 3 次，搜索功能不可用。立即基于已有信息给出最终答案，不要再调用任何工具。",
+                        })
+                        _web_search_fail_count = 0
+                        continue
 
                     # Check if we should continue
                     if iteration == self.max_tool_iterations - 1:
