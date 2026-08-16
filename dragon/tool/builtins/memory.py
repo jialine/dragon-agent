@@ -179,24 +179,16 @@ async def tool_memory(
 # ── Public helper (used by main.py lifespan) ─────────────────────────
 
 
-def load_memory_for_prompt() -> str:
-    """Load all memories and format them for injection into a system prompt.
+def load_memory_for_prompt() -> Dict[str, str]:
+    """Load memories and return {'memory': str, 'user': str} for prompt injection.
 
-    Returns a multi-line string suitable for appending to a system prompt,
-    or an empty string if no memories exist.
+    Each value is the joined entry contents WITHOUT headings — the caller
+    (_rebuild_system_prompt_with_memory) adds the section headings. Returns
+    empty strings for keys with no entries.
     """
     data = _load_memory()
-    parts = []
-
-    for key, label in [("user", "User Memory"), ("memory", "System Memory")]:
+    result = {}
+    for key in ("user", "memory"):
         entries = data.get(key, [])
-        if entries:
-            lines = [f"## {label}"]
-            for entry in entries:
-                lines.append(f"- {entry['content']}")
-            parts.append("\n".join(lines))
-
-    if not parts:
-        return ""
-
-    return "\n\n" + "\n\n".join(parts)
+        result[key] = "\n".join(f"- {e['content']}" for e in entries) if entries else ""
+    return result
