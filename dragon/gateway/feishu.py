@@ -264,23 +264,33 @@ class FeishuAdapter(PlatformAdapter):
             log_level=lark.LogLevel.DEBUG,
         )
 
-        # Monkey-patch _receive_message_loop for debugging
+        # Monkey-patch _receive_message_loop for debugging (with auto-reconnect)
         import lark_oapi.ws.client as _wsc
         _orig_recv_loop = _wsc.Client._receive_message_loop
         async def _debug_recv_loop(self):
             import datetime as _dt
             with open("/tmp/feishu_raw_ws.log", "a") as _f:
                 _f.write(f"[{_dt.datetime.now()}] recv_loop START\n")
-            while True:
-                if self._conn is None:
+            try:
+                while True:
+                    if self._conn is None:
+                        with open("/tmp/feishu_raw_ws.log", "a") as _f:
+                            _f.write(f"[{_dt.datetime.now()}] conn=None, exiting\n")
+                        break
+                    msg = await self._conn.recv()
                     with open("/tmp/feishu_raw_ws.log", "a") as _f:
-                        _f.write(f"[{_dt.datetime.now()}] conn=None, exiting\n")
-                    break
-                msg = await self._conn.recv()
+                        _f.write(f"[{_dt.datetime.now()}] RECV {len(msg)}B\n")
+                    import asyncio as _asyncio
+                    _asyncio.get_event_loop().create_task(self._handle_message(msg))
+            except Exception as e:
                 with open("/tmp/feishu_raw_ws.log", "a") as _f:
-                    _f.write(f"[{_dt.datetime.now()}] RECV {len(msg)}B\n")
-                import asyncio as _asyncio
-                _asyncio.get_event_loop().create_task(self._handle_message(msg))
+                    _f.write(f"[{_dt.datetime.now()}] recv_loop EXIT, err: {e}\n")
+                logger.error(self._fmt_log("receive message loop exit, err: {}", e))
+                await self._disconnect()
+                if self._auto_reconnect:
+                    await self._reconnect()
+                else:
+                    raise e
         _wsc.Client._receive_message_loop = _debug_recv_loop
 
         # Start WS client in a dedicated thread with its own event loop
