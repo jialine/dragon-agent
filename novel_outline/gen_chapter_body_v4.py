@@ -23,6 +23,19 @@ import requests
 
 from lifecycle import LifecycleManager
 
+# ── mailbox 事件总线接入（可选，缺失时静默降级，不影响生成）──
+try:
+    os.environ.setdefault("MAILBOX_AGENT_ID", "dragon-02")  # 必须先设身份，escalate 的 autoload 才能读到
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "mailbox"))
+    from escalate import escalate, heartbeat, task_done as _task_done
+    _MB_AGENT = os.environ.get("MAILBOX_AGENT_ID", "dragon-02")
+    _MB_OK = True
+except Exception:
+    _MB_OK = False
+    def escalate(*a, **k): return ""
+    def heartbeat(*a, **k): return ""
+    def _task_done(*a, **k): return ""
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DETAIL_JSON = os.path.join(BASE_DIR, "detail_outline_sample.json")
 CH1_BODY = os.path.join(BASE_DIR, "ch1_body.txt")
@@ -32,6 +45,7 @@ MODEL = "deepseek-v4-pro"
 TARGET_WORDS = 3500
 MAX_TOKENS = 8192
 ENV_FILE = "/home/jialine/dragon-agent/.env"
+DB_PATH = os.environ.get("NOVEL_DB", os.path.join(BASE_DIR, "novel.db"))
 
 
 def load_key():
@@ -176,9 +190,63 @@ def seed(lm):
     lm.upsert_faction("黄巾军", leader="张角", location="冀州等地", status="壮大")
 
 
+def _gen_one(n, chapters_by_no, ch1, lm):
+    """生成单章（v4 状态预演版，原 for 循环体抽离，供 main 调用 + 异常隔离）。"""
+    out_path = os.path.join(OUT_DIR, f"ch_{n:03d}.md")
+    if n not in chapters_by_no:
+        print(f"第{n}章: 细纲缺失，跳过")
+        return
+    ch = chapters_by_no[n]
+
+    prev_ending = ""
+    prev_path = os.path.join(OUT_DIR, f"ch_{n-1:03d}.md")
+    if os.path.exists(prev_path):
+        prev_ending = open(prev_path, encoding="utf-8").read().strip()[-150:]
+
+    context = lm.get_context(n)
+    beats_text = f"起因：{ch['beats']['起因']}\n冲突：{ch['beats']['冲突']}\n高潮：{ch['beats']['高潮']}\n钩子：{ch['beats']['钩子']}"
+
+    # 状态预演
+    plan_raw = call_llm([{"role": "user", "content": lm.build_plan_prompt(n, beats_text, context)}],
+                        max_tokens=2000, temperature=0.2)
+    plan = extract_json(plan_raw) if plan_raw else {}
+
+    t0 = time.time()
+    body = generate_body(ch, context, plan, prev_ending, ch1)
+    changes = {}
+    errors = ["生成失败"]
+    for attempt in range(3):
+        if not body:
+            break
+        raw = call_llm([{"role": "user", "content": lm.build_extract_prompt(n, body, context)}],
+                       max_tokens=3000, temperature=0.2)
+        changes = extract_json(raw) if raw else {}
+        errors = (lm.validate(changes, n)
+                  + lm.validate_history(changes, n)
+                  + lm.validate_plan(plan, changes, n))
+        if not errors:
+            break
+        print(f"  第{n}章 第{attempt+1}次违反: {'; '.join(errors[:3])}")
+        body = generate_body(ch, context, plan, prev_ending, ch1, extra_errors=errors)
+
+    if errors:
+        print(f"第{n}章: 3次重写仍失败，跳过（{'; '.join(errors[:3])}）")
+        if _MB_OK:
+            escalate(_MB_AGENT, "三国求生指南", f"第{n}章3次重写仍失败: {errors[0]}", chapter=n)
+        return
+
+    lm.apply_changes(changes, n)
+    pure = re.sub(r"\s", "", body)
+    open(out_path, "w", encoding="utf-8").write(body)
+    cog = plan.get("认知值", {}).get("to", "?")
+    print(f"第{n}章《{ch['title']}》: {len(pure)}字 / {time.time()-t0:.0f}s / 认知值→{cog}")
+    if _MB_OK:
+        heartbeat(_MB_AGENT, "三国求生指南", chapter=n, title=ch["title"], cog=cog)
+
+
 def main():
     if len(sys.argv) >= 2 and sys.argv[1] == "init":
-        lm = LifecycleManager()
+        lm = LifecycleManager(DB_PATH)
         lm.init_db()
         seed(lm)
         lm.close()
@@ -189,7 +257,7 @@ def main():
     ch1 = open(CH1_BODY, encoding="utf-8").read().strip()
     chapters_by_no = {c["chapter"]: c for c in detail}
 
-    lm = LifecycleManager()
+    lm = LifecycleManager(DB_PATH)
     if not os.path.exists(lm.db):
         lm.init_db()
         seed(lm)
@@ -200,55 +268,21 @@ def main():
 
     os.makedirs(OUT_DIR, exist_ok=True)
     print(f"从第{start}章开始（v4 状态预演版）")
+    if _MB_OK:
+        heartbeat(_MB_AGENT, "三国求生指南", phase="启动", start=start, end=end, version="v4")
 
     for n in range(start, end + 1):
-        out_path = os.path.join(OUT_DIR, f"ch_{n:03d}.md")
-        if n not in chapters_by_no:
+        try:
+            _gen_one(n, chapters_by_no, ch1, lm)
+        except Exception as e:
+            print(f"第{n}章: 生成异常 {e}")
+            if _MB_OK:
+                escalate(_MB_AGENT, "三国求生指南", f"第{n}章生成崩溃: {e}", chapter=n)
             continue
-        ch = chapters_by_no[n]
-
-        prev_ending = ""
-        prev_path = os.path.join(OUT_DIR, f"ch_{n-1:03d}.md")
-        if os.path.exists(prev_path):
-            prev_ending = open(prev_path, encoding="utf-8").read().strip()[-150:]
-
-        context = lm.get_context(n)
-        beats_text = f"起因：{ch['beats']['起因']}\n冲突：{ch['beats']['冲突']}\n高潮：{ch['beats']['高潮']}\n钩子：{ch['beats']['钩子']}"
-
-        # 状态预演
-        plan_raw = call_llm([{"role": "user", "content": lm.build_plan_prompt(n, beats_text, context)}],
-                            max_tokens=2000, temperature=0.2)
-        plan = extract_json(plan_raw) if plan_raw else {}
-
-        t0 = time.time()
-        body = generate_body(ch, context, plan, prev_ending, ch1)
-        changes = {}
-        errors = ["生成失败"]
-        for attempt in range(3):
-            if not body:
-                break
-            raw = call_llm([{"role": "user", "content": lm.build_extract_prompt(n, body, context)}],
-                           max_tokens=3000, temperature=0.2)
-            changes = extract_json(raw) if raw else {}
-            errors = (lm.validate(changes, n)
-                      + lm.validate_history(changes, n)
-                      + lm.validate_plan(plan, changes, n))
-            if not errors:
-                break
-            print(f"  第{n}章 第{attempt+1}次违反: {'; '.join(errors[:3])}")
-            body = generate_body(ch, context, plan, prev_ending, ch1, extra_errors=errors)
-
-        if errors:
-            print(f"第{n}章: 3次重写仍失败，跳过（{'; '.join(errors[:3])}）")
-            continue
-
-        lm.apply_changes(changes, n)
-        pure = re.sub(r"\s", "", body)
-        open(out_path, "w", encoding="utf-8").write(body)
-        cog = plan.get("认知值", {}).get("to", "?")
-        print(f"第{n}章《{ch['title']}》: {len(pure)}字 / {time.time()-t0:.0f}s / 认知值→{cog}")
 
     lm.close()
+    if _MB_OK:
+        _task_done(_MB_AGENT, "三国求生指南", f"完成到第{end}章")
     print(f"\n完成到第{end}章。")
 
 
