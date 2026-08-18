@@ -206,14 +206,25 @@ class LifecycleManager:
         # 1. 死人不能复活
         dead = set(r["name"] for r in self.conn.execute("SELECT name FROM persons WHERE status='死亡'"))
         for p in changes.get("人物变化", []):
+            if not isinstance(p, dict):
+                continue
             if p.get("name") in dead and p.get("status") in ("活跃", "暂离"):
                 errors.append(f"人物矛盾：{p['name']} 已于前文死亡，本章却让其活跃登场")
-        # 2. 死亡必须记录 death_chapter
+        # 2. 死亡必须记录 death_chapter（"死亡"独立数组也可提供）
+        death_names = set()
+        for d in changes.get("死亡", []):
+            if isinstance(d, dict) and d.get("name"):
+                death_names.add(d["name"])
         for p in changes.get("人物变化", []):
-            if p.get("status") == "死亡" and not p.get("death_chapter"):
+            if not isinstance(p, dict):
+                continue
+            if (p.get("status") == "死亡" and not p.get("death_chapter")
+                    and p.get("name") not in death_names):
                 errors.append(f"人物矛盾：{p['name']} 标为死亡但未记录死亡章节")
         # 3. 数值范围
         for v in changes.get("数值变化", []):
+            if not isinstance(v, dict):
+                continue
             if v.get("name") == "认知值":
                 nv = v.get("new_value")
                 if nv is not None and (nv < 0 or nv > 100):
@@ -223,6 +234,8 @@ class LifecycleManager:
             (r["entity_a"], r["entity_b"], r["relation"])
             for r in self.conn.execute("SELECT * FROM relations WHERE status='存续'"))
         for r in changes.get("新关系", []):
+            if not isinstance(r, dict):
+                continue
             key = (r.get("a"), r.get("b"), r.get("relation"))
             if key in existing:
                 errors.append(f"关系重复：{r.get('a')}与{r.get('b')}的{r.get('relation')}关系此前已建立")
@@ -349,6 +362,8 @@ class LifecycleManager:
         """把提取的变化写入数据库。"""
         # 人物变化
         for p in changes.get("人物变化", []):
+            if not isinstance(p, dict):
+                continue
             name = p.get("name")
             if not name:
                 continue
@@ -367,6 +382,8 @@ class LifecycleManager:
 
         # 数值变化
         for v in changes.get("数值变化", []):
+            if not isinstance(v, dict):
+                continue
             name = v.get("name"); nv = v.get("new_value")
             if name and nv is not None:
                 old = self.conn.execute(
@@ -379,6 +396,8 @@ class LifecycleManager:
 
         # 势力变化
         for f in changes.get("势力变化", []):
+            if not isinstance(f, dict):
+                continue
             name = f.get("name")
             if not name:
                 continue
@@ -399,8 +418,14 @@ class LifecycleManager:
 
         # 关系
         for r in changes.get("新关系", []):
-            if r.get("a") and r.get("b") and r.get("relation"):
+            if isinstance(r, dict) and r.get("a") and r.get("b") and r.get("relation"):
                 self.add_relation(r["a"], r["b"], r["relation"], chapter)
+
+        # 死亡（独立"死亡"数组，回写 death_chapter）
+        for d in changes.get("死亡", []):
+            if isinstance(d, dict) and d.get("name"):
+                self.upsert_person(d["name"], status="死亡",
+                                   death_chapter=d.get("death_chapter") or chapter)
 
         # 时间线
         if changes.get("时间"):

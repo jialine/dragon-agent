@@ -23,6 +23,19 @@ import requests
 
 from lifecycle import LifecycleManager
 
+# ── mailbox 事件总线接入（可选，缺失时静默降级，不影响生成）──
+try:
+    os.environ.setdefault("MAILBOX_AGENT_ID", "dragon-02")  # 必须先设身份，escalate 的 autoload 才能读到
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "mailbox"))
+    from escalate import escalate, heartbeat, task_done as _task_done
+    _MB_AGENT = os.environ.get("MAILBOX_AGENT_ID", "dragon-02")
+    _MB_OK = True
+except Exception:
+    _MB_OK = False
+    def escalate(*a, **k): return ""
+    def heartbeat(*a, **k): return ""
+    def _task_done(*a, **k): return ""
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DETAIL_JSON = os.path.join(BASE_DIR, "detail_outline_sample.json")
 CH1_BODY = os.path.join(BASE_DIR, "ch1_body.txt")
@@ -171,6 +184,59 @@ def generate_body(ch, context, prev_ending, ch1_body, extra_errors=None):
     return body.strip()
 
 
+def _gen_one(n, chapters_by_no, ch1, lm):
+    """生成单章（原 for 循环体抽离，供 main 调用 + 异常隔离）。"""
+    out_path = os.path.join(OUT_DIR, f"ch_{n:03d}.md")
+    if n not in chapters_by_no:
+        print(f"第{n}章: 细纲缺失，跳过")
+        return
+    ch = chapters_by_no[n]
+
+    prev_ending = ""
+    prev_path = os.path.join(OUT_DIR, f"ch_{n-1:03d}.md")
+    if os.path.exists(prev_path):
+        prev_ending = open(prev_path, encoding="utf-8").read().strip()[-150:]
+
+    # 1. 查库组装硬约束
+    context = lm.get_context(n)
+
+    # 2. 生成 + 校验循环
+    t0 = time.time()
+    body = generate_body(ch, context, prev_ending, ch1)
+    changes = {}
+    errors = ["生成失败"]
+    for attempt in range(3):
+        if not body:
+            break
+        # 3. 提取变化
+        raw = call_llm([{"role": "user", "content": lm.build_extract_prompt(n, body, context)}],
+                       max_tokens=3000, temperature=0.2)
+        changes = extract_json(raw) if raw else {}
+        # 4. 校验（生命周期规则 + 历史硬伤）
+        errors = lm.validate(changes, n) + lm.validate_history(changes, n)
+        if not errors:
+            break
+        print(f"  第{n}章 第{attempt+1}次生成违反约束: {'; '.join(errors[:3])}")
+        # 5. 带错误重写
+        body = generate_body(ch, context, prev_ending, ch1, extra_errors=errors)
+
+    if errors:
+        print(f"第{n}章: 3次重写仍失败，跳过（{'; '.join(errors[:3])}）")
+        if _MB_OK:
+            escalate(_MB_AGENT, "三国求生指南", f"第{n}章3次重写仍失败: {errors[0]}", chapter=n)
+        return
+
+    # 6. 回写数据库 + 落盘
+    lm.apply_changes(changes, n)
+    pure = re.sub(r"\s", "", body)
+    open(out_path, "w", encoding="utf-8").write(body)
+    # 打印关键状态
+    cog = next((v["new_value"] for v in changes.get("数值变化", []) if v.get("name") == "认知值"), "?")
+    print(f"第{n}章《{ch['title']}》: {len(pure)}字 / {time.time()-t0:.0f}s / 认知值={cog}")
+    if _MB_OK:
+        heartbeat(_MB_AGENT, "三国求生指南", chapter=n, title=ch["title"], cog=cog)
+
+
 def main():
     if len(sys.argv) >= 2 and sys.argv[1] == "init":
         lm = LifecycleManager()
@@ -197,55 +263,21 @@ def main():
 
     os.makedirs(OUT_DIR, exist_ok=True)
     print(f"从第{start}章开始（生命周期管理版）")
+    if _MB_OK:
+        heartbeat(_MB_AGENT, "三国求生指南", phase="启动", start=start, end=end)
 
     for n in range(start, end + 1):
-        out_path = os.path.join(OUT_DIR, f"ch_{n:03d}.md")
-        if n not in chapters_by_no:
-            print(f"第{n}章: 细纲缺失，跳过")
+        try:
+            _gen_one(n, chapters_by_no, ch1, lm)
+        except Exception as e:
+            print(f"第{n}章: 生成异常 {e}")
+            if _MB_OK:
+                escalate(_MB_AGENT, "三国求生指南", f"第{n}章生成崩溃: {e}", chapter=n)
             continue
-        ch = chapters_by_no[n]
-
-        prev_ending = ""
-        prev_path = os.path.join(OUT_DIR, f"ch_{n-1:03d}.md")
-        if os.path.exists(prev_path):
-            prev_ending = open(prev_path, encoding="utf-8").read().strip()[-150:]
-
-        # 1. 查库组装硬约束
-        context = lm.get_context(n)
-
-        # 2. 生成 + 校验循环
-        t0 = time.time()
-        body = generate_body(ch, context, prev_ending, ch1)
-        changes = {}
-        errors = ["生成失败"]
-        for attempt in range(3):
-            if not body:
-                break
-            # 3. 提取变化
-            raw = call_llm([{"role": "user", "content": lm.build_extract_prompt(n, body, context)}],
-                           max_tokens=3000, temperature=0.2)
-            changes = extract_json(raw) if raw else {}
-            # 4. 校验（生命周期规则 + 历史硬伤）
-            errors = lm.validate(changes, n) + lm.validate_history(changes, n)
-            if not errors:
-                break
-            print(f"  第{n}章 第{attempt+1}次生成违反约束: {'; '.join(errors[:3])}")
-            # 5. 带错误重写
-            body = generate_body(ch, context, prev_ending, ch1, extra_errors=errors)
-
-        if errors:
-            print(f"第{n}章: 3次重写仍失败，跳过（{'; '.join(errors[:3])}）")
-            continue
-
-        # 6. 回写数据库 + 落盘
-        lm.apply_changes(changes, n)
-        pure = re.sub(r"\s", "", body)
-        open(out_path, "w", encoding="utf-8").write(body)
-        # 打印关键状态
-        cog = next((v["new_value"] for v in changes.get("数值变化", []) if v.get("name") == "认知值"), "?")
-        print(f"第{n}章《{ch['title']}》: {len(pure)}字 / {time.time()-t0:.0f}s / 认知值={cog}")
 
     lm.close()
+    if _MB_OK:
+        _task_done(_MB_AGENT, "三国求生指南", f"完成到第{end}章")
     print(f"\n完成到第{end}章。")
 
 
