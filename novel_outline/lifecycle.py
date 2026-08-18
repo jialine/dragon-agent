@@ -113,6 +113,76 @@ class LifecycleManager:
             (chapter, date, location))
         self.conn.commit()
 
+    # ---------- 从数据库实时重建状态快照（替代独立 state.json 文件） ----------
+    def get_state(self, recent_events=6):
+        """从数据库实时重建当前小说状态，返回 dict（字段与原 state.json 对齐）。
+
+        单一事实源 = 数据库。此方法只是查询视图，不是权威状态存储——
+        任何时候都能从 novel.db 重建，state.json 这种文件快照是反模式。
+        """
+        state = {}
+
+        # current_chapter：timeline 最大章号
+        row = self.conn.execute("SELECT MAX(chapter) FROM timeline").fetchone()
+        state["current_chapter"] = row[0] if row and row[0] else 1
+
+        # 时间 + 主场景：最新 timeline
+        row = self.conn.execute(
+            "SELECT date, location FROM timeline ORDER BY chapter DESC LIMIT 1").fetchone()
+        state["时间"] = row["date"] if row else ""
+        state["主场景"] = row["location"] if row else ""
+
+        # 认知值
+        row = self.conn.execute(
+            "SELECT current_value FROM value_trackers WHERE name='认知值'").fetchone()
+        state["认知值"] = row["current_value"] if row else None
+
+        # 已解锁模块：解锁进度 >= 100 的 value_tracker
+        rows = self.conn.execute(
+            "SELECT name FROM value_trackers WHERE name LIKE '%解锁进度%' AND current_value >= 100 "
+            "ORDER BY name").fetchall()
+        state["已解锁"] = [r["name"].replace("解锁进度", "") for r in rows]
+
+        # 势力（含兵力）：活跃势力按兵力降序
+        rows = self.conn.execute(
+            "SELECT name, strength, status, leader FROM factions "
+            "WHERE status IN ('兴起','壮大') AND strength IS NOT NULL "
+            "ORDER BY strength DESC").fetchall()
+        state["势力"] = [{"name": r["name"], "strength": r["strength"],
+                          "status": r["status"], "leader": r["leader"]} for r in rows]
+
+        # 活跃人物
+        rows = self.conn.execute(
+            "SELECT name, status, location, title FROM persons "
+            "WHERE status IN ('活跃','暂离') ORDER BY name").fetchall()
+        state["活跃人物"] = [dict(r) for r in rows]
+
+        # 已死亡人物
+        rows = self.conn.execute(
+            "SELECT name, death_chapter FROM persons WHERE status='死亡' "
+            "ORDER BY death_chapter").fetchall()
+        state["已死亡人物"] = [dict(r) for r in rows]
+
+        # 关键事件：最近 N 条，按时间正序返回
+        rows = self.conn.execute(
+            "SELECT chapter, summary FROM events ORDER BY chapter DESC, id DESC LIMIT ?",
+            (recent_events,)).fetchall()
+        state["关键事件"] = [{"chapter": r["chapter"], "summary": r["summary"]}
+                             for r in reversed(rows)]
+
+        # 已建立关系数（简要）
+        row = self.conn.execute(
+            "SELECT COUNT(*) FROM relations WHERE status='存续'").fetchone()
+        state["关系数"] = row[0] if row else 0
+
+        return state
+
+    def dump_state(self, path, recent_events=6):
+        """把 get_state() 结果导出为 JSON 文件（只读快照，供外部查看，非权威）。"""
+        import json as _json
+        _json.dump(self.get_state(recent_events), open(path, "w", encoding="utf-8"),
+                   ensure_ascii=False, indent=1)
+
     # ---------- 查询当前上下文（注入 prompt 的硬约束） ----------
     def get_context(self, chapter):
         """返回注入生成 prompt 的硬约束文本。"""
