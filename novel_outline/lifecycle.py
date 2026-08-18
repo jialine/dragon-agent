@@ -301,6 +301,49 @@ class LifecycleManager:
 
         return errors
 
+    # ---------- 状态预演（L2 升级：生成前规划状态，而非事后提取） ----------
+    def build_plan_prompt(self, chapter, beats_text, context):
+        return (
+            "你是小说状态规划器。基于本章节拍细纲和当前世界状态，规划本章的状态变化，只输出 JSON。\n\n"
+            f"【当前世界状态】\n{context}\n\n"
+            f"【本章节拍细纲】\n{beats_text}\n\n"
+            "输出本章状态规划 JSON：\n"
+            '{"认知值": {"from": 78, "to": 68, "reason": "检索XX消耗10点"}, '
+            '"新登场人物": ["人名"], "死亡人物": [], "兵力变化": "无", '
+            '"时间推进": "中平元年三月", "解锁模块": []}\n\n'
+            "规则（严格遵守）：\n"
+            "1. 认知值 from 必须等于当前状态里的认知值；to 必须符合消耗规则"
+            "（检索-8~10点/次，<60短期失忆，<30永久损伤，自然恢复约1点/天，重大事件有奖励），且 0≤to≤100。\n"
+            "2. 新登场人物必须是细纲里明确出现的人物，不得凭空新增，不得提前引入后续章节人物。\n"
+            "3. 时间推进要单调递增、跨度合理（每章通常推进数日到数月，不许大跃进）。\n"
+            "4. 兵力/解锁模块若有变化，给出具体数值或模块名。\n"
+            "只输出 JSON，不要其他文字。"
+        )
+
+    def validate_plan(self, plan, changes, chapter):
+        """校验正文提取的变化是否符合预演规划。返回错误列表。"""
+        errors = []
+        pv = plan.get("认知值", {})
+        if pv.get("to") is not None:
+            # 找正文提取的认知值终值
+            actual = None
+            for v in changes.get("数值变化", []):
+                if v.get("name") == "认知值":
+                    actual = v.get("new_value")
+            if actual is not None and actual != pv["to"]:
+                errors.append(f"认知值偏离规划：规划 {pv['from']}→{pv['to']}，正文写成 {actual}")
+        # 规划要登场的人物，正文必须登场；规划不登场的关键人物，正文不得登场
+        planned_appear = set(plan.get("新登场人物", []))
+        actual_appear = set(p.get("name") for p in changes.get("人物变化", [])
+                            if p.get("status") in ("活跃", "暂离"))
+        for name in planned_appear:
+            if name not in actual_appear:
+                errors.append(f"人物「{name}」按规划应本章登场，但正文未让其登场")
+        for name in plan.get("死亡人物", []):
+            if not any(p.get("name") == name and p.get("status") == "死亡" for p in changes.get("人物变化", [])):
+                errors.append(f"人物「{name}」按规划应本章死亡，但正文未体现")
+        return errors
+
     # ---------- 应用变化（事务回写） ----------
     def apply_changes(self, changes, chapter):
         """把提取的变化写入数据库。"""
