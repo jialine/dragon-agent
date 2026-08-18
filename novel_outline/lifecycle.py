@@ -237,6 +237,70 @@ class LifecycleManager:
                 errors.append(f"时间线矛盾：本章时间 {new_date} 早于上一章 {tl['date']}")
         return errors
 
+    # ---------- 历史硬伤校验（三国历史权威设定） ----------
+    def validate_history(self, changes, chapter):
+        """校验历史硬伤：人物/物品登场时间、职位权威值、年龄权威值。返回错误列表。"""
+        errors = []
+        facts_path = os.path.join(BASE, "history_facts.json")
+        if not os.path.exists(facts_path):
+            return errors
+        facts = json.load(open(facts_path, encoding="utf-8"))
+
+        # 提取当前年份
+        year = None
+        date_str = changes.get("时间") or ""
+        m = re.search(r"(\d{3,4})年", date_str)
+        if m:
+            year = int(m.group(1))
+        else:
+            row = self.conn.execute(
+                "SELECT date FROM timeline WHERE chapter < ? ORDER BY chapter DESC LIMIT 1", (chapter,)).fetchone()
+            if row and row["date"]:
+                m = re.search(r"(\d{3,4})年", row["date"])
+                if m:
+                    year = int(m.group(1))
+
+        if year:
+            # 人物登场时间
+            appear = facts.get("人物登场时间", {})
+            for p in changes.get("人物变化", []):
+                name = p.get("name")
+                if name in appear and appear[name].get("appear_after_year"):
+                    if year < appear[name]["appear_after_year"]:
+                        errors.append(
+                            f"历史硬伤：{name} 公元{year}年尚未登场（应{appear[name]['appear_after_year']}年后），"
+                            f"本章却让其登场（{appear[name]['note']}）")
+            # 物品登场时间
+            appear_obj = facts.get("物品登场时间", {})
+            for o in changes.get("物品变化", []):
+                name = o.get("name")
+                if name in appear_obj and appear_obj[name].get("appear_after_year"):
+                    if year < appear_obj[name]["appear_after_year"]:
+                        errors.append(
+                            f"历史硬伤：{name} 公元{year}年尚未出现，本章却让其登场（{appear_obj[name]['note']}）")
+
+        # 职位权威值（不依赖年份）
+        titles = facts.get("职位权威值", {})
+        for p in changes.get("人物变化", []):
+            name = p.get("name")
+            title = p.get("title")
+            if name in titles and title:
+                forbidden = titles[name].get("forbidden", [])
+                if title in forbidden:
+                    errors.append(
+                        f"历史硬伤：{name} 的官职「{title}」错误，应为「{titles[name]['title']}」"
+                        f"（{titles[name]['note']}）")
+
+        # 年龄权威值
+        ages = facts.get("人物年龄权威值", {})
+        for p in changes.get("人物变化", []):
+            name = p.get("name")
+            age = p.get("age")
+            if name in ages and age and int(age) != ages[name]:
+                errors.append(f"历史硬伤：{name} 年龄应为{ages[name]}岁，本章写成{age}岁")
+
+        return errors
+
     # ---------- 应用变化（事务回写） ----------
     def apply_changes(self, changes, chapter):
         """把提取的变化写入数据库。"""
@@ -252,7 +316,7 @@ class LifecycleManager:
                 if "first_appear" not in fields:
                     cur = self.conn.execute("SELECT first_appear FROM persons WHERE name=?", (name,))
                     row = cur.fetchone()
-                    if row and row["first_appear"] is None:
+                    if row is None or row["first_appear"] is None:
                         fields["first_appear"] = chapter
             if p.get("status") == "死亡":
                 fields["death_chapter"] = p.get("death_chapter") or chapter

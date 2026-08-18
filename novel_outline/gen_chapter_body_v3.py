@@ -225,8 +225,8 @@ def main():
             raw = call_llm([{"role": "user", "content": lm.build_extract_prompt(n, body, context)}],
                            max_tokens=3000, temperature=0.2)
             changes = extract_json(raw) if raw else {}
-            # 4. 校验
-            errors = lm.validate(changes, n)
+            # 4. 校验（生命周期规则 + 历史硬伤）
+            errors = lm.validate(changes, n) + lm.validate_history(changes, n)
             if not errors:
                 break
             print(f"  第{n}章 第{attempt+1}次生成违反约束: {'; '.join(errors[:3])}")
