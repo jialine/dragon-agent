@@ -98,6 +98,31 @@ def init_db():
             updated_at TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (project_id) REFERENCES projects(id)
         );
+
+        CREATE TABLE IF NOT EXISTS comic_panels (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            chapter_id INTEGER,              -- 关联小说章节（可选）
+            episode_number INTEGER DEFAULT 1, -- 漫画话数
+            page_number INTEGER DEFAULT 1,    -- 页面编号
+            panel_number INTEGER NOT NULL,    -- 面板编号
+            scene_desc TEXT DEFAULT '',       -- 场景描述（中文）
+            dialogue TEXT DEFAULT '',         -- 对白
+            sfx TEXT DEFAULT '',              -- 音效文字
+            camera TEXT DEFAULT '中景',        -- 镜头角度
+            prompt_raw TEXT DEFAULT '',       -- 原始提示词（中文）
+            prompt_optimized TEXT DEFAULT '', -- 优化后提示词（英文）
+            model TEXT DEFAULT 'GuoFeng3.4',  -- 生图模型
+            image_local TEXT DEFAULT '',      -- 本地图片路径
+            image_oss TEXT DEFAULT '',        -- OSS 图片 URL
+            seed INTEGER DEFAULT NULL,        -- 生图种子
+            page_file TEXT DEFAULT '',        -- 合并后的页面文件路径
+            status TEXT DEFAULT 'pending',    -- pending / generating / done / failed
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (project_id) REFERENCES projects(id),
+            FOREIGN KEY (chapter_id) REFERENCES chapters(id)
+        );
     """)
     conn.commit()
     
@@ -397,6 +422,127 @@ def delete_chapter(chapter_id):
     conn.execute("DELETE FROM chapters WHERE id=?", (chapter_id,))
     conn.commit()
     conn.close()
+
+
+# --- Comic Panel CRUD ---
+def add_comic_panel(project_id, panel_number, chapter_id=None, episode_number=1,
+                    page_number=1, scene_desc="", dialogue="", sfx="",
+                    camera="中景", prompt_raw="", model="GuoFeng3.4"):
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO comic_panels (project_id, chapter_id, episode_number, page_number,
+        panel_number, scene_desc, dialogue, sfx, camera, prompt_raw, model)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (project_id, chapter_id, episode_number, page_number, panel_number,
+         scene_desc, dialogue, sfx, camera, prompt_raw, model))
+    conn.commit()
+    pid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+    return pid
+
+
+def add_comic_panels_batch(panels):
+    """批量插入漫画面板。每个 panel 是 dict，字段同 add_comic_panel 参数。"""
+    conn = get_db()
+    ids = []
+    for p in panels:
+        conn.execute(
+            """INSERT INTO comic_panels (project_id, chapter_id, episode_number, page_number,
+            panel_number, scene_desc, dialogue, sfx, camera, prompt_raw, model)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (p.get("project_id"), p.get("chapter_id"), p.get("episode_number", 1),
+             p.get("page_number", 1), p.get("panel_number"), p.get("scene_desc", ""),
+             p.get("dialogue", ""), p.get("sfx", ""), p.get("camera", "中景"),
+             p.get("prompt_raw", ""), p.get("model", "GuoFeng3.4")))
+        ids.append(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+    conn.commit()
+    conn.close()
+    return ids
+
+
+def update_comic_panel(panel_id, **kwargs):
+    """更新漫画面板字段。"""
+    conn = get_db()
+    allowed = {"scene_desc", "dialogue", "sfx", "camera", "prompt_raw",
+               "prompt_optimized", "model", "image_local", "image_oss",
+               "seed", "page_file", "status", "page_number", "episode_number",
+               "panel_number"}
+    fields = []
+    params = []
+    for k, v in kwargs.items():
+        if k in allowed:
+            fields.append(f"{k}=?")
+            params.append(v)
+    if not fields:
+        conn.close()
+        return
+    fields.append("updated_at=datetime('now')")
+    params.append(panel_id)
+    conn.execute(f"UPDATE comic_panels SET {', '.join(fields)} WHERE id=?", params)
+    conn.commit()
+    conn.close()
+
+
+def update_comic_panel_image(panel_id, image_local, image_oss="", seed=None, status="done"):
+    """更新漫画面板生成的图片。"""
+    conn = get_db()
+    conn.execute(
+        """UPDATE comic_panels SET image_local=?, image_oss=?, seed=?,
+        status=?, updated_at=datetime('now') WHERE id=?""",
+        (image_local, image_oss, seed, status, panel_id))
+    conn.commit()
+    conn.close()
+
+
+def get_comic_panels(project_id, episode_number=None):
+    """获取项目的漫画面板列表。"""
+    conn = get_db()
+    if episode_number is not None:
+        rows = conn.execute(
+            """SELECT * FROM comic_panels WHERE project_id=? AND episode_number=?
+            ORDER BY page_number, panel_number""",
+            (project_id, episode_number)).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT * FROM comic_panels WHERE project_id=?
+            ORDER BY episode_number, page_number, panel_number""",
+            (project_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_comic_panel(panel_id):
+    """获取单个漫画面板。"""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM comic_panels WHERE id=?", (panel_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def delete_comic_panels(project_id, episode_number=None):
+    """删除项目的漫画面板（可选指定话数）。"""
+    conn = get_db()
+    if episode_number is not None:
+        conn.execute("DELETE FROM comic_panels WHERE project_id=? AND episode_number=?",
+                     (project_id, episode_number))
+    else:
+        conn.execute("DELETE FROM comic_panels WHERE project_id=?", (project_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_comic_episodes(project_id):
+    """获取项目的话数列表（去重）。"""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT DISTINCT episode_number, COUNT(*) as panel_count, 
+        SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) as done_count,
+        MIN(page_number) as min_page, MAX(page_number) as max_page
+        FROM comic_panels WHERE project_id=?
+        GROUP BY episode_number ORDER BY episode_number""",
+        (project_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 # Auto-init on import

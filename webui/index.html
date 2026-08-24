@@ -101,6 +101,7 @@ th { color: #8b949e; font-weight: 600; }
   <div class="tab" data-tab="shots" onclick="switchTab('shots')">🎞️ 分镜</div>
   <div class="tab" data-tab="video" onclick="switchTab('video')">🎥 视频</div>
   <div class="tab" data-tab="preview" onclick="switchTab('preview')">▶️ 预览</div>
+  <div class="tab" data-tab="comic" onclick="switchTab('comic')">🎨 漫画</div>
 </div>
 
 <!-- ── 剧本面板 ── -->
@@ -284,6 +285,28 @@ th { color: #8b949e; font-weight: 600; }
   </div>
 </div>
 
+<!-- ── 漫画面板 ── -->
+<div class="panel" id="panel-comic">
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">🎨 漫画制作</h3>
+      <button class="btn btn-primary btn-sm" onclick="comicAdapt()">🪄 小说→漫画</button>
+      <button class="btn btn-sm" style="background:#ea580c;color:#fff" onclick="comicGenerateAll()">🖼️ 全部生成</button>
+      <button class="btn btn-secondary btn-sm" onclick="comicCheckStatus()">🔍 检查ComfyUI</button>
+      <button class="btn btn-danger btn-sm" onclick="comicDeleteAll()">🗑️ 清空</button>
+      <span style="font-size:12px;color:#8b949e;margin-left:auto" id="comicStatus"></span>
+    </div>
+  </div>
+  <div class="card" id="comicEpisodes" style="display:none">
+    <h3>话数列表</h3>
+    <div id="comicEpisodeList" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+  </div>
+  <div class="progress-bar" id="comicProgress" style="display:none"><div class="fill" style="width:0%"></div></div>
+  <div id="comicPanelGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
+    <p style="color:#8b949e;text-align:center;padding:40px">请先在「小说」标签生成章节，然后点击「小说→漫画」改编。</p>
+  </div>
+</div>
+
 <script>
 let currentProject = null;
 const API = '';
@@ -314,6 +337,7 @@ function switchTab(name) {
   if (name === 'characters') renderCharacters();
   if (name === 'scenes') renderScenes();
   if (name === 'shots') { renderScenes(); renderShots(); }
+  if (name === 'comic') renderComicPanels();
 }
 
 // ─── Projects ───
@@ -1220,6 +1244,182 @@ async function mergeAllVideos() {
   } else {
     setStatus('❌ 合并失败: ' + (r.error||''));
   }
+}
+
+// ─── Comic ───
+let comicPanels = [];
+let comicEpisodes = [];
+
+async function renderComicPanels() {
+  if (!currentProject?.id) return;
+  const status = document.getElementById('comicStatus');
+  status.textContent = '⏳ 加载中...';
+  try {
+    const r = await fetchAPI(`/api/comic/panels/${currentProject.id}`);
+    comicPanels = r.panels || [];
+    comicEpisodes = r.episodes || [];
+    renderComicGrid();
+    renderComicEpisodes();
+    status.textContent = comicPanels.length ? `✅ ${comicPanels.length} 个面板` : '';
+  } catch(e) {
+    status.textContent = '❌ ' + e.message;
+  }
+}
+
+function renderComicEpisodes() {
+  const el = document.getElementById('comicEpisodes');
+  const list = document.getElementById('comicEpisodeList');
+  if (!comicEpisodes.length) {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'block';
+  list.innerHTML = comicEpisodes.map(ep => {
+    const pct = ep.panel_count ? Math.round(ep.done_count / ep.panel_count * 100) : 0;
+    return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 16px;cursor:pointer;min-width:120px;text-align:center"
+      onclick="filterComicByEpisode(${ep.episode_number})" id="comic-ep-${ep.episode_number}">
+      <div style="font-weight:600;font-size:14px">第${ep.episode_number}话</div>
+      <div style="font-size:11px;color:#8b949e">${ep.done_count}/${ep.panel_count} 面板</div>
+      <div class="progress-bar" style="margin:4px 0"><div class="fill" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+let comicEpisodeFilter = null;
+function filterComicByEpisode(ep) {
+  comicEpisodeFilter = comicEpisodeFilter === ep ? null : ep;
+  renderComicEpisodes();
+  renderComicGrid();
+  // highlight
+  document.querySelectorAll('#comicEpisodeList > div').forEach(d => {
+    d.style.borderColor = 'var(--border)';
+  });
+  if (comicEpisodeFilter) {
+    const el = document.getElementById('comic-ep-' + comicEpisodeFilter);
+    if (el) el.style.borderColor = 'var(--accent)';
+  }
+}
+
+function renderComicGrid() {
+  const grid = document.getElementById('comicPanelGrid');
+  let panels = comicPanels;
+  if (comicEpisodeFilter) {
+    panels = comicPanels.filter(p => p.episode_number === comicEpisodeFilter);
+  }
+  if (!panels.length) {
+    grid.innerHTML = '<p style="color:#8b949e;text-align:center;padding:40px">暂无漫画面板，请点击「小说→漫画」改编。</p>';
+    return;
+  }
+  grid.innerHTML = panels.map(p => {
+    const statusIcon = {pending:'⏳',generating:'🔄',done:'✅',failed:'❌'}[p.status]||'⏳';
+    const statusColor = {pending:'#8b949e',generating:'#d2991d',done:'var(--green)',failed:'var(--red)'}[p.status]||'#8b949e';
+    const imgTag = p.image_local
+      ? `<img src="/assets/comic/${p.image_local.split('/').pop()}" style="width:100%;height:220px;object-fit:cover;border-radius:4px;background:#1c2128" onerror="this.nextElementSibling.style.display='block';this.style.display='none'">`
+      : `<div style="width:100%;height:220px;background:#1c2128;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:32px;color:#8b949e">🎨</div>`;
+    return `<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px" id="panel-${p.id}">
+      ${imgTag}
+      <div style="display:none;width:100%;height:220px;background:#1c2128;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:14px;color:#8b949e">🖼️ 图片加载失败</div>
+      <div style="margin-top:6px;font-size:12px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-weight:600">话${p.episode_number} · 面板${p.panel_number} <span style="color:${statusColor}">${statusIcon}</span></span>
+        <span style="color:#8b949e;font-size:11px">${p.camera||''}</span>
+      </div>
+      <div style="font-size:11px;color:#8b949e;margin-top:2px;line-height:1.4;max-height:40px;overflow:hidden">${p.scene_desc||''}</div>
+      ${p.dialogue ? `<div style="font-size:12px;color:var(--accent);margin-top:2px;font-weight:600">💬 ${p.dialogue}</div>` : ''}
+      ${p.status === 'pending' ? `<button class="btn btn-primary btn-sm" style="width:100%;margin-top:6px" onclick="comicGenerateOne(${p.id})">🖼️ 生成</button>` : ''}
+      ${p.status === 'failed' ? `<button class="btn btn-danger btn-sm" style="width:100%;margin-top:6px" onclick="comicGenerateOne(${p.id})">🔄 重试</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function comicAdapt() {
+  if (!currentProject?.id) { alert('请先选择项目'); return; }
+  const status = document.getElementById('comicStatus');
+  status.textContent = '⏳ 改编中…（约 1-2 分钟）';
+  try {
+    const r = await fetchAPI('/api/comic/adapt', {
+      method: 'POST',
+      body: JSON.stringify({project_id: currentProject.id})
+    });
+    if (r.error) { status.textContent = '❌ ' + r.error; return; }
+    status.textContent = `✅ 改编完成：${r.chapter_count} 话，${r.panel_count} 个面板`;
+    await renderComicPanels();
+  } catch(e) { status.textContent = '❌ ' + e.message; }
+}
+
+async function comicGenerateOne(panelId) {
+  const el = document.getElementById('panel-' + panelId);
+  if (el) el.style.opacity = '0.6';
+  const status = document.getElementById('comicStatus');
+  status.textContent = '⏳ 生成中…';
+  try {
+    const r = await fetchAPI('/api/comic/generate', {
+      method: 'POST',
+      body: JSON.stringify({panel_id: panelId})
+    });
+    if (r.error) { status.textContent = '❌ ' + r.error; return; }
+    status.textContent = '✅ 生成完成！';
+    await renderComicPanels();
+  } catch(e) { status.textContent = '❌ ' + e.message; }
+}
+
+async function comicGenerateAll() {
+  if (!currentProject?.id) { alert('请先选择项目'); return; }
+  const pending = comicPanels.filter(p => p.status === 'pending' || p.status === 'failed');
+  if (!pending.length) { alert('没有待生成的面板'); return; }
+  if (!confirm(`确定要生成 ${pending.length} 个面板吗？这可能需要几分钟。`)) return;
+
+  const status = document.getElementById('comicStatus');
+  const bar = document.getElementById('comicProgress');
+  const fill = bar.querySelector('.fill');
+  bar.style.display = 'block';
+  status.textContent = `⏳ 批量生成 ${pending.length} 个面板…`;
+
+  try {
+    const r = await fetchAPI('/api/comic/generate-batch', {
+      method: 'POST',
+      body: JSON.stringify({project_id: currentProject.id, panel_ids: pending.map(p => p.id)})
+    });
+    status.textContent = r.message || '批量生成已启动';
+    // Poll for progress
+    pollComicProgress(0);
+  } catch(e) {
+    status.textContent = '❌ ' + e.message;
+    bar.style.display = 'none';
+  }
+}
+
+function pollComicProgress(count) {
+  setTimeout(async function() {
+    await renderComicPanels();
+    const done = comicPanels.filter(p => p.status === 'done').length;
+    const total = comicPanels.length;
+    const fill = document.querySelector('#comicProgress .fill');
+    fill.style.width = total ? `${Math.round(done/total*100)}%` : '0%';
+    document.getElementById('comicStatus').textContent = `⏳ ${done}/${total} 完成`;
+    if (done < total && count < 60) {
+      pollComicProgress(count + 1);
+    } else {
+      document.getElementById('comicProgress').style.display = 'none';
+      document.getElementById('comicStatus').textContent = `✅ ${done}/${total} 完成`;
+    }
+  }, 3000);
+}
+
+async function comicCheckStatus() {
+  const status = document.getElementById('comicStatus');
+  status.textContent = '⏳ 检查中...';
+  try {
+    const r = await fetchAPI('/api/comic/check');
+    status.textContent = r.comfyui_ready ? '✅ ComfyUI 在线' : '❌ ' + r.comfyui_message;
+  } catch(e) { status.textContent = '❌ ' + e.message; }
+}
+
+async function comicDeleteAll() {
+  if (!currentProject?.id) return;
+  if (!confirm('确定删除所有漫画面板吗？')) return;
+  await fetchAPI(`/api/comic/delete/${currentProject.id}`, {method:'DELETE'});
+  await renderComicPanels();
+  document.getElementById('comicStatus').textContent = '🗑️ 已清空';
 }
 
 // Init

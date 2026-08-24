@@ -21,7 +21,9 @@ from database import (
     add_video_task, update_video_task, get_video_task,
     add_scene, update_scene_image, get_scenes, delete_scene, update_shot_scene,
     get_db,
-    add_chapter, update_chapter, get_chapters, get_chapter, delete_chapter
+    add_chapter, update_chapter, get_chapters, get_chapter, delete_chapter,
+    add_comic_panel, add_comic_panels_batch, update_comic_panel, update_comic_panel_image,
+    get_comic_panels, get_comic_panel, delete_comic_panels, get_comic_episodes
 )
 from pipelines.script_writer import generate_script, optimize_prompt
 from pipelines.novel_writer import generate_chapter, continue_chapter, check_continuity, adapt_novel_to_script
@@ -31,6 +33,7 @@ from pipelines.continuity import build_continuity_context, check_shot_coherence,
 from pipelines.signoss_upload import is_configured as signoss_ready, upload_character_views
 from pipelines.video_gen import submit_video, merge_videos
 from pipelines.scene_gen import generate_scene_full
+from pipelines.comic_gen import adapt_novel_to_comic, build_panel_prompt, generate_comic_panel, check_comfyui_ready
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 CORS(app)
@@ -1171,6 +1174,227 @@ def api_adapt_novel():
         "character_count": len(characters),
         "shot_count": len(shot_records),
         "script": script,
+    })
+
+
+# ─── Comic APIs ─────────────────────────────────────────
+@app.route("/api/comic/adapt", methods=["POST"])
+def api_comic_adapt():
+    """小说 → 漫画脚本改编。"""
+    data = request.json
+    project_id = data.get("project_id")
+    if not project_id:
+        return jsonify({"error": "project_id required"}), 400
+
+    proj = get_project(project_id)
+    if not proj:
+        return jsonify({"error": "Project not found"}), 404
+
+    characters = get_characters(project_id)
+    chapter_ids = data.get("chapter_ids", [])
+    panels_per_chapter = data.get("panels_per_chapter", 8)
+
+    if chapter_ids:
+        # 按指定章节改编
+        chapters = [get_chapter(cid) for cid in chapter_ids if get_chapter(cid)]
+    else:
+        # 取全部章节
+        chapters = get_chapters(project_id)
+
+    if not chapters:
+        return jsonify({"error": "No chapters found"}), 400
+
+    try:
+        comic_script = adapt_novel_to_comic(proj, chapters, panels_per_chapter)
+    except Exception as e:
+        return jsonify({"error": f"Adaptation failed: {str(e)}"}), 500
+
+    # 存入数据库
+    total_panels = 0
+    for ch in comic_script.get("chapters", []):
+        for panel in ch.get("panels", []):
+            add_comic_panel(
+                project_id=project_id,
+                panel_number=panel.get("panel_number", total_panels + 1),
+                episode_number=ch.get("chapter_number", 1),
+                page_number=1,
+                scene_desc=panel.get("scene_desc", ""),
+                dialogue=panel.get("dialogue", ""),
+                sfx=panel.get("sfx", ""),
+                camera=panel.get("camera", "中景"),
+            )
+            total_panels += 1
+
+    return jsonify({
+        "project_id": project_id,
+        "title": comic_script.get("title"),
+        "genre": comic_script.get("genre"),
+        "chapter_count": len(comic_script.get("chapters", [])),
+        "panel_count": total_panels,
+    })
+
+
+@app.route("/api/comic/panels/<int:project_id>", methods=["GET"])
+def api_comic_list_panels(project_id):
+    """列出项目的漫画面板。"""
+    episode = request.args.get("episode", type=int)
+    panels = get_comic_panels(project_id, episode)
+    episodes = get_comic_episodes(project_id)
+    return jsonify({"panels": panels, "episodes": episodes})
+
+
+@app.route("/api/comic/panel/<int:panel_id>", methods=["GET"])
+def api_comic_get_panel(panel_id):
+    """获取单个漫画面板。"""
+    panel = get_comic_panel(panel_id)
+    if not panel:
+        return jsonify({"error": "Panel not found"}), 404
+    return jsonify(panel)
+
+
+@app.route("/api/comic/panel/update", methods=["POST"])
+def api_comic_update_panel():
+    """更新漫画面板字段。"""
+    data = request.json
+    panel_id = data.get("panel_id")
+    if not panel_id:
+        return jsonify({"error": "panel_id required"}), 400
+    update_comic_panel(panel_id, **{k: v for k, v in data.items() if k != "panel_id"})
+    return jsonify({"ok": True})
+
+
+@app.route("/api/comic/generate", methods=["POST"])
+def api_comic_generate():
+    """生成漫画面板图片（单个面板）。"""
+    data = request.json
+    panel_id = data.get("panel_id")
+    if not panel_id:
+        return jsonify({"error": "panel_id required"}), 400
+
+    panel = get_comic_panel(panel_id)
+    if not panel:
+        return jsonify({"error": "Panel not found"}), 404
+
+    # 检查 ComfyUI 状态
+    ready, msg = check_comfyui_ready()
+    if not ready:
+        return jsonify({"error": f"ComfyUI not ready: {msg}"}), 503
+
+    # 构建提示词
+    project_id = panel["project_id"]
+    proj = get_project(project_id)
+    characters = get_characters(project_id)
+
+    try:
+        prompt_en = build_panel_prompt(panel, characters, proj)
+    except Exception as e:
+        return jsonify({"error": f"Prompt generation failed: {str(e)}"}), 500
+
+    # 更新提示词
+    update_comic_panel(panel_id, prompt_raw=panel.get("scene_desc", ""),
+                       prompt_optimized=prompt_en, status="generating")
+
+    # 生成图片
+    try:
+        result = generate_comic_panel(prompt_en)
+    except Exception as e:
+        update_comic_panel(panel_id, status="failed")
+        return jsonify({"error": f"Generation failed: {str(e)}"}), 500
+
+    if not result.get("success"):
+        update_comic_panel(panel_id, status="failed")
+        return jsonify({"error": result.get("error", "Unknown error")}), 500
+
+    # 构建本地图片路径
+    filename = result.get("filename", "")
+    image_local = f"/home/jialine/dragon-agent/assets/comic/{filename}" if filename else ""
+
+    # 更新面板
+    update_comic_panel_image(
+        panel_id, image_local=image_local,
+        seed=result.get("seed"),
+        status="done"
+    )
+
+    return jsonify({
+        "panel_id": panel_id,
+        "status": "done",
+        "prompt_en": prompt_en,
+        "image_local": image_local,
+        "seed": result.get("seed"),
+    })
+
+
+@app.route("/api/comic/generate-batch", methods=["POST"])
+def api_comic_generate_batch():
+    """批量生成漫画面板（异步，后台线程）。"""
+    data = request.json
+    panel_ids = data.get("panel_ids", [])
+    if not panel_ids:
+        return jsonify({"error": "panel_ids required"}), 400
+
+    project_id = data.get("project_id")
+    if not project_id:
+        return jsonify({"error": "project_id required"}), 400
+
+    proj = get_project(project_id)
+    characters = get_characters(project_id)
+
+    def _generate_batch():
+        for pid in panel_ids:
+            panel = get_comic_panel(pid)
+            if not panel:
+                continue
+            # 构建提示词
+            try:
+                prompt_en = build_panel_prompt(panel, characters, proj)
+            except Exception:
+                update_comic_panel(pid, status="failed")
+                continue
+
+            update_comic_panel(pid, prompt_optimized=prompt_en, status="generating")
+
+            # 生成图片
+            try:
+                result = generate_comic_panel(prompt_en)
+            except Exception:
+                update_comic_panel(pid, status="failed")
+                continue
+
+            if result.get("success"):
+                filename = result.get("filename", "")
+                image_local = f"/home/jialine/dragon-agent/assets/comic/{filename}" if filename else ""
+                update_comic_panel_image(pid, image_local=image_local,
+                                        seed=result.get("seed"), status="done")
+            else:
+                update_comic_panel(pid, status="failed")
+
+    thread = threading.Thread(target=_generate_batch, daemon=True)
+    thread.start()
+
+    return jsonify({
+        "ok": True,
+        "total": len(panel_ids),
+        "message": f"Batch generation started for {len(panel_ids)} panels"
+    })
+
+
+@app.route("/api/comic/delete/<int:project_id>", methods=["DELETE"])
+def api_comic_delete(project_id):
+    """删除项目的漫画面板。"""
+    episode = request.args.get("episode", type=int)
+    delete_comic_panels(project_id, episode)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/comic/check", methods=["GET"])
+def api_comic_check():
+    """检查 ComfyUI 状态和动漫模型。"""
+    ready, msg = check_comfyui_ready()
+    return jsonify({
+        "comfyui_ready": ready,
+        "comfyui_message": msg,
+        "comfyui_url": os.environ.get("COMFYUI_URL", "http://192.168.0.30:8188"),
     })
 
 
