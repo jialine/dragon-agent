@@ -38,6 +38,18 @@ Thumbs.db
 *.tmp
 *.bak
 webui.log
+
+# 视频/音频产物（二进制大文件，不入库）
+ember_en_final/
+ember_en_videos_raw/
+xinghuo_final/
+xinghuo_videos_raw/
+ember_s1/bgm/
+ember_s1/sfx/
+ember_s1/videos/
+*.mp4
+*.mp3
+*.wav
 models/
 *.png
 scripts/feishu_onboard.py
