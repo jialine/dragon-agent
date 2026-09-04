@@ -7,10 +7,11 @@ H3 本地批量出片器 — 0成本短剧生产线
 能力:
   1. FL2VA 首尾帧: first_frame + last_frame 硬锚定, 镜头无缝衔接
   2. Ref2VA 参考图: 单人/多人角色参考图 (身份一致性)
-  3. 5 台工作池调度, 自动负载均衡
-  4. 首尾帧衔接链: 上一镜尾帧 -> 下一镜 first_frame
-  5. 场记命名 {project}_EP{ep}_S{shot}_V{ver}_T{take}_s{seed}.mp4
-  6. 无 BGM (ffmpeg 砍音轨): 中文版砍音轨; 英文版 shot 带 keep_audio=True 保留 H3 原生对白音轨
+  3. T2VA 纯文生视频: 无参考图镜走 FL2VA UNet 官方 t2va 路径 (mode=t2va)
+  4. 5 台工作池调度, 自动负载均衡
+  5. 首尾帧衔接链: 上一镜尾帧 -> 下一镜 first_frame
+  6. 场记命名 {project}_EP{ep}_S{shot}_V{ver}_T{take}_s{seed}.mp4
+  7. 无 BGM (ffmpeg 砍音轨): 中文版砍音轨; 英文版 shot 带 keep_audio=True 保留 H3 原生对白音轨
 
 用法:
   python3 h3_batch_gen.py --project 猩族纪元 --episode 1 \
@@ -20,7 +21,7 @@ shots.json 格式 (一镜一个对象):
 [
   {
     "shot_number": 1,
-    "mode": "ref2va",            # ref2va(参考图) 或 fl2va(首尾帧)
+    "mode": "ref2va",            # ref2va(参考图) / fl2va(首尾帧) / t2va(纯文生视频, 无参考图镜用)
     "prompt": "英文/中文动作描述",   # 【旧格式】纯文本 prompt (向后兼容)
     "ref_images": ["/path/ref1.jpg", "/path/ref2.jpg"],  # ref2va 模式
     "first_frame": "/path/first.jpg",   # fl2va 模式
@@ -197,8 +198,80 @@ def build_fl2va_workflow(prompt, first_frame, last_frame, width, height,
     return wf
 
 
+def build_t2va_workflow(prompt, width, height, length, seed, steps=8,
+                        with_solattn=True):
+    """纯文生视频 T2VA 工作流 (无参考图/首尾帧, FL2VA UNet 的 t2va 模式).
+
+    无参考图镜的正确跑法: MiniMaxH3ImageToVideo 不传 first/last_frame, 只吃
+    prompt → 官方 t2va 路径 (而非 Ref2VA 空参考图退化, 后者走的是参考图
+    分支但没图, 身份/构图行为不可控)。
+    """
+    # 防御: FL2V Turbo LoRA 只有 4step/8step 两档, 其他值(如 ref2va 的 20)错配会崩, snap 到 8
+    if steps not in (4, 8):
+        steps = 8
+    lora = LORA_FL2V_8S if steps == 8 else LORA_FL2V_4S
+    wf = {
+        "1_clip": {"class_type": "CLIPLoader", "inputs": {"clip_name": CLIP_QWEN, "type": "minimax"}},
+        "2_unet": {"class_type": "UNETLoader", "inputs": {"unet_name": UNET_FL2VA, "weight_dtype": "default"}},
+        "3_vae_video": {"class_type": "VAELoader", "inputs": {"vae_name": VAE_VIDEO}},
+        "4_vae_audio": {"class_type": "VAELoader", "inputs": {"vae_name": VAE_AUDIO}},
+        "6_lora": {"class_type": "LoraLoaderModelOnly", "inputs": {"model": ["2_unet", 0], "lora_name": lora, "strength_model": 1.0}},
+    }
+    node_idx = 7
+    prev_model = ["6_lora", 0]
+
+    # sol-attn 加速链 (与 FL2VA 相同)
+    if with_solattn:
+        wf[f"{node_idx}_sol"] = {"class_type": "MiniMaxH3MemoryEfficientSolAttentionPatch",
+            "inputs": {"model": prev_model, "enabled": True, "tau": 1.0, "min_tokens": 4096,
+                       "strict": True, "thresh_type": "diag", "int8_qk": False, "int8_pv": False,
+                       "sink_conditioning": "exact_kv", "dense_blocks": ""}}
+        prev_model = [f"{node_idx}_sol", 0]; node_idx += 1
+        wf[f"{node_idx}_fused"] = {"class_type": "MiniMaxH3FusedModulation",
+            "inputs": {"model": prev_model, "enabled": True}}
+        prev_model = [f"{node_idx}_fused", 0]; node_idx += 1
+        wf[f"{node_idx}_chunk"] = {"class_type": "MiniMaxH3ChunkFeedForward",
+            "inputs": {"model": prev_model, "enabled": True, "chunks": 4, "min_tokens": 8192}}
+        prev_model = [f"{node_idx}_chunk", 0]; node_idx += 1
+        wf[f"{node_idx}_cache"] = {"class_type": "EasyCache",
+            "inputs": {"model": prev_model, "reuse_threshold": 0.1, "start_percent": 0.15,
+                       "end_percent": 0.85, "verbose": False}}
+        prev_model = [f"{node_idx}_cache", 0]; node_idx += 1
+
+    wf[f"{node_idx}_shift"] = {"class_type": "MiniMaxH3SigmaShift",
+        "inputs": {"model": prev_model, "shift_video": 12.0, "shift_audio": 3.0}}
+    shift = [f"{node_idx}_shift", 0]; node_idx += 1
+
+    # 关键: 不传 first_frame / last_frame → 纯 t2va
+    wf[f"{node_idx}_i2v"] = {"class_type": "MiniMaxH3ImageToVideo",
+        "inputs": {"clip": ["1_clip", 0], "vae": ["3_vae_video", 0], "prompt": prompt,
+                   "width": width, "height": height, "length": length}}
+    i2v = f"{node_idx}_i2v"; node_idx += 1
+
+    wf[f"{node_idx}_noise"] = {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}}
+    noise = f"{node_idx}_noise"; node_idx += 1
+    wf[f"{node_idx}_sam"] = {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}}
+    sam = f"{node_idx}_sam"; node_idx += 1
+    wf[f"{node_idx}_sched"] = {"class_type": "BasicScheduler", "inputs": {"model": shift, "scheduler": "simple", "steps": steps, "denoise": 1.0}}
+    sched = f"{node_idx}_sched"; node_idx += 1
+    wf[f"{node_idx}_guide"] = {"class_type": "BasicGuider", "inputs": {"model": shift, "conditioning": [i2v, 0]}}
+    guide = f"{node_idx}_guide"; node_idx += 1
+    wf[f"{node_idx}_samp"] = {"class_type": "SamplerCustomAdvanced", "inputs": {"noise": [noise, 0], "guider": [guide, 0], "sampler": [sam, 0], "sigmas": [sched, 0], "latent_image": [i2v, 1]}}
+    samp = f"{node_idx}_samp"; node_idx += 1
+
+    wf[f"{node_idx}_decv"] = {"class_type": "VAEDecode", "inputs": {"samples": [samp, 0], "vae": ["3_vae_video", 0]}}
+    decv = f"{node_idx}_decv"; node_idx += 1
+    wf[f"{node_idx}_deca"] = {"class_type": "VAEDecodeAudio", "inputs": {"samples": [samp, 0], "vae": ["4_vae_audio", 0]}}
+    deca = f"{node_idx}_deca"; node_idx += 1
+    wf[f"{node_idx}_make"] = {"class_type": "CreateVideo", "inputs": {"images": [decv, 0], "audio": [deca, 0], "fps": 24.0}}
+    make = f"{node_idx}_make"; node_idx += 1
+    wf[f"{node_idx}_save"] = {"class_type": "SaveVideo", "inputs": {"video": [make, 0], "filename_prefix": "H3_BATCH/shot", "format": "auto"}}
+
+    return wf
+
+
 def build_ref2va_workflow(prompt, ref_images, width, height, length, seed,
-                          steps=20, with_solattn=True, use_turbo=False):
+                          steps=20, with_solattn=True, use_turbo=False, tau=0.7):
     """参考图 Ref2VA 工作流 (单人/多人身份一致性).
 
     use_turbo=False (默认): 官方 20 步精修配置 (res_multistep, 无 Turbo LoRA,
@@ -208,7 +281,7 @@ def build_ref2va_workflow(prompt, ref_images, width, height, length, seed,
     """
     # 铁律: Ref2VA 必须在 prompt 里用 <Picture N> 引用参考图 (1-based),
     # 否则 ref_images 只是被上传但模型不当身份锚点 → 等于纯 T2V, 角色脸对不上。
-    if "<Picture" not in prompt:
+    if "<Picture" not in prompt and ref_images:
         pics = " ".join(f"<Picture {i + 1}>" for i in range(len(ref_images)))
         prompt = f"Use {pics} as the identity and appearance reference. {prompt}"
     wf = {
@@ -233,7 +306,7 @@ def build_ref2va_workflow(prompt, ref_images, width, height, length, seed,
 
     if with_solattn:
         wf[f"{node_idx}_sol"] = {"class_type": "MiniMaxH3MemoryEfficientSolAttentionPatch",
-            "inputs": {"model": prev_model, "enabled": True, "tau": 1.0, "min_tokens": 4096,
+            "inputs": {"model": prev_model, "enabled": True, "tau": tau, "min_tokens": 4096,
                        "strict": True, "thresh_type": "diag", "int8_qk": False, "int8_pv": False,
                        "sink_conditioning": "exact_kv", "dense_blocks": ""}}
         prev_model = [f"{node_idx}_sol", 0]; node_idx += 1
@@ -407,6 +480,9 @@ def generate_shot(base, shot, project, episode, workdir):
         prompt = build_ref2va_prompt_from_shot(shot)
     else:
         prompt = shot.get('prompt', '')
+        # 铁律: 无 BGM (中文版) 在纯文本 prompt 里显式声明, 从源头让 H3 不配乐
+        if not shot.get('keep_audio', False):
+            prompt = f"{prompt} No background music, no non-diegetic music or soundtrack."
     duration = shot.get('duration', 8)
     steps = shot.get('steps', 20 if mode == 'ref2va' else 8)
     use_turbo = shot.get('use_turbo', False)
@@ -425,12 +501,21 @@ def generate_shot(base, shot, project, episode, workdir):
             _upload_image(base, last_frame)
         wf = build_fl2va_workflow(prompt, first_frame, last_frame,
                                   1344, 768, length, seed, steps=steps)
+    elif mode == 't2va':
+        # 纯文生视频: 无参考图/首尾帧, 走官方 t2va 路径 (不靠 ref2va 空参考图退化)
+        wf = build_t2va_workflow(prompt, 1344, 768, length, seed, steps=steps)
     else:
-        ref_images = shot.get('ref_images', [])
-        for img in ref_images:
-            _upload_image(base, img)
-        wf = build_ref2va_workflow(prompt, ref_images,
-                                   1344, 768, length, seed, steps=steps, use_turbo=use_turbo)
+        ref_images = [img for img in shot.get('ref_images', []) if img]
+        if not ref_images:
+            # 无参考图镜 → 自动走 t2va (纯文生视频), 不靠 ref2va 空参考图退化
+            wf = build_t2va_workflow(prompt, 1344, 768, length, seed,
+                                     steps=shot.get('steps', 8))
+        else:
+            for img in ref_images:
+                _upload_image(base, img)
+            wf = build_ref2va_workflow(prompt, ref_images,
+                                       1344, 768, length, seed, steps=steps, use_turbo=use_turbo,
+                                       tau=shot.get('tau', 0.7))
 
     filename, subfolder = _submit_and_wait(base, wf)
     raw = os.path.join(workdir, f"raw_{shot_num}_{seed}.mp4")
@@ -457,29 +542,44 @@ class Scheduler:
     def __init__(self, nodes):
         self.nodes = nodes
         self.lock = threading.Lock()
+        # 本进程已分配未完成计数: 抵消并发挑选时"队列尚未反映"的乐观盲区
+        self._inflight = {n: 0 for n in nodes}
 
     def pick_node(self):
-        """选最空闲的节点."""
-        best = None
-        best_load = 10**9
-        for n in self.nodes:
-            ok, running, pending = _comfy_ready(n)
-            if not ok:
-                continue
-            load = running * 10 + pending
-            if load < best_load:
-                best_load = load
-                best = n
-        return best
+        """选最空闲的节点 (原子操作, 并发安全).
+
+        坑: 纯靠 /queue 的 running/pending 会有竞态 — 多个 worker 线程在提交前
+        同时读队列, 全都看到空闲 → 全选 nodes[0], 结果 N 镜全压一台。
+        用 _inflight 预留计数 + 锁, 让"即将提交"的任务也被计入负载。
+        """
+        with self.lock:
+            best = None
+            best_load = 10**9
+            for n in self.nodes:
+                ok, running, pending = _comfy_ready(n)
+                if not ok:
+                    continue
+                load = running * 10 + pending + self._inflight.get(n, 0)
+                if load < best_load:
+                    best_load = load
+                    best = n
+            if best is not None:
+                self._inflight[best] += 1
+            return best
+
+    def release(self, node):
+        """镜头完成/失败后归还该节点的预留."""
+        with self.lock:
+            self._inflight[node] = max(0, self._inflight.get(node, 0) - 1)
 
 
 # ==================== 主流程 ====================
-def generate_episode(shots, project, episode, workdir, max_workers=5):
-    """批量生成一集所有镜头, 5 台并行调度.
+def generate_episode(shots, project, episode, workdir, max_workers=3):
+    """批量生成一集所有镜头, 最多 max_workers 台并行。
 
-    所有镜头必须带显式 first_frame/last_frame (fl2va) 或 ref_images (ref2va),
-    这样彼此无依赖可完全并行。连续动作衔接通过在分镜阶段预生成首尾帧图实现。
-    """
+    默认 3 台并发: 5 台 GPU 时留 2 台、4 台 GPU 时留 1 台空闲,
+    Scheduler 永远选负载最低的节点, 空闲的那台会被下一个镜头优先选中
+    → 多台轮流休息降温, 不会同时满载。可用 `--max-workers` 覆盖。"""
     Path(workdir).mkdir(parents=True, exist_ok=True)
     sched = Scheduler(COMFY_NODES)
     results: list = [None] * len(shots)  # type: ignore[assignment]
@@ -497,10 +597,12 @@ def generate_episode(shots, project, episode, workdir, max_workers=5):
                 print(f"  [S{shot_num}] -> {base} (attempt {attempt})")
                 video, tail, seed = generate_shot(base, shot, project, episode, workdir)
                 print(f"  [S{shot_num}] 完成: {video}")
+                sched.release(base)
                 return i, {"shot": shot_num, "video": video, "seed": seed,
                            "tail": tail, "status": "done"}
             except Exception as e:
                 print(f"  [S{shot_num}] 失败: {e}")
+                sched.release(base)
                 if attempt == 2:
                     return i, {"shot": shot_num, "status": "failed", "error": str(e)}
         return i, {"shot": shot_num, "status": "failed", "error": "no available node"}
@@ -518,6 +620,8 @@ if __name__ == "__main__":
     ap.add_argument("--episode", type=int, required=True)
     ap.add_argument("--shots", required=True, help="shots.json 路径")
     ap.add_argument("--workdir", default=None, help="临时目录, 默认 /tmp/h3batch_{project}_EP{ep}")
+    ap.add_argument("--max-workers", type=int, default=3,
+                    help="最大并行 GPU 数 (默认 3, 留空闲机器降温)")
     ap.add_argument("--dry-run", action="store_true", help="只打印计划不生成")
     args = ap.parse_args()
 
@@ -535,7 +639,7 @@ if __name__ == "__main__":
             print(f"  S{s['shot_number']}: {s.get('mode','ref2va')} {s.get('duration',8)}s")
         sys.exit(0)
 
-    results = generate_episode(shots, args.project, args.episode, workdir)
+    results = generate_episode(shots, args.project, args.episode, workdir, max_workers=args.max_workers)
     done = sum(1 for r in results if r['status'] == 'done')
     print(f"\n=== 完成 {done}/{len(shots)} 镜 ===")
     with open(os.path.join(workdir, "results.json"), "w") as f:
