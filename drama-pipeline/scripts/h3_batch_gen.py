@@ -545,17 +545,23 @@ class Scheduler:
         # 本进程已分配未完成计数: 抵消并发挑选时"队列尚未反映"的乐观盲区
         self._inflight = {n: 0 for n in nodes}
 
-    def pick_node(self):
+    def pick_node(self, shot=None):
         """选最空闲的节点 (原子操作, 并发安全).
 
         坑: 纯靠 /queue 的 running/pending 会有竞态 — 多个 worker 线程在提交前
         同时读队列, 全都看到空闲 → 全选 nodes[0], 结果 N 镜全压一台。
         用 _inflight 预留计数 + 锁, 让"即将提交"的任务也被计入负载。
+
+        .30 (3080 Laptop, 31G RAM) 跑 >=12s 大镜头: 每步 5-7 分钟(比强节点慢7倍)
+        且 27G 权重 + 大镜头激活会把 31G RAM 顶爆 → OOM 崩。大镜头排除 .30。
         """
         with self.lock:
             best = None
             best_load = 10**9
+            big = shot is not None and shot.get('duration', 8) >= 12
             for n in self.nodes:
+                if big and n == '192.168.0.30':
+                    continue  # 大镜头不给 .30, 留给 .21/.22/.17
                 ok, running, pending = _comfy_ready(n)
                 if not ok:
                     continue
@@ -588,7 +594,7 @@ def generate_episode(shots, project, episode, workdir, max_workers=3):
         i, shot = task
         shot_num = shot['shot_number']
         for attempt in range(1, 3):  # 最多重试2次
-            base = sched.pick_node()
+            base = sched.pick_node(shot)
             if base is None:
                 print(f"  [S{shot_num}] 无可用节点, 等待...")
                 time.sleep(30)
