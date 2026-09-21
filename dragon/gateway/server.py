@@ -450,7 +450,15 @@ class MessageProcessor:
                     msg["tool_calls"] = m.tool_calls
                 history.append(msg)
 
-        history.append({"role": "user", "content": message.content})
+        # STEER: force action over clarification. Model listens to user msgs > system prompt.
+        steer_prefix = (
+            "[STEER] 不澄清不反问不确认。直接判断意图立即执行。"
+            "要文档→execute_code(python-docx)→send_message(MEDIA:)。"
+            "要方案→execute_code生成文件→send_message发送。"
+            "不描述你能做什么，直接给文件。"
+        )
+        user_content = steer_prefix + "\n\n" + message.content
+        history.append({"role": "user", "content": user_content})
 
         # 3. Compress if needed
         if self.compressor and self.compressor.needs_compression(history):
